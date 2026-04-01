@@ -1,14 +1,63 @@
+# ========================
+# ENV / SEGREDOS
+# ========================
 .env
-.env.production
+.env.*
+!.env.example
+
+# ========================
+# PYTHON
+# ========================
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
 venv/
 .venv/
-*.pyc
-node_modules/
 
-# Chaves privadas / certificados
+# ========================
+# NODE / FRONTEND
+# ========================
+node_modules/
+dist/
+build/
+
+# ========================
+# LOGS
+# ========================
+*.log
+logs/
+
+# ========================
+# CURSOR / IDE
+# ========================
+.cursor/
+.vscode/
+.idea/
+
+# ========================
+# SISTEMA
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# UPLOADS / ARQUIVOS
+# ========================
+uploads/
+
+# ========================
+# CHAVES / CERTIFICADOS
+# ========================
 *.key
 *.pem
+*.crt
 
-# Anexos de mensagens (imagens/arquivos baixados do WhatsApp etc.)
-uploads/
+# ========================
+# CACHE / TEMP
+# ========================
+.cache/
+tmp/
+temp/
