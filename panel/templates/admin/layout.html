@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+    <title>{% block title %}Admin{% endblock %} | ZapAction</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style> body { font-family: 'Inter', system-ui, sans-serif; } </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-100 min-h-screen antialiased">
+    <div id="admin-sidebar-backdrop" class="fixed inset-0 bg-black/50 z-30 lg:hidden opacity-0 pointer-events-none transition-opacity duration-200" aria-hidden="true"></div>
+    <div class="flex min-h-screen">
+        <aside id="admin-sidebar" class="w-64 min-h-screen bg-slate-900 text-white flex flex-col border-r border-slate-700 fixed inset-y-0 left-0 z-40 transform -translate-x-full transition-transform duration-200 ease-out lg:translate-x-0 lg:relative lg:inset-auto" aria-label="Menu admin">
+            <div class="p-5 border-b border-slate-700">
+                <a href="{{ url_for('admin.dashboard') }}" class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+                        <i class="fas fa-shield-halved"></i>
+                    </div>
+                    <span class="font-bold text-slate-100">Admin</span>
+                </a>
+            </div>
+            <nav class="p-3 flex-1">
+                <a href="{{ url_for('admin.dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.dashboard' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-chart-pie w-5 text-center"></i>
+                    <span class="text-sm font-medium">Dashboard</span>
+                </a>
+                <a href="{{ url_for('admin.clientes') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.clientes' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-users w-5 text-center"></i>
+                    <span class="text-sm font-medium">Clientes</span>
+                </a>
+                <a href="{{ url_for('admin.planos') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.planos' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-tags w-5 text-center"></i>
+                    <span class="text-sm font-medium">Planos</span>
+                </a>
+                <a href="{{ url_for('admin.canais_globais') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.canais_globais' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-tower-broadcast w-5 text-center"></i>
+                    <span class="text-sm font-medium">Canais globais</span>
+                </a>
+                <a href="{{ url_for('admin.financeiro') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.financeiro' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-sack-dollar w-5 text-center"></i>
+                    <span class="text-sm font-medium">Financeiro</span>
+                </a>
+                <a href="{{ url_for('admin.cadastro') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white {% if request.endpoint == 'admin.cadastro' or request.endpoint == 'admin.cadastro_post' %}bg-slate-800 text-white{% endif %}">
+                    <i class="fas fa-user-plus w-5 text-center"></i>
+                    <span class="text-sm font-medium">Cadastrar cliente</span>
+                </a>
+            </nav>
+            <div class="p-3 border-t border-slate-700 space-y-1">
+                <a href="{{ url_for('customer.dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white text-sm">
+                    <i class="fas fa-arrow-left w-5 text-center"></i>
+                    <span>Voltar ao app</span>
+                </a>
+                <a href="{{ url_for('customer.logout') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 text-sm">
+                    <i class="fas fa-sign-out-alt w-5 text-center"></i>
+                    <span>Sair</span>
+                </a>
+            </div>
+        </aside>
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+            <header class="mb-4 sm:mb-6 flex items-center justify-between gap-3 flex-wrap">
+                <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                    <button type="button" id="admin-sidebar-toggle" class="lg:hidden p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-200 transition shrink-0" aria-label="Abrir menu">
+                        <i class="fas fa-bars text-lg"></i>
+                    </button>
+                    <h1 class="text-xl sm:text-2xl font-bold text-slate-800 truncate">{% block page_title %}Painel administrativo{% endblock %}</h1>
+                    <span id="admin-waha-pill" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-200/80 text-xs text-slate-600 shrink-0" title="Status do WAHA (WhatsApp)">
+                        <span id="admin-waha-dot" class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" aria-hidden="true"></span>
+                        <span id="admin-waha-label">WAHA …</span>
+                    </span>
+                </div>
+                <span class="text-xs sm:text-sm text-slate-500 truncate max-w-[180px] sm:max-w-none">{{ current_user.email or '' }}</span>
+            </header>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, msg in messages %}
+            <div class="mb-4 p-3 rounded-lg {{ 'bg-emerald-50 text-emerald-800 border border-emerald-200' if category == 'success' else 'bg-amber-50 text-amber-800 border border-amber-200' }}">
+                {{ msg }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script>
+    (function() {
+        var sidebar = document.getElementById('admin-sidebar');
+        var backdrop = document.getElementById('admin-sidebar-backdrop');
+        var toggle = document.getElementById('admin-sidebar-toggle');
+        if (!sidebar || !backdrop) return;
+        function openSidebar() {
+            sidebar.classList.remove('-translate-x-full');
+            sidebar.classList.add('translate-x-0');
+            backdrop.classList.remove('opacity-0', 'pointer-events-none');
+            backdrop.setAttribute('aria-hidden', 'false');
+        }
+        function closeSidebar() {
+            sidebar.classList.add('-translate-x-full');
+            sidebar.classList.remove('translate-x-0');
+            backdrop.classList.add('opacity-0', 'pointer-events-none');
+            backdrop.setAttribute('aria-hidden', 'true');
+        }
+        if (toggle) toggle.addEventListener('click', function() {
+            if (sidebar.classList.contains('-translate-x-full')) openSidebar(); else closeSidebar();
+        });
+        backdrop.addEventListener('click', closeSidebar);
+        sidebar.querySelectorAll('a').forEach(function(a) {
+            a.addEventListener('click', function() { if (window.innerWidth < 1024) closeSidebar(); });
+        });
+    })();
+    </script>
+    <script>
+    // CSRF: aplica token automaticamente em requests unsafe para mesma origem (admin)
+    (function() {
+        try {
+            window.CSRF_TOKEN = "{{ csrf_token() if csrf_token else '' }}";
+            const _fetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                init = init || {};
+                const method = String(init.method || "GET").toUpperCase();
+                const unsafe = (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE");
+                if (!init.credentials) init.credentials = "same-origin";
+                if (unsafe) {
+                    init.headers = init.headers || {};
+                    var metaEl = document.querySelector('meta[name="csrf-token"]');
+                    const token = (metaEl && metaEl.getAttribute('content')) || window.CSRF_TOKEN || "";
+                    if (token) {
+                        if (init.headers instanceof Headers) {
+                            if (!init.headers.get("X-CSRF-Token")) init.headers.set("X-CSRF-Token", token);
+                        } else if (Array.isArray(init.headers)) {
+                            const has = init.headers.some((h) => String(h[0] || "").toLowerCase() === "x-csrf-token");
+                            if (!has) init.headers.push(["X-CSRF-Token", token]);
+                        } else {
+                            const keys = Object.keys(init.headers);
+                            const has = keys.some((k) => String(k).toLowerCase() === "x-csrf-token");
+                            if (!has) init.headers["X-CSRF-Token"] = token;
+                        }
+                    }
+                    if (init.headers instanceof Headers) {
+                        if (!init.headers.get("X-Requested-With")) init.headers.set("X-Requested-With", "XMLHttpRequest");
+                    } else if (Array.isArray(init.headers)) {
+                        const has = init.headers.some((h) => String(h[0] || "").toLowerCase() === "x-requested-with");
+                        if (!has) init.headers.push(["X-Requested-With", "XMLHttpRequest"]);
+                    } else {
+                        const keys = Object.keys(init.headers || {});
+                        const has = keys.some((k) => String(k).toLowerCase() === "x-requested-with");
+                        if (!has) init.headers["X-Requested-With"] = "XMLHttpRequest";
+                    }
+                }
+                return _fetch(input, init);
+            };
+        } catch (e) {}
+    })();
+    </script>
+    <script>
+    (function() {
+        var dot = document.getElementById('admin-waha-dot');
+        var label = document.getElementById('admin-waha-label');
+        var pill = document.getElementById('admin-waha-pill');
+        if (!dot || !label) return;
+        fetch('/admin/api/waha-status', { credentials: 'same-origin' })
+            .then(function(r) { return r.json().catch(function() { return {}; }); })
+            .then(function(d) {
+                if (d.status === 'online') {
+                    dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0';
+                    label.textContent = d.version ? ('WAHA · ' + String(d.version).slice(0, 32)) : 'WAHA online';
+                    if (pill) pill.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-100 text-xs text-emerald-900 shrink-0';
+                } else {
+                    dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 shrink-0';
+                    label.textContent = 'WAHA offline';
+                    if (pill) pill.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-100 text-xs text-red-900 shrink-0';
+                }
+            })
+            .catch(function() {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 shrink-0';
+                label.textContent = 'WAHA ?';
+            });
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+    <script src="https://api.updigitalbrasil.com.br/webhook/meta/static/embed/chat-widget.js" data-key="emb_gDyiR4pM3uFfJPYPwSxaK63r0Yc8W_ul"></script>
+</body>
+</html>

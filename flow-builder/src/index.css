@@ -1,0 +1,218 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #1e293b; }
+/* Altura explícita para o app (iframe ou não) */
+html, body, #root { width: 100%; height: 100%; min-height: 100vh; }
+#root { display: flex; flex-direction: column; }
+
+/* Layout principal: sidebar + main (ou só main em modo chatbot) */
+.flow-app { display: flex; width: 100%; flex: 1; min-height: 0; }
+.flow-app--chatbot .flow-main { flex: 1; width: 100%; }
+.flow-sidebar {
+  flex: 0 0 240px;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.flow-sidebar-back {
+  display: block;
+  padding: 14px 16px;
+  color: #64748b;
+  text-decoration: none;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.flow-sidebar-back:hover { color: #2563eb; background: #f8fafc; }
+.flow-sidebar-title { margin: 12px 12px 4px; font-size: 15px; font-weight: 700; color: #0f172a; }
+.flow-sidebar-sub { margin: 0 12px 10px; font-size: 10px; color: #64748b; line-height: 1.35; }
+.flow-sidebar-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; }
+.flow-sidebar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 12px 12px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.flow-sidebar-item:hover { background: #f1f5f9; }
+.flow-sidebar-item--active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+.flow-sidebar-item--active .flow-sidebar-item-dot { background: #22c55e; flex-shrink: 0; }
+.flow-sidebar-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.flow-sidebar-item-label { font-weight: 500; display: flex; align-items: center; }
+.flow-sidebar-item-desc { font-size: 11px; color: #94a3b8; margin-top: 4px; margin-left: 18px; font-weight: 400; }
+/* Blocos do fluxo na sidebar - sempre visível (não encolhe) */
+.flow-sidebar-blocks {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.flow-sidebar-blocks-title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.flow-sidebar-blocks-sub { font-size: 11px; color: #64748b; margin: 0 0 10px; }
+.flow-sidebar-blocks-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.flow-block-btn {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.flow-block-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.flow-block-btn--start { background: #059669; color: #fff; }
+.flow-block-btn--message { background: #2563eb; color: #fff; }
+.flow-block-btn--questionnaire { background: #7c3aed; color: #fff; }
+.flow-block-btn--condition { background: #047857; color: #fff; }
+.flow-block-btn--lead { background: #0e7490; color: #fff; }
+.flow-block-btn--lead:hover { background: #155e75; }
+.flow-block-btn--action { background: #b45309; color: #fff; }
+.flow-block-btn--end { background: #b91c1c; color: #fff; }
+
+.flow-sidebar-footer { padding: 12px 16px; border-top: 1px solid #f1f5f9; }
+.flow-sidebar-hint { font-size: 11px; color: #94a3b8; }
+
+.flow-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #f8fafc; overflow: hidden; }
+.flow-header {
+  flex: 0 0 auto;
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+.flow-header-title { margin: 0; font-size: 17px; font-weight: 600; color: #0f172a; }
+.flow-header-desc { display: block; font-size: 12px; color: #64748b; font-weight: 400; margin-top: 2px; }
+.flow-header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.flow-header-ok { color: #16a34a; font-weight: 500; }
+.flow-header-error { color: #dc2626; }
+
+/* Área delimitada do diagrama: altura FIXA em px (obrigatório para o React Flow mostrar os nós) */
+.flow-canvas-wrap {
+  width: 100%;
+  height: 540px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #e0e7ff;
+  border: 2px solid #6366f1;
+  border-radius: 12px;
+  margin: 8px 12px 12px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.2);
+}
+/* Modo chatbot (iframe): canvas preenche a tela */
+.flow-app--chatbot .flow-canvas-wrap {
+  flex: 1;
+  min-height: 280px;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0;
+}
+.flow-canvas-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.flow-app--chatbot .flow-canvas-inner {
+  min-height: 280px;
+}
+/* Garantir que o React Flow receba dimensões (evita "parent container needs width and height") */
+.flow-canvas-inner .react-flow {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* React Flow canvas: fundo claro listrado */
+.react-flow__background { background: #e0e7ff !important; background-image: linear-gradient(#c7d2fe 1px, transparent 1px), linear-gradient(90deg, #c7d2fe 1px, transparent 1px) !important; background-size: 20px 20px !important; }
+.react-flow__node { font-size: 12px; overflow: visible !important; }
+.react-flow__handle { width: 12px; height: 12px; background: #2563eb; border: 2px solid #fff; min-width: 12px; min-height: 12px; }
+.react-flow__edge-path { stroke: #3b82f6; stroke-width: 2; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #1d4ed8; }
+
+.react-flow__controls { box-shadow: 0 2px 12px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
+.react-flow__controls-button { background: #fff !important; border-color: #e2e8f0 !important; color: #475569 !important; width: 28px; height: 28px; }
+.react-flow__controls-button:hover { background: #f1f5f9 !important; color: #0f172a !important; }
+.react-flow__controls-button svg { max-width: 14px; max-height: 14px; }
+
+.react-flow__minimap { background: #fff !important; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.08); width: 90px !important; height: 70px !important; }
+.react-flow__attribution { display: none !important; }
+
+/* Card da toolbar no canvas */
+.flow-toolbar-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+.flow-toolbar-title { font-size: 9px; color: #64748b; margin-bottom: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.flow-toolbar-hint { font-size: 8px; color: #94a3b8; margin-bottom: 6px; line-height: 1.2; }
+.flow-toolbar-btn {
+  display: block;
+  width: 100%;
+  min-width: 75px;
+  padding: 4px 8px;
+  margin-bottom: 5px;
+  border: none;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.flow-toolbar-btn:last-child { margin-bottom: 0; }
+.flow-toolbar-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.flow-toolbar-btn:active { transform: translateY(0); }
+.flow-toolbar-btn--start { background: #059669; color: #fff; }
+.flow-toolbar-btn--start:hover { background: #10b981; }
+.flow-toolbar-btn--message { background: #2563eb; color: #fff; }
+.flow-toolbar-btn--message:hover { background: #3b82f6; }
+.flow-toolbar-btn--questionnaire { background: #7c3aed; color: #fff; }
+.flow-toolbar-btn--questionnaire:hover { background: #8b5cf6; }
+.flow-toolbar-btn--condition { background: #047857; color: #fff; }
+.flow-toolbar-btn--condition:hover { background: #10b981; }
+.flow-toolbar-btn--lead { background: #0e7490; color: #fff; }
+.flow-toolbar-btn--lead:hover { background: #155e75; }
+.flow-toolbar-btn--action { background: #b45309; color: #fff; }
+.flow-toolbar-btn--action:hover { background: #d97706; }
+.flow-toolbar-btn--end { background: #b91c1c; color: #fff; }
+.flow-toolbar-btn--end:hover { background: #dc2626; }
+
+/* Empty state */
+.flow-empty-state {
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 36px 48px;
+  text-align: center;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+}
+.flow-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; color: #64748b; }
+.flow-empty-state h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #0f172a; }
+.flow-empty-state p { margin: 0; font-size: 14px; color: #64748b; line-height: 1.5; }

@@ -1,0 +1,339 @@
+{% extends "layout.html" %}
+{% block title %}Usuários e setores{% endblock %}
+{% block page_title %}Usuários e setores{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-4xl mx-auto space-y-8">
+    <p class="text-slate-600 text-sm">Defina os setores de atuação e crie usuários (funcionários) com acesso por setor. Cada usuário só verá as conversas dos setores que você permitir.</p>
+
+    <!-- Setores -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h3 class="font-bold text-slate-800">Setores</h3>
+                <p class="text-sm text-slate-500">Áreas de atuação (ex.: Vendas, Suporte, Atendimento)</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="text" id="novo-setor-nome" placeholder="Nome do setor" maxlength="80"
+                       class="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm w-48">
+                <button type="button" id="btn-adicionar-setor" class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
+                    <i class="fas fa-plus mr-1"></i>Adicionar
+                </button>
+            </div>
+        </div>
+        <div class="p-4">
+            <ul id="lista-setores" class="space-y-2">
+                <li class="text-slate-500 text-sm py-4 text-center">Carregando...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Usuários internos -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h3 class="font-bold text-slate-800">Usuários (funcionários)</h3>
+                <p class="text-sm text-slate-500">Acesso por setor: marque em quais setores cada um pode atuar</p>
+            </div>
+            <button type="button" id="btn-novo-usuario" class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
+                <i class="fas fa-user-plus mr-1"></i>Novo usuário
+            </button>
+        </div>
+        <div class="p-4">
+            <ul id="lista-usuarios" class="space-y-3">
+                <li class="text-slate-500 text-sm py-4 text-center">Carregando...</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Novo/Editar usuário -->
+<div id="modal-usuario" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-hidden="true">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-black/50" id="modal-usuario-backdrop"></div>
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h4 id="modal-usuario-titulo" class="font-bold text-slate-800">Novo usuário</h4>
+            <input type="hidden" id="modal-usuario-id" value="">
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Nome</label>
+                <input type="text" id="modal-usuario-nome" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Ex.: Amanda">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">E-mail (login)</label>
+                <input type="email" id="modal-usuario-email" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="amanda@empresa.com">
+            </div>
+            <div id="modal-usuario-senha-wrap">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Senha (mín. 6 caracteres)</label>
+                <input type="password" id="modal-usuario-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" minlength="6">
+            </div>
+            <div id="modal-usuario-nova-senha-wrap" class="hidden">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Nova senha (deixe em branco para não alterar)</label>
+                <input type="password" id="modal-usuario-nova-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" minlength="6">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Acesso por setor</label>
+                <div id="modal-usuario-setores" class="space-y-2 max-h-40 overflow-y-auto border border-slate-100 rounded-xl p-3">
+                    <!-- checkboxes preenchidos por JS -->
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Permissões de menu</label>
+                <p class="text-xs text-slate-500 mb-2">Quais menus este usuário pode ver e usar. Dashboard e Perfil sempre visíveis.</p>
+                <div class="space-y-2 border border-slate-100 rounded-xl p-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="modal-usuario-acesso-total" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 menu-perm-total">
+                        <span class="text-sm font-medium text-slate-700">Acesso total</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="menu-perm rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" value="chat">
+                        <span class="text-sm text-slate-700">Chat</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="menu-perm rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" value="conexoes">
+                        <span class="text-sm text-slate-700">Conexões</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="menu-perm rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" value="chatbots">
+                        <span class="text-sm text-slate-700">Chatbots</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="menu-perm rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" value="usuarios_setores">
+                        <span class="text-sm text-slate-700">Usuários e setores</span>
+                    </label>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="checkbox" id="modal-usuario-admin" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                <label for="modal-usuario-admin" class="text-sm text-slate-700">Administrador (pode gerenciar usuários e setores)</label>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="button" id="modal-usuario-salvar" class="flex-1 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition">Salvar</button>
+                <button type="button" id="modal-usuario-cancelar" class="px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 transition">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    try {
+    const API_SETORES = '/api/setores';
+    const API_USUARIOS = '/api/usuarios-internos';
+    const MENU_KEYS = ['chat', 'conexoes', 'chatbots', 'usuarios_setores'];
+
+    let setores = [];
+    let usuarios = [];
+
+    function fetchSetores() {
+        return fetch(API_SETORES).then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao carregar setores')));
+    }
+    function fetchUsuarios() {
+        return fetch(API_USUARIOS).then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao carregar usuários')));
+    }
+
+    function renderSetores() {
+        const ul = document.getElementById('lista-setores');
+        if (!setores.length) {
+            ul.innerHTML = '<li class="text-slate-500 text-sm py-4">Nenhum setor. Adicione um acima.</li>';
+            return;
+        }
+        ul.innerHTML = setores.map(s => {
+            const ativo = s.ativo !== false;
+            const nomeEsc = (s.nome || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            return '<li class="flex items-center justify-between gap-3 py-2 px-3 rounded-xl hover:bg-slate-50">' +
+                '<span class="font-medium text-slate-800">' + (s.nome || '—') + '</span>' +
+                '<div class="flex items-center gap-2">' +
+                '<label class="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" class="setor-ativo rounded border-slate-300" data-id="' + s.id + '" ' + (ativo ? 'checked' : '') + '> Ativo</label>' +
+                '<button type="button" class="editar-setor px-2 py-1 text-slate-500 hover:text-emerald-600 text-sm" data-id="' + s.id + '" data-nome="' + nomeEsc + '"><i class="fas fa-edit"></i></button>' +
+                '<button type="button" class="excluir-setor px-2 py-1 text-slate-500 hover:text-red-600 text-sm" data-id="' + s.id + '" data-nome="' + nomeEsc + '" title="Excluir setor"><i class="fas fa-trash-alt"></i></button>' +
+                '</div></li>';
+        }).join('');
+        ul.querySelectorAll('.setor-ativo').forEach(cb => {
+            cb.addEventListener('change', function() {
+                fetch(API_SETORES + '/' + this.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ativo: this.checked }) })
+                    .then(r => r.ok ? fetchSetores().then(d => { setores = d.setores; renderSetores(); }) : Promise.reject());
+            });
+        });
+        ul.querySelectorAll('.editar-setor').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const nome = prompt('Novo nome do setor:', this.dataset.nome);
+                if (nome === null || nome.trim() === '') return;
+                fetch(API_SETORES + '/' + this.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nome.trim() }) })
+                    .then(r => r.ok ? fetchSetores().then(d => { setores = d.setores; renderSetores(); renderUsuarios(); }) : Promise.reject());
+            });
+        });
+        ul.querySelectorAll('.excluir-setor').forEach(btn => {
+            btn.addEventListener('click', function() {
+                var nome = this.dataset.nome || 'este setor';
+                if (!confirm('Excluir o setor "' + nome + '"? Os vínculos com usuários serão removidos.')) return;
+                fetch(API_SETORES + '/' + this.dataset.id, { method: 'DELETE' })
+                    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+                    .then(function(result) {
+                        if (result.ok) { return fetchSetores().then(function(d) { setores = d.setores; renderSetores(); renderUsuarios(); }); }
+                        throw new Error(result.data && result.data.erro || 'Erro ao excluir.');
+                    })
+                    .catch(function(e) { alert(e.message || 'Erro ao excluir setor.'); });
+            });
+        });
+    }
+
+    function renderUsuarios() {
+        const ul = document.getElementById('lista-usuarios');
+        if (!usuarios.length) {
+            ul.innerHTML = '<li class="text-slate-500 text-sm py-4">Nenhum usuário. Clique em "Novo usuário".</li>';
+            return;
+        }
+        ul.innerHTML = usuarios.map(u => {
+            const setorIds = u.setor_ids || [];
+            const setorNomes = setorIds.map(sid => { const s = setores.find(s => s.id === sid); return s ? s.nome : sid; }).filter(Boolean);
+            const nomeEsc = (u.nome || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const menus = u.acesso_menus || (Array.isArray(u.acesso_menus) ? u.acesso_menus : []);
+            const menuLabels = { chat: 'Chat', conexoes: 'Conexões', chatbots: 'Chatbots', usuarios_setores: 'Usuários e setores' };
+            const menuText = MENU_KEYS.every(k => menus.indexOf(k) !== -1) ? 'Acesso total' : menus.map(k => menuLabels[k] || k).join(', ') || '—';
+            return '<li class="flex flex-wrap items-center justify-between gap-2 py-3 px-4 rounded-xl border border-slate-100 hover:bg-slate-50">' +
+                '<div class="flex flex-wrap items-center gap-2">' +
+                '<span class="font-medium text-slate-800">' + (u.nome || '—') + '</span>' +
+                (u.is_admin_cliente ? '<span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded">Admin</span>' : '') +
+                '<span class="text-slate-500 text-sm">' + (u.email_login || '') + '</span>' +
+                '<span class="text-xs text-slate-500" title="Permissões de menu">' + menuText + '</span>' +
+                (setorNomes.length ? '<span class="text-xs text-slate-500">' + setorNomes.join(', ') + '</span>' : '') +
+                '</div>' +
+                '<div class="flex items-center gap-1">' +
+                '<button type="button" class="editar-usuario px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 rounded-lg" data-id="' + u.id + '">Editar</button>' +
+                '<button type="button" class="excluir-usuario px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg" data-id="' + u.id + '" data-nome="' + nomeEsc + '" title="Excluir usuário"><i class="fas fa-trash-alt"></i></button>' +
+                '</div></li>';
+        }).join('');
+        ul.querySelectorAll('.editar-usuario').forEach(btn => {
+            btn.addEventListener('click', function() { openModalUsuario(this.dataset.id); });
+        });
+        ul.querySelectorAll('.excluir-usuario').forEach(btn => {
+            btn.addEventListener('click', function() {
+                var nome = this.dataset.nome || 'este usuário';
+                if (!confirm('Excluir o usuário "' + nome + '"? Ele não poderá mais acessar o painel.')) return;
+                fetch(API_USUARIOS + '/' + this.dataset.id, { method: 'DELETE' })
+                    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+                    .then(function(result) {
+                        if (result.ok) { return fetchUsuarios().then(function(d) { usuarios = d.usuarios; renderUsuarios(); }); }
+                        throw new Error(result.data && result.data.erro || 'Erro ao excluir.');
+                    })
+                    .catch(function(e) { alert(e.message || 'Erro ao excluir usuário.'); });
+            });
+        });
+    }
+
+    function openModalUsuario(usuarioId) {
+        const modal = document.getElementById('modal-usuario');
+        const titulo = document.getElementById('modal-usuario-titulo');
+        document.getElementById('modal-usuario-id').value = usuarioId || '';
+        document.getElementById('modal-usuario-nome').value = '';
+        document.getElementById('modal-usuario-email').value = '';
+        document.getElementById('modal-usuario-senha').value = '';
+        document.getElementById('modal-usuario-nova-senha').value = '';
+        document.getElementById('modal-usuario-admin').checked = false;
+        document.querySelectorAll('.menu-perm').forEach(cb => { cb.checked = false; });
+        document.getElementById('modal-usuario-acesso-total').checked = false;
+        document.getElementById('modal-usuario-senha-wrap').style.display = usuarioId ? 'none' : 'block';
+        document.getElementById('modal-usuario-nova-senha-wrap').classList.toggle('hidden', !usuarioId);
+        titulo.textContent = usuarioId ? 'Editar usuário' : 'Novo usuário';
+        const container = document.getElementById('modal-usuario-setores');
+        container.innerHTML = setores.filter(s => s.ativo !== false).map(s =>
+            '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="setor-check" value="' + s.id + '"> <span>' + (s.nome || s.id) + '</span></label>'
+        ).join('') || '<p class="text-slate-500 text-sm">Crie setores antes de adicionar usuários.</p>';
+        if (usuarioId) {
+            const u = usuarios.find(x => x.id === usuarioId);
+            if (u) {
+                document.getElementById('modal-usuario-nome').value = u.nome || '';
+                document.getElementById('modal-usuario-email').value = u.email_login || '';
+                document.getElementById('modal-usuario-email').readOnly = true;
+                document.getElementById('modal-usuario-admin').checked = !!u.is_admin_cliente;
+                (u.setor_ids || []).forEach(sid => { const c = container.querySelector('.setor-check[value="' + sid + '"]'); if (c) c.checked = true; });
+                const acessoMenus = u.acesso_menus || (Array.isArray(u.acesso_menus) ? u.acesso_menus : []);
+                MENU_KEYS.forEach(k => {
+                    const cb = document.querySelector('.menu-perm[value="' + k + '"]');
+                    if (cb) cb.checked = acessoMenus.indexOf(k) !== -1;
+                });
+                document.getElementById('modal-usuario-acesso-total').checked = MENU_KEYS.every(k => acessoMenus.indexOf(k) !== -1);
+            }
+        } else {
+            document.getElementById('modal-usuario-email').readOnly = false;
+        }
+        modal.classList.remove('hidden');
+    }
+
+    function closeModalUsuario() {
+        document.getElementById('modal-usuario').classList.add('hidden');
+    }
+
+    document.getElementById('btn-adicionar-setor').addEventListener('click', function() {
+        const input = document.getElementById('novo-setor-nome');
+        const nome = (input.value || '').trim();
+        if (!nome) { alert('Digite o nome do setor.'); return; }
+        fetch(API_SETORES, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome }) })
+            .then(r => r.json())
+            .then(d => { if (d.erro) throw new Error(d.erro); input.value = ''; return fetchSetores(); })
+            .then(d => { setores = d.setores; renderSetores(); renderUsuarios(); })
+            .catch(e => alert(e.message || 'Erro ao adicionar setor.'));
+    });
+
+    document.getElementById('modal-usuario-acesso-total').addEventListener('change', function() {
+        document.querySelectorAll('.menu-perm').forEach(cb => { cb.checked = this.checked; });
+    });
+    document.querySelectorAll('.menu-perm').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const all = document.querySelectorAll('.menu-perm');
+            const total = document.getElementById('modal-usuario-acesso-total');
+            if (total) total.checked = all.length > 0 && Array.from(all).every(c => c.checked);
+        });
+    });
+
+    document.getElementById('btn-novo-usuario').addEventListener('click', function() { openModalUsuario(null); });
+    document.getElementById('modal-usuario-cancelar').addEventListener('click', closeModalUsuario);
+    document.getElementById('modal-usuario-backdrop').addEventListener('click', closeModalUsuario);
+    document.getElementById('modal-usuario-salvar').addEventListener('click', function() {
+        const id = document.getElementById('modal-usuario-id').value;
+        const nome = (document.getElementById('modal-usuario-nome').value || '').trim();
+        const email = (document.getElementById('modal-usuario-email').value || '').trim().toLowerCase();
+        const senha = document.getElementById('modal-usuario-senha').value;
+        const novaSenha = document.getElementById('modal-usuario-nova-senha').value;
+        const isAdmin = document.getElementById('modal-usuario-admin').checked;
+        const setorIds = Array.from(document.querySelectorAll('#modal-usuario-setores .setor-check:checked')).map(c => c.value);
+        if (!nome) { alert('Nome é obrigatório.'); return; }
+        if (!email) { alert('E-mail de login é obrigatório.'); return; }
+        if (!id && senha.length < 6) { alert('Senha deve ter no mínimo 6 caracteres.'); return; }
+        const acessoMenus = Array.from(document.querySelectorAll('.menu-perm:checked')).map(c => c.value);
+        const payload = { nome, email_login: email, setor_ids: setorIds, is_admin_cliente: isAdmin, acesso_menus: acessoMenus };
+        if (!id) payload.senha = senha; else if (novaSenha.length >= 6) payload.nova_senha = novaSenha;
+        const url = id ? API_USUARIOS + '/' + id : API_USUARIOS;
+        const method = id ? 'PATCH' : 'POST';
+        fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+            .then(r => r.json())
+            .then(d => { if (d.erro) throw new Error(d.erro); closeModalUsuario(); return fetchUsuarios(); })
+            .then(d => { usuarios = d.usuarios; renderUsuarios(); })
+            .catch(e => alert(e.message || 'Erro ao salvar.'));
+    });
+
+    Promise.all([fetchSetores(), fetchUsuarios()]).then(([d1, d2]) => {
+        setores = d1.setores || [];
+        usuarios = d2.usuarios || [];
+        renderSetores();
+        renderUsuarios();
+    }).catch(function() {
+        var list1 = document.getElementById('lista-setores');
+        var list2 = document.getElementById('lista-usuarios');
+        if (list1) list1.innerHTML = '<li class="text-red-600 text-sm py-4">Erro ao carregar. Execute a migração SQL no Supabase (database/migrations/001_sublogins_setores.sql) ou verifique permissão.</li>';
+        if (list2) list2.innerHTML = '<li class="text-red-600 text-sm py-4">Erro ao carregar.</li>';
+    });
+    } catch (e) {
+        console.error('Usuários e setores:', e);
+        var list1 = document.getElementById('lista-setores');
+        var list2 = document.getElementById('lista-usuarios');
+        if (list1) list1.innerHTML = '<li class="text-red-600 text-sm py-4">Erro no script. Veja o console.</li>';
+        if (list2) list2.innerHTML = '<li class="text-red-600 text-sm py-4">Erro no script.</li>';
+    }
+})();
+</script>
+{% endblock %}

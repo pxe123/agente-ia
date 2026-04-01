@@ -1,0 +1,509 @@
+{% extends "admin/layout.html" %}
+{% block title %}Clientes{% endblock %}
+{% block page_title %}Clientes — visão unificada{% endblock %}
+
+{% block content %}
+<div id="kpi-cards" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assinantes ativos</p>
+    <p id="kpi-active" class="text-2xl font-bold text-slate-800 mt-1">—</p>
+    <p class="text-[11px] text-slate-400 mt-1">Status active ou authorized</p>
+  </div>
+  <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+    <p class="text-xs font-semibold text-amber-800 uppercase tracking-wide">Em atraso</p>
+    <p id="kpi-past-due" class="text-2xl font-bold text-amber-900 mt-1">—</p>
+    <p class="text-[11px] text-amber-700/80 mt-1">Past due no billing</p>
+  </div>
+  <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+    <p class="text-xs font-semibold text-emerald-800 uppercase tracking-wide">MRR estimado</p>
+    <p id="kpi-mrr" class="text-2xl font-bold text-emerald-900 mt-1">—</p>
+    <p class="text-[11px] text-emerald-700/80 mt-1">Soma do preço do plano (ativos)</p>
+  </div>
+</div>
+
+<div class="mb-4 flex flex-wrap items-end gap-3">
+  <div>
+    <label for="filtro-plano" class="block text-xs font-semibold text-slate-600 mb-1">Filtrar por plano</label>
+    <select id="filtro-plano" class="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white min-w-[200px]">
+      <option value="">Todos os clientes</option>
+    </select>
+  </div>
+  <p class="text-xs text-slate-500 max-w-xl pb-1">Lista única com cobrança e assinatura. Expanda a linha para configurações, uso e financeiro.</p>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto -mx-4 sm:mx-0">
+    <table class="w-full text-sm text-left min-w-[960px]">
+      <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+        <tr>
+          <th class="px-2 w-10 py-2 sm:py-3"></th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Cliente</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Conta desde</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Plano</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Billing</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Próx. período / MP</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Ferramentas</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Acessos</th>
+        </tr>
+      </thead>
+      <tbody id="clientes-tbody" class="divide-y divide-slate-100">
+        <tr><td colspan="8" class="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mt-4 text-xs text-slate-500">
+  <strong>Acessos:</strong> habilitar ou bloquear canais no painel do cliente. O histórico financeiro reflete webhooks de assinatura (preapproval) processados com sucesso; aplique a migração <code class="bg-slate-100 px-1 rounded">010_billing_events_cliente_id</code> para indexar por cliente.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CAMPOS_ACESSO = [
+  { key: 'acesso_whatsapp', label: 'WhatsApp', icon: 'fab fa-whatsapp', cor: 'text-green-600' },
+  { key: 'acesso_instagram', label: 'Instagram', icon: 'fab fa-instagram', cor: 'text-pink-500' },
+  { key: 'acesso_messenger', label: 'Messenger', icon: 'fab fa-facebook-messenger', cor: 'text-blue-600' },
+  { key: 'acesso_site', label: 'Site', icon: 'fas fa-globe', cor: 'text-slate-600' }
+];
+
+const billingProfileCache = {};
+let openDetailId = null;
+
+function esc(s) {
+  if (s == null || s === '') return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatarTempoConta(dataStr) {
+  if (!dataStr) return '—';
+  const d = new Date(dataStr);
+  if (isNaN(d.getTime())) return '—';
+  const agora = new Date();
+  const diff = Math.floor((agora - d) / (1000 * 60 * 60 * 24));
+  if (diff < 1) return 'Hoje';
+  if (diff === 1) return '1 dia';
+  if (diff < 30) return diff + ' dias';
+  if (diff < 365) return Math.floor(diff / 30) + ' meses';
+  return Math.floor(diff / 365) + ' ano(s)';
+}
+
+function formatarData(dataStr) {
+  if (!dataStr) return '—';
+  const d = new Date(dataStr);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatarDataHora(dataStr) {
+  if (!dataStr) return '—';
+  const d = new Date(dataStr);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function maskEmbedKey(s) {
+  if (!s) return '—';
+  const t = String(s);
+  if (t.length <= 10) return '••••';
+  return t.slice(0, 4) + '…' + t.slice(-4);
+}
+
+function htmlOperadoresUso(uso) {
+  if (!uso) return '—';
+  const parts = String(uso).split(' / ');
+  if (parts.length !== 2) return uso;
+  const n = parseInt(parts[0].trim(), 10);
+  const limRaw = parts[1].trim();
+  const lim = limRaw === '∞' ? null : parseInt(limRaw, 10);
+  const noLim = lim === null || isNaN(lim);
+  const atLimit = !noLim && !isNaN(n) && n >= lim;
+  const cls = atLimit ? 'text-amber-800 font-semibold' : 'text-slate-700';
+  return '<span class="' + cls + '" title="Ativos / limite do plano">' + esc(uso) + '</span>';
+}
+
+function barraProgressoHtml(uso, label) {
+  if (!uso) return '<p class="text-xs text-slate-400">' + esc(label) + ': —</p>';
+  const parts = String(uso).split(' / ');
+  const n = parseInt(parts[0].trim(), 10) || 0;
+  const limRaw = (parts[1] || '').trim();
+  const lim = limRaw === '∞' || limRaw === '' ? null : parseInt(limRaw, 10);
+  let pct = 0;
+  if (lim != null && !isNaN(lim) && lim > 0) pct = Math.min(100, Math.round((100 * n) / lim));
+  else if (lim == null || isNaN(lim)) pct = 0;
+  const sub = lim != null && !isNaN(lim) ? (n + ' / ' + lim) : (n + ' / ∞');
+  return (
+    '<div class="mb-3">' +
+      '<div class="flex justify-between text-xs text-slate-600 mb-1"><span>' + esc(label) + '</span><span>' + esc(sub) + '</span></div>' +
+      '<div class="h-2 rounded-full bg-slate-200 overflow-hidden">' +
+        '<div class="h-full rounded-full bg-indigo-500 transition-all" style="width:' + pct + '%"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function ferramentasEmUso(c) {
+  const out = [];
+  if (c._tem_wa_meta) out.push('<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs"><i class="fab fa-whatsapp"></i> WA</span>');
+  if (c._tem_instagram) out.push('<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 text-xs"><i class="fab fa-instagram"></i></span>');
+  if (c._tem_messenger) out.push('<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-xs"><i class="fab fa-facebook-messenger"></i></span>');
+  if (c._tem_site) out.push('<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-xs"><i class="fas fa-globe"></i></span>');
+  return out.length ? out.join(' ') : '<span class="text-slate-400 text-xs">Nenhuma</span>';
+}
+
+function canaisConfigHtml(c) {
+  const rows = [
+    ['WhatsApp (Meta Cloud)', c._tem_wa_meta ? 'Ativo' : '—', c._tem_wa_meta ? 'ok' : ''],
+    ['Instagram', c._tem_instagram ? 'Ativo' : '—', c._tem_instagram ? 'ok' : ''],
+    ['Messenger', c._tem_messenger ? 'Ativo' : '—', c._tem_messenger ? 'ok' : ''],
+    ['Chat no site (widget)', c._tem_site ? 'Ativo' : '—', c._tem_site ? 'ok' : ''],
+    ['WhatsApp (instância legada)', c._tem_whatsapp ? 'Ativo' : '—', c._tem_whatsapp ? 'ok' : ''],
+  ];
+  return (
+    '<ul class="text-sm space-y-2">' +
+    rows.map(function (r) {
+      return '<li class="flex justify-between border-b border-slate-100 pb-2"><span class="text-slate-600">' + esc(r[0]) + '</span><span class="font-medium ' + (r[2] ? 'text-emerald-700' : 'text-slate-400') + '">' + esc(r[1]) + '</span></li>';
+    }).join('') +
+    '</ul>'
+  );
+}
+
+async function toggleAcesso(id, campo) {
+  try {
+    const r = await fetch('/admin/api/toggle-acesso/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campo: campo }) });
+    const d = await r.json();
+    if (d.status === 'ok') carregarClientes();
+  } catch (e) { console.error(e); }
+}
+
+function btnToggle(ativo, onClick, title) {
+  const on = ativo !== false;
+  return '<button type="button" onclick="' + onClick + '" class="inline-flex items-center justify-center w-8 h-8 rounded-lg transition ' + (on ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-400 hover:bg-slate-200') + '" title="' + esc(title || '') + '"><i class="fas fa-' + (on ? 'check' : 'times') + ' text-xs"></i></button>';
+}
+
+function tabBtn(active, tab, id, label) {
+  const cls = active
+    ? 'bg-white border-slate-200 text-slate-900 shadow-sm'
+    : 'bg-transparent border-transparent text-slate-500 hover:text-slate-800';
+  return '<button type="button" data-tab="' + esc(tab) + '" data-cid="' + esc(id) + '" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold border ' + cls + '">' + esc(label) + '</button>';
+}
+
+function detailPanelHtml(c) {
+  const id = c.id;
+  return (
+    '<div class="border-t border-slate-200 bg-slate-50/80 p-4 sm:p-5" data-detail="' + esc(id) + '">' +
+      '<div class="flex flex-wrap gap-2 mb-4" data-tab-bar="' + esc(id) + '">' +
+      tabBtn(true, 'config', id, 'Configurações') +
+      tabBtn(false, 'uso', id, 'Uso atual') +
+      tabBtn(false, 'financeiro', id, 'Financeiro') +
+      '</div>' +
+      '<div data-tab-panel="config" data-cid="' + esc(id) + '" class="tab-panel">' +
+        '<div class="grid sm:grid-cols-2 gap-6">' +
+          '<div><h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Canais ativos</h4>' + canaisConfigHtml(c) + '</div>' +
+          '<div><h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Plano</h4>' +
+            '<p class="text-slate-800 font-medium">' + esc(c._plan_display_name || '—') + '</p>' +
+            '<p class="text-xs text-slate-500 mt-1">plan_key: <code class="bg-slate-100 px-1 rounded">' + esc(c.billing_plan_key || c.plano || '—') + '</code></p></div>' +
+          '<div class="sm:col-span-2"><h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Token / chave do widget (site)</h4>' +
+            '<p class="text-sm font-mono text-slate-700">' + esc(maskEmbedKey(c.website_chat_embed_key)) + '</p>' +
+            '<p class="text-[11px] text-slate-400 mt-1">Valor sensível; só máscara na UI. O cliente vê a chave completa no painel.</p></div>' +
+        '</div>' +
+      '</div>' +
+      '<div data-tab-panel="uso" data-cid="' + esc(id) + '" class="tab-panel hidden">' +
+        barraProgressoHtml(c._operadores_uso, 'Operadores') +
+        barraProgressoHtml(c._chatbots_uso, 'Chatbots') +
+      '</div>' +
+      '<div data-tab-panel="financeiro" data-cid="' + esc(id) + '" class="tab-panel hidden">' +
+        '<div class="financeiro-loading text-sm text-slate-500"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando financeiro…</div>' +
+        '<div class="financeiro-body hidden space-y-4"></div>' +
+      '</div>' +
+      '<div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-slate-200">' +
+        '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 text-slate-800 hover:bg-slate-300" onclick="acaoResetTrial(\'' + esc(id) + '\')">Resetar trial</button>' +
+        '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200" onclick="acaoPausar(\'' + esc(id) + '\')">Pausar assinatura</button>' +
+        '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-800 hover:bg-indigo-200" onclick="acaoSyncMp(\'' + esc(id) + '\')">Sincronizar com MP</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function bindTabBar(root) {
+  root.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const cid = btn.getAttribute('data-cid');
+      const tab = btn.getAttribute('data-tab');
+      const wrap = root.closest('[data-detail="' + cid + '"]');
+      if (!wrap) return;
+      wrap.querySelectorAll('.tab-btn').forEach(function (b) {
+        const on = b.getAttribute('data-tab') === tab;
+        b.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold border ' + (on ? 'bg-white border-slate-200 text-slate-900 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-800');
+      });
+      wrap.querySelectorAll('.tab-panel').forEach(function (p) {
+        p.classList.toggle('hidden', p.getAttribute('data-tab-panel') !== tab);
+      });
+      if (tab === 'financeiro') loadFinanceiroPanel(cid, wrap);
+    });
+  });
+}
+
+async function loadFinanceiroPanel(clienteId, wrap) {
+  const loading = wrap.querySelector('.financeiro-loading');
+  const body = wrap.querySelector('.financeiro-body');
+  if (!loading || !body) return;
+  if (billingProfileCache[clienteId] === 'loading') return;
+  if (billingProfileCache[clienteId] && billingProfileCache[clienteId].ok) {
+    renderFinanceiroBody(body, billingProfileCache[clienteId], clienteId);
+    loading.classList.add('hidden');
+    body.classList.remove('hidden');
+    return;
+  }
+  billingProfileCache[clienteId] = 'loading';
+  try {
+    const r = await fetch('/admin/api/clientes/' + encodeURIComponent(clienteId) + '/billing-profile');
+    const d = await r.json();
+    billingProfileCache[clienteId] = d;
+    if (!d.ok) {
+      loading.textContent = d.erro || 'Erro ao carregar';
+      return;
+    }
+    renderFinanceiroBody(body, d, clienteId);
+    loading.classList.add('hidden');
+    body.classList.remove('hidden');
+  } catch (e) {
+    loading.textContent = 'Erro de rede';
+    billingProfileCache[clienteId] = null;
+  }
+}
+
+function renderFinanceiroBody(el, d, clienteId) {
+  const cli = d.cliente || {};
+  const st = cli.billing_status || '—';
+  const last = formatarDataHora(d.last_payment_event_at);
+  const url = d.mp_receipt_url;
+  const events = d.payment_history || [];
+  let hist = '<table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden"><thead class="bg-slate-100"><tr><th class="px-2 py-2">Processado em</th><th class="px-2 py-2">Tipo</th><th class="px-2 py-2">MP status</th><th class="px-2 py-2">data_id</th><th class="px-2 py-2">Valor</th><th class="px-2 py-2">Próx. pagto</th></tr></thead><tbody>';
+  if (!events.length) hist += '<tr><td colspan="6" class="px-2 py-3 text-slate-400">Nenhum evento processado ainda.</td></tr>';
+  else {
+    events.slice(0, 25).forEach(function (e) {
+      const mpst = e.mp_status || '—';
+      const nextPagto = e.next_payment_date ? formatarDataHora(e.next_payment_date) : '—';
+      const hasAmount = e.amount != null && e.amount !== '';
+      const amountTxt = hasAmount
+        ? (Number(e.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + ' ' + (e.currency || 'BRL'))
+        : '—';
+      hist +=
+        '<tr class="border-t border-slate-100">' +
+        '<td class="px-2 py-1.5">' + esc(formatarDataHora(e.processed_at)) + '</td>' +
+        '<td class="px-2 py-1.5">' + esc(e.resource_type || '—') + '</td>' +
+        '<td class="px-2 py-1.5">' + esc(mpst) + '</td>' +
+        '<td class="px-2 py-1.5 font-mono text-[10px]">' + esc((e.data_id || '').slice(0, 14)) + '…' + '</td>' +
+        '<td class="px-2 py-1.5 font-mono text-[10px]">' + esc(amountTxt) + '</td>' +
+        '<td class="px-2 py-1.5">' + esc(nextPagto) + '</td>' +
+        '</tr>';
+    });
+  }
+  hist += '</tbody></table>';
+  const linkRow = url
+    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="text-indigo-600 hover:underline text-sm font-medium">Abrir assinatura no Mercado Pago (comprovante / gestão)</a>'
+    : '<span class="text-slate-400 text-sm">Sem preapproval vinculado — link indisponível.</span>';
+  const extratoUrl = '/admin/api/clientes/' + encodeURIComponent(clienteId) + '/extrato';
+  el.innerHTML =
+    '<div class="grid sm:grid-cols-2 gap-4">' +
+      '<div><span class="text-xs text-slate-500">Status (MP / sistema)</span><p class="text-lg font-semibold text-slate-800">' + esc(st) + '</p></div>' +
+      '<div><span class="text-xs text-slate-500">Último processamento (webhook)</span><p class="text-lg font-semibold text-slate-800">' + esc(last) + '</p></div>' +
+      '<div class="sm:col-span-2"><span class="text-xs text-slate-500">Próximo fim de período (cadastro)</span><p class="text-slate-700">' + esc(formatarDataHora(cli.billing_current_period_end)) + '</p></div>' +
+      '<div class="sm:col-span-2">' + linkRow + '</div>' +
+    '</div>' +
+    '<div><h4 class="text-xs font-bold text-slate-500 uppercase mb-2 mt-2">Histórico de pagamentos (eventos processados)</h4>' + hist + '</div>' +
+    '<div><a href="' + esc(extratoUrl) + '" target="_blank" rel="noopener" class="inline-block mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900">Gerar extrato (.txt)</a></div>';
+}
+
+window.acaoResetTrial = async function (id) {
+  if (!confirm('Resetar trial deste cliente? O status passará para trialing e a data de fim será recalculada pelo plano.')) return;
+  try {
+    const r = await fetch('/admin/api/clientes/' + encodeURIComponent(id) + '/reset-trial', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!d.ok) { alert(d.erro || 'Falha'); return; }
+    delete billingProfileCache[id];
+    await carregarClientes();
+  } catch (e) { alert('Erro de rede'); }
+};
+
+window.acaoPausar = async function (id) {
+  if (!confirm('Pausar/cancelar assinatura? Será chamado o cancelamento no Mercado Pago (se houver preapproval) e o status local ficará canceled.')) return;
+  try {
+    const r = await fetch('/admin/api/clientes/' + encodeURIComponent(id) + '/pausar-assinatura', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!d.ok) { alert((d.erro || 'Falha') + (d.detalhe ? '\n' + JSON.stringify(d.detalhe).slice(0, 400) : '')); return; }
+    delete billingProfileCache[id];
+    await carregarClientes();
+  } catch (e) { alert('Erro de rede'); }
+};
+
+window.acaoSyncMp = async function (id) {
+  try {
+    const r = await fetch('/admin/api/cobranca/reconciliar/' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!d.ok) { alert(d.erro || 'Falha ao reconciliar'); return; }
+    delete billingProfileCache[id];
+    alert('Sincronização enfileirada ou concluída. Recarregue o painel financeiro reabrindo a linha.');
+    await carregarClientes();
+  } catch (e) { alert('Erro de rede'); }
+};
+
+function toggleDetailRow(id) {
+  const row = document.getElementById('detail-row-' + id);
+  const icon = document.getElementById('chev-' + id);
+  if (!row) return;
+  const show = row.classList.contains('hidden');
+  document.querySelectorAll('[id^="detail-row-"]').forEach(function (r) { r.classList.add('hidden'); });
+  document.querySelectorAll('[id^="chev-"]').forEach(function (i) { i.classList.remove('fa-chevron-up'); i.classList.add('fa-chevron-down'); });
+  if (show) {
+    row.classList.remove('hidden');
+    if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+    openDetailId = id;
+    const wrap = row.querySelector('[data-detail="' + id + '"]');
+    if (wrap) {
+      const fin = wrap.querySelector('[data-tab-panel="financeiro"]');
+      const finVisible = fin && !fin.classList.contains('hidden');
+      if (finVisible) loadFinanceiroPanel(id, wrap);
+    }
+  } else {
+    openDetailId = null;
+  }
+}
+
+function renderizarClientes(lista) {
+  const tbody = document.getElementById('clientes-tbody');
+  if (!lista || !lista.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">Nenhum cliente encontrado.</td></tr>';
+    return;
+  }
+  const rows = [];
+  lista.forEach(function (c) {
+    const id = c.id;
+    const contaDesde = formatarData(c._conta_desde);
+    const tempoConta = formatarTempoConta(c._conta_desde);
+    const billing = (c.billing_status || c.billingStatus || '—');
+    const trialEnds = c.trial_ends_at ? String(c.trial_ends_at).slice(0, 10) : '';
+    const billingBadge = billing === 'active' || billing === 'authorized'
+      ? 'bg-emerald-100 text-emerald-700'
+      : billing === 'trialing'
+      ? 'bg-blue-100 text-blue-700'
+      : billing === 'past_due'
+      ? 'bg-amber-100 text-amber-800'
+      : 'bg-slate-100 text-slate-700';
+    const acessos = CAMPOS_ACESSO.map(function (a) {
+      const val = c[a.key];
+      const ativo = val !== false;
+      return btnToggle(ativo, "toggleAcesso('" + id + "','" + a.key + "')", a.label + ': ' + (ativo ? 'ativo' : 'bloqueado'));
+    }).join(' ');
+    const planoNome = (c._plan_display_name || c.plano || '—');
+    const planKey = (c.billing_plan_key || c.plano || '—');
+    const periodo = formatarDataHora(c.billing_current_period_end);
+    const mpShort = c.mp_preapproval_id ? String(c.mp_preapproval_id).slice(0, 10) + '…' : '—';
+    rows.push(
+      '<tr class="hover:bg-slate-50">' +
+        '<td class="px-2 py-2 sm:py-3 text-center">' +
+          '<button type="button" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200" onclick="toggleDetailRow(\'' + esc(id) + '\')" aria-expanded="false" title="Detalhes">' +
+            '<i id="chev-' + esc(id) + '" class="fas fa-chevron-down text-xs"></i></button></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3"><div class="font-medium text-slate-800">' + esc(c.email || '—') + '</div><div class="text-xs text-slate-500">' + esc(id ? id.slice(0, 8) + '…' : '') + '</div></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3"><span title="' + esc(contaDesde) + '">' + esc(tempoConta) + '</span><div class="text-xs text-slate-500">' + esc(contaDesde) + '</div></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3"><div class="font-medium text-slate-800">' + esc(planoNome) + '</div><div class="text-[10px] text-slate-400 mt-1">' + esc(planKey) + '</div></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3"><span class="px-2 py-0.5 rounded text-xs ' + billingBadge + '">' + esc(billing) + '</span>' + (trialEnds ? '<div class="text-[10px] text-slate-400 mt-1">trial: ' + esc(trialEnds) + '</div>' : '') + '</td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3 text-slate-700 text-xs"><div>' + esc(periodo) + '</div><div class="text-[10px] text-slate-400 mt-1 font-mono">' + esc(mpShort) + '</div></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3">' + ferramentasEmUso(c) + '</td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-1">' + acessos + '</td>' +
+      '</tr>' +
+      '<tr id="detail-row-' + esc(id) + '" class="hidden bg-slate-50/50">' +
+        '<td colspan="8" class="p-0">' + detailPanelHtml(c) + '</td></tr>'
+    );
+  });
+  tbody.innerHTML = rows.join('');
+  tbody.querySelectorAll('[data-detail]').forEach(function (root) {
+    bindTabBar(root);
+  });
+  if (openDetailId) {
+    const keep = document.getElementById('detail-row-' + openDetailId);
+    if (keep) {
+      keep.classList.remove('hidden');
+      const ic = document.getElementById('chev-' + openDetailId);
+      if (ic) { ic.classList.remove('fa-chevron-down'); ic.classList.add('fa-chevron-up'); }
+    }
+  }
+}
+
+async function carregarKpis() {
+  try {
+    const r = await fetch('/admin/api/clientes/overview');
+    const d = await r.json();
+    if (!d.ok) return;
+    document.getElementById('kpi-active').textContent = d.active_subscribers != null ? d.active_subscribers : '—';
+    document.getElementById('kpi-past-due').textContent = d.past_due != null ? d.past_due : '—';
+    const cur = d.currency || 'BRL';
+    document.getElementById('kpi-mrr').textContent = d.mrr_estimated != null ? (cur + ' ' + Number(d.mrr_estimated).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) : '—';
+  } catch (e) { console.error(e); }
+}
+
+async function carregarOpcoesPlano() {
+  const sel = document.getElementById('filtro-plano');
+  if (!sel) return;
+  const keep = sel.value;
+  try {
+    const r = await fetch('/admin/api/plans');
+    const d = await r.json();
+    const list = (d && d.ok && Array.isArray(d.plans)) ? d.plans : [];
+    sel.innerHTML = '<option value="">Todos os clientes</option>' +
+      list.map(function (p) {
+        const k = p.plan_key || '';
+        if (!k) return '';
+        return '<option value="' + esc(k).replace(/"/g, '&quot;') + '">' + esc(p.name || k) + ' · ' + esc(k) + '</option>';
+      }).join('');
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('plano') || '';
+    if (fromUrl && !Array.from(sel.options).some(function (o) { return o.value === fromUrl; })) {
+      const opt = document.createElement('option');
+      opt.value = fromUrl;
+      opt.textContent = fromUrl + ' (URL)';
+      sel.appendChild(opt);
+    }
+    if (fromUrl) sel.value = fromUrl;
+    else if (keep && Array.from(sel.options).some(function (o) { return o.value === keep; })) sel.value = keep;
+  } catch (e) { console.error(e); }
+}
+
+async function carregarClientes() {
+  const tbody = document.getElementById('clientes-tbody');
+  const sel = document.getElementById('filtro-plano');
+  const plano = sel && sel.value ? sel.value.trim() : '';
+  tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>';
+  try {
+    const q = plano ? ('?plano=' + encodeURIComponent(plano)) : '';
+    const r = await fetch('/admin/api/clientes' + q);
+    const data = await r.json();
+    if (data.erro) {
+      tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-600">' + esc(data.erro) + '</td></tr>';
+      return;
+    }
+    renderizarClientes(Array.isArray(data) ? data : []);
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-600">Erro ao carregar.</td></tr>';
+  }
+}
+
+(function init() {
+  const sel = document.getElementById('filtro-plano');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      const v = sel.value || '';
+      const u = new URL(window.location.href);
+      if (v) u.searchParams.set('plano', v); else u.searchParams.delete('plano');
+      window.history.replaceState({}, '', u.pathname + (u.search || ''));
+      carregarClientes();
+    });
+  }
+  carregarKpis();
+  carregarOpcoesPlano().then(function () { return carregarClientes(); });
+})();
+</script>
+{% endblock %}

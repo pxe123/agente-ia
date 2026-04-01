@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+    <title>{% block title %}Painel{% endblock %} | ZapAction</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .sidebar-accent { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); }
+        .card-shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06); }
+        .card-hover:hover { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06); }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden overflow-x-hidden antialiased">
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-30 lg:hidden opacity-0 pointer-events-none transition-opacity duration-200" aria-hidden="true"></div>
+    {% include "components/sidebar.html" %}
+
+    <div class="flex-1 flex flex-col min-w-0 h-full min-h-0">
+        <header class="h-14 border-b border-slate-200/80 bg-white/95 backdrop-blur flex items-center justify-between gap-3 px-4 sm:px-6 card-shadow flex-shrink-0">
+            <div class="flex items-center gap-2 min-w-0">
+                <button type="button" id="sidebar-toggle" class="lg:hidden p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-100 transition shrink-0" aria-label="Abrir menu">
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
+                <h2 class="font-semibold text-slate-700 text-base sm:text-lg tracking-tight truncate">
+                    {% block page_title %}{% endblock %}
+                </h2>
+            </div>
+            <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                <span class="text-sm text-slate-500 hidden sm:inline">{{ current_user.email or '' }}</span>
+                <div class="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-white font-semibold text-sm shadow-inner">
+                    {{ (current_user.email or '?')[0] | upper }}
+                </div>
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="px-4 sm:px-6 py-2 space-y-1">
+            {% for category, msg in messages %}
+            <div class="p-3 rounded-lg {{ 'bg-emerald-50 text-emerald-800 border border-emerald-200' if category == 'success' else 'bg-amber-50 text-amber-800 border border-amber-200' }} text-sm">{{ msg }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if global_channel_banner is defined and global_channel_banner %}
+        <div class="px-4 sm:px-6 py-2 shrink-0" role="alert">
+            <div class="p-3 rounded-lg text-sm border bg-amber-50 border-amber-300 text-amber-950">
+                <div class="font-semibold">Aviso da plataforma</div>
+                <p class="mt-1 leading-snug">{{ global_channel_banner.message }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <main class="flex-1 flex flex-col min-h-0">
+            <div class="flex-1 min-h-0 overflow-auto">
+                {% block content %}{% endblock %}
+            </div>
+            <footer class="border-t border-slate-200/80 py-3 px-4 sm:px-6 flex-shrink-0 bg-white/50 text-sm text-slate-500">
+                <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-center sm:justify-between gap-3 text-center sm:text-left">
+                    <span>&copy; 2025 Up Digital Brasil</span>
+                    <nav class="flex flex-wrap justify-center gap-4">
+                        <a href="{{ url_for('legal.politica') }}" class="hover:text-slate-700">Política de Privacidade</a>
+                        <a href="{{ url_for('legal.termos') }}" class="hover:text-slate-700">Termos de Uso</a>
+                        <a href="{{ url_for('legal.exclusao_de_dados') }}" class="hover:text-slate-700">Exclusão de Dados</a>
+                    </nav>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+    // CSRF: aplica token automaticamente em requests unsafe para mesma origem
+    (function() {
+        try {
+            window.CSRF_TOKEN = "{{ csrf_token() if csrf_token else '' }}";
+            const _fetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                init = init || {};
+                const method = String(init.method || "GET").toUpperCase();
+                const unsafe = (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE");
+                let sameOrigin = true;
+                try {
+                    const rawUrl = (typeof input === "string") ? input : (input && input.url ? input.url : "");
+                    if (rawUrl) {
+                        const parsed = new URL(rawUrl, window.location.href);
+                        sameOrigin = parsed.origin === window.location.origin;
+                    }
+                } catch (e) {}
+                // credenciais: manter cookies no mesmo domínio
+                if (!init.credentials) init.credentials = "same-origin";
+                if (unsafe && sameOrigin) {
+                    init.headers = init.headers || {};
+                    var metaEl = document.querySelector('meta[name="csrf-token"]');
+                    const token = (metaEl && metaEl.getAttribute('content')) || window.CSRF_TOKEN || "";
+                    if (token) {
+                        if (init.headers instanceof Headers) {
+                            if (!init.headers.get("X-CSRF-Token")) init.headers.set("X-CSRF-Token", token);
+                        } else if (Array.isArray(init.headers)) {
+                            const has = init.headers.some((h) => String(h[0] || "").toLowerCase() === "x-csrf-token");
+                            if (!has) init.headers.push(["X-CSRF-Token", token]);
+                        } else {
+                            const keys = Object.keys(init.headers);
+                            const has = keys.some((k) => String(k).toLowerCase() === "x-csrf-token");
+                            if (!has) init.headers["X-CSRF-Token"] = token;
+                        }
+                    }
+                    // Ajuda a diferenciar chamadas JS de navegação
+                    if (init.headers instanceof Headers) {
+                        if (!init.headers.get("X-Requested-With")) init.headers.set("X-Requested-With", "XMLHttpRequest");
+                    } else if (Array.isArray(init.headers)) {
+                        const has = init.headers.some((h) => String(h[0] || "").toLowerCase() === "x-requested-with");
+                        if (!has) init.headers.push(["X-Requested-With", "XMLHttpRequest"]);
+                    } else {
+                        const keys = Object.keys(init.headers || {});
+                        const has = keys.some((k) => String(k).toLowerCase() === "x-requested-with");
+                        if (!has) init.headers["X-Requested-With"] = "XMLHttpRequest";
+                    }
+                }
+                return _fetch(input, init);
+            };
+        } catch (e) {}
+    })();
+
+    (function() {
+        var sidebar = document.getElementById('app-sidebar');
+        var backdrop = document.getElementById('sidebar-backdrop');
+        var toggle = document.getElementById('sidebar-toggle');
+        if (!sidebar || !backdrop) return;
+        function openSidebar() {
+            sidebar.classList.remove('-translate-x-full');
+            sidebar.classList.add('translate-x-0');
+            backdrop.classList.remove('opacity-0', 'pointer-events-none');
+            backdrop.setAttribute('aria-hidden', 'false');
+        }
+        function closeSidebar() {
+            sidebar.classList.add('-translate-x-full');
+            sidebar.classList.remove('translate-x-0');
+            backdrop.classList.add('opacity-0', 'pointer-events-none');
+            backdrop.setAttribute('aria-hidden', 'true');
+        }
+        if (toggle) toggle.addEventListener('click', function() {
+            if (sidebar.classList.contains('-translate-x-full')) openSidebar(); else closeSidebar();
+        });
+        backdrop.addEventListener('click', closeSidebar);
+        sidebar.querySelectorAll('a').forEach(function(a) {
+            a.addEventListener('click', function() { if (window.innerWidth < 1024) closeSidebar(); });
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            backdrop.classList.add('opacity-0', 'pointer-events-none');
+        });
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+    {% if current_user.is_authenticated and current_cliente_id %}
+    <script>
+    // agenteia-notif-v2 (titulo some ao focar/entrar no chat)
+    (function() {
+        var MEU_ID = "{{ current_cliente_id }}";
+        var tituloOriginal = document.title;
+        var unreadCount = 0;
+        var ultimoFoco = 0;
+        function mostrarNotificacao(titulo, corpo) {
+            if (!("Notification" in window)) return;
+            if (Notification.permission === "granted") {
+                try { new Notification(titulo || "Nova mensagem", { body: corpo || "", icon: "{{ url_for('static', filename='images/logo.png') }}" }); } catch (e) {}
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(function(p) { if (p === "granted") mostrarNotificacao(titulo, corpo); });
+            }
+        }
+        function zerarTitulo() {
+            unreadCount = 0;
+            document.title = tituloOriginal;
+        }
+        function notificarNovaMensagem(data) {
+            if (data.cliente_id != null && String(data.cliente_id) !== String(MEU_ID)) return;
+            if (data.funcao !== "user") return;
+            if (!document.hidden) return;
+            if (Date.now() - ultimoFoco < 2500) return;
+            var texto = (data.conteudo || "").slice(0, 60);
+            if (texto.length < (data.conteudo || "").length) texto += "…";
+            unreadCount++;
+            document.title = "(" + unreadCount + ") Nova(s) mensagem(ns) - ZapAction";
+            mostrarNotificacao("Nova mensagem - ZapAction", texto || "Você recebeu uma nova mensagem.");
+        }
+        if (typeof io !== "undefined") {
+            window.appSocket = window.appSocket || io({
+                transports: ["polling"],
+                upgrade: false,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
+            });
+            // #region agent log socket_init_layout
+            try {
+                fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H3_duplicate_socket_or_reconnect',location:'panel/templates/layout.html:191',message:'layout_socket_initialized',data:{hasExistingSocket:!!window.appSocket,path:window.location.pathname,host:window.location.host,protocol:window.location.protocol},timestamp:Date.now()})}).catch(()=>{});
+            } catch (_) {}
+            // #endregion
+            // #region agent log socket_events_layout
+            try {
+                window.appSocket.on("connect", function() {
+                    fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H4_websocket_fallback_polling',location:'panel/templates/layout.html:197',message:'layout_socket_connect',data:{transport:(window.appSocket.io && window.appSocket.io.engine && window.appSocket.io.engine.transport && window.appSocket.io.engine.transport.name) || null},timestamp:Date.now()})}).catch(()=>{});
+                });
+                window.appSocket.on("connect_error", function(err) {
+                    fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H1_infra_ws_upgrade_failure',location:'panel/templates/layout.html:201',message:'layout_socket_connect_error',data:{msg:(err && err.message) || String(err || ''),transportAttempt:(window.appSocket.io && window.appSocket.io.engine && window.appSocket.io.engine.transport && window.appSocket.io.engine.transport.name) || null},timestamp:Date.now()})}).catch(()=>{});
+                });
+                window.appSocket.io.on("reconnect_attempt", function(attempt) {
+                    fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H3_duplicate_socket_or_reconnect',location:'panel/templates/layout.html:205',message:'layout_socket_reconnect_attempt',data:{attempt:attempt},timestamp:Date.now()})}).catch(()=>{});
+                });
+            } catch (_) {}
+            // #endregion
+            window.appSocket.on("nova_mensagem", notificarNovaMensagem);
+        }
+        document.addEventListener("visibilitychange", function() {
+            if (!document.hidden) {
+                ultimoFoco = Date.now();
+                zerarTitulo();
+                setTimeout(zerarTitulo, 300);
+            }
+        });
+        window.addEventListener("agenteia-conversa-lida", zerarTitulo);
+        if (window.location.pathname.indexOf("/chat") !== -1) {
+            setTimeout(zerarTitulo, 100);
+            setTimeout(zerarTitulo, 500);
+        }
+
+        // Web Push: notificação mesmo com aba em segundo plano ou em outra página
+        (function registerWebPush() {
+            if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+            navigator.serviceWorker.register("/sw.js").then(function(reg) {
+                if (Notification.permission === "denied") return;
+                function subscribe() {
+                    fetch("/api/push/vapid-public", { credentials: "same-origin" })
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(json) {
+                            if (!json || !json.publicKey) return;
+                            var key = json.publicKey;
+                            function urlBase64ToUint8Array(base64String) {
+                                var padding = "==".slice(0, (4 - base64String.length % 4) % 4);
+                                var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+                                var raw = window.atob(base64);
+                                var out = new Uint8Array(raw.length);
+                                for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+                                return out;
+                            }
+                            return reg.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey: urlBase64ToUint8Array(key)
+                            });
+                        })
+                        .then(function(sub) {
+                            if (!sub) return;
+                            function bufToBase64Url(buf) {
+                                var b = new Uint8Array(buf);
+                                var s = "";
+                                for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+                                return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+                            }
+                            return fetch("/api/push/subscribe", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                                credentials: "same-origin",
+                                body: JSON.stringify({
+                                    subscription: {
+                                        endpoint: sub.endpoint,
+                                        keys: { p256dh: bufToBase64Url(sub.getKey("p256dh")), auth: bufToBase64Url(sub.getKey("auth")) }
+                                    }
+                                })
+                            });
+                        })
+                        .catch(function() {});
+                }
+                if (Notification.permission === "granted") {
+                    subscribe();
+                } else if (Notification.permission !== "denied") {
+                    Notification.requestPermission().then(function(p) { if (p === "granted") subscribe(); });
+                }
+            }).catch(function() {});
+        })();
+    })();
+    </script>
+    {% endif %}
+    <script src="https://api.updigitalbrasil.com.br/webhook/meta/static/embed/chat-widget.js" data-key="emb_gDyiR4pM3uFfJPYPwSxaK63r0Yc8W_ul"></script>
+</body>
+</html>

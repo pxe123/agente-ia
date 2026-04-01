@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block title %}Fluxos{% endblock %}
+{% block page_title %}Fluxos (Chatbot){% endblock %}
+{% block content %}
+<div class="flex-1 flex flex-col min-h-0">
+    <iframe
+        src="{{ url_for('flow_builder_index') }}"
+        title="Flow Builder"
+        class="flex-1 w-full min-h-0 border-0"
+        style="min-height: 640px; height: calc(100vh - 6rem);"
+    ></iframe>
+</div>
+{% endblock %}

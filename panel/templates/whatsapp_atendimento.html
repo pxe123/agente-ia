@@ -1,0 +1,65 @@
+{% extends "layout_public.html" %}
+{% block title %}Atendimento pelo WhatsApp para Empresas | ZapAction{% endblock %}
+{% block head %}
+<meta name="description" content="Atendimento pelo WhatsApp para empresas: organize sua equipe, automatize respostas e venda mais com o ZapAction. Filas, chatbot e controle em um painel.">
+<link rel="canonical" href="{{ PUBLIC_BASE_URL }}/whatsapp-atendimento">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Atendimento pelo WhatsApp para Empresas | ZapAction">
+<meta property="og:description" content="Organize sua equipe no WhatsApp, automatize mensagens e aumente vendas com automação e filas inteligentes.">
+<meta property="og:url" content="{{ PUBLIC_BASE_URL }}/whatsapp-atendimento">
+<meta property="og:image" content="{{ PUBLIC_BASE_URL }}/static/images/og-zapaction.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Atendimento pelo WhatsApp para Empresas | ZapAction">
+<meta name="twitter:description" content="Organize sua equipe no WhatsApp, automatize mensagens e aumente vendas com o ZapAction.">
+<meta name="twitter:image" content="{{ PUBLIC_BASE_URL }}/static/images/og-zapaction.png">
+{% endblock %}
+{% block content %}
+<section class="relative overflow-hidden rounded-[32px] border border-slate-200 bg-white px-6 sm:px-10 py-10 sm:py-14">
+  <div class="max-w-3xl">
+    <p class="text-sm font-semibold text-emerald-700 uppercase tracking-wide">ZapAction</p>
+    <h1 class="mt-3 text-3xl sm:text-4xl font-black tracking-tight text-slate-900 leading-tight">
+      Atendimento pelo WhatsApp para empresas
+    </h1>
+    <p class="mt-5 text-lg text-slate-600 leading-relaxed">
+      Milhares de negócios no Brasil dependem do WhatsApp para vender e atender — mas quando a conversa é só no celular, sem fila, sem responsável e sem automação, <strong class="text-slate-800">pedidos se perdem</strong>, o cliente espera demais e a equipe se atropela. O ZapAction existe para resolver exatamente isso: <strong class="text-slate-800">automação de WhatsApp</strong>, filas por setor, <strong class="text-slate-800">mensagens automáticas</strong> e visão única de tudo que entra no seu <strong class="text-slate-800">atendimento via WhatsApp</strong>, com opção de Instagram, Messenger e outros canais no mesmo painel.
+    </p>
+  </div>
+</section>
+
+<section class="mt-10 sm:mt-12 space-y-10">
+  <div class="rounded-[28px] border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
+    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Organize sua equipe no WhatsApp</h2>
+    <p class="mt-3 text-slate-600 leading-relaxed">
+      Defina setores (vendas, suporte, financeiro), distribua conversas e saiba quem responde o quê. Sua <strong class="font-semibold text-slate-800">equipe de atendimento WhatsApp</strong> deixa de depender de grupos soltos e prints — tudo fica rastreável no painel.
+    </p>
+  </div>
+  <div class="rounded-[28px] border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
+    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Automatize respostas e mensagens</h2>
+    <p class="mt-3 text-slate-600 leading-relaxed">
+      Use o Flow Builder para criar fluxos que qualificam leads, respondem perguntas frequentes e encaminham para o humano no momento certo — reduzindo carga e padronizando o <strong class="font-semibold text-slate-800">atendimento via WhatsApp</strong>.
+    </p>
+  </div>
+  <div class="rounded-[28px] border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
+    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Aumente suas vendas com atendimento rápido</h2>
+    <p class="mt-3 text-slate-600 leading-relaxed">
+      Quanto mais rápido e organizada a resposta, maior a chance de fechar. O ZapAction ajuda você a medir, priorizar e não deixar oportunidade esfriar no WhatsApp.
+    </p>
+  </div>
+</section>
+
+<section class="mt-10 sm:mt-14 rounded-[32px] border border-slate-200 bg-slate-50 p-6 sm:p-10 text-center">
+  <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Pronto para organizar seu WhatsApp?</h2>
+  <p class="mt-3 text-slate-600 max-w-xl mx-auto">Veja os planos ou crie sua conta e comece a testar.</p>
+  <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-center">
+    <a href="{{ url_for('public.cadastro_get') }}" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-sm shadow-emerald-500/20">
+      Começar agora
+    </a>
+    <a href="{{ url_for('public.precos') }}" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-semibold transition border border-slate-200 shadow-sm">
+      Ver planos
+    </a>
+  </div>
+  <p class="mt-6 text-sm text-slate-500">
+    <a href="{{ PUBLIC_BASE_URL }}/" class="text-blue-700 font-medium hover:underline">Voltar à página inicial</a>
+  </p>
+</section>
+{% endblock %}

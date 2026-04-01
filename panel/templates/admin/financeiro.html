@@ -1,0 +1,94 @@
+{% extends "admin/layout.html" %}
+{% block title %}Financeiro{% endblock %}
+{% block page_title %}Financeiro (MRR e conversão){% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="cards">
+  <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Receita (real)</div>
+    <div class="text-2xl font-bold text-slate-900 mt-1" id="mrr">—</div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assinaturas ativas</div>
+    <div class="text-2xl font-bold text-slate-900 mt-1" id="active">—</div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Trials</div>
+    <div class="text-2xl font-bold text-slate-900 mt-1" id="trialing">—</div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Inadimplentes</div>
+    <div class="text-2xl font-bold text-slate-900 mt-1" id="past_due">—</div>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+  <div class="flex items-center justify-between gap-3 mb-3">
+    <h2 class="font-semibold text-slate-800">Últimos 30 dias</h2>
+    <button id="btn-refresh" class="px-3 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Atualizar</button>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm min-w-[700px]">
+      <thead class="text-xs uppercase text-slate-500">
+        <tr>
+          <th class="text-left py-2 pr-3">Dia</th>
+          <th class="text-left py-2 pr-3">Receita</th>
+          <th class="text-left py-2 pr-3">Ativas</th>
+          <th class="text-left py-2 pr-3">Trial</th>
+          <th class="text-left py-2 pr-3">Atraso</th>
+          <th class="text-left py-2 pr-3">Canceladas</th>
+          <th class="text-left py-2 pr-3">Inativas</th>
+        </tr>
+      </thead>
+      <tbody id="rows" class="divide-y divide-slate-100">
+        <tr><td colspan="7" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => {
+    const v = Number(n || 0);
+    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+  async function load() {
+    const r = await fetch('/admin/api/financeiro/overview?days=30');
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      el('rows').innerHTML = '<tr><td colspan="7" class="py-6 text-center text-red-600">' + (d.erro || 'Erro') + '</td></tr>';
+      return;
+    }
+    const latest = d.latest || {};
+    el('mrr').textContent = fmt(latest.mrr_total);
+    el('active').textContent = latest.active_subscriptions ?? '—';
+    el('trialing').textContent = latest.trialing ?? '—';
+    el('past_due').textContent = latest.past_due ?? '—';
+
+    const series = d.series || [];
+    if (!series.length) {
+      el('rows').innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-500">Sem snapshots ainda. Rode o job diário.</td></tr>';
+      return;
+    }
+    el('rows').innerHTML = series.map(s => {
+      return '<tr class="hover:bg-slate-50">' +
+        '<td class="py-2 pr-3 font-medium text-slate-800">' + (s.day || '—') + '</td>' +
+        '<td class="py-2 pr-3">' + fmt(s.mrr_total) + '</td>' +
+        '<td class="py-2 pr-3">' + (s.active_subscriptions ?? 0) + '</td>' +
+        '<td class="py-2 pr-3">' + (s.trialing ?? 0) + '</td>' +
+        '<td class="py-2 pr-3">' + (s.past_due ?? 0) + '</td>' +
+        '<td class="py-2 pr-3">' + (s.canceled ?? 0) + '</td>' +
+        '<td class="py-2 pr-3">' + (s.inactive ?? 0) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+  el('btn-refresh').addEventListener('click', load);
+  load();
+})();
+</script>
+{% endblock %}
+

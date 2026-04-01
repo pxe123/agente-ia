@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block title %}Criar Chatbot{% endblock %}
+{% block page_title %}Criar Chatbot{% endblock %}
+{% block content %}
+<div class="p-6 lg:p-8 max-w-xl mx-auto">
+    {% if quota is defined and quota.limit is not none %}
+    <p class="text-sm text-slate-600 mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
+        Seu plano permite até <strong>{{ quota.limit }}</strong> chatbot(s). Em uso: <strong>{{ quota.used }}</strong>.
+        {% if quota.can_create and quota.limit > quota.used %}
+        Você pode criar mais <strong>{{ quota.limit - quota.used }}</strong>.
+        {% endif %}
+    </p>
+    {% endif %}
+    <p class="text-slate-500 text-sm mb-6">Dê um nome ao chatbot. Depois você entra no fluxo para configurar as mensagens e respostas.</p>
+
+    <form method="post" action="{{ url_for('customer.chatbot_novo') }}" class="bg-white rounded-xl border border-slate-200/80 p-6 card-shadow">
+        <div class="mb-4">
+            <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">Nome do chatbot <span class="text-red-500">*</span></label>
+            <input type="text" id="nome" name="nome" required maxlength="120" placeholder="Ex: Atendimento WhatsApp"
+                class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-800">
+        </div>
+        <div class="mb-6">
+            <label for="descricao" class="block text-sm font-medium text-slate-700 mb-1">Descrição (opcional)</label>
+            <textarea id="descricao" name="descricao" rows="2" maxlength="300" placeholder="Ex: Responde dúvidas e encaminha para o comercial."
+                class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-800 resize-none"></textarea>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors">
+                <i class="fas fa-check"></i> Criar
+            </button>
+            <a href="{{ url_for('customer.chatbots_list') }}" class="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 font-medium rounded-lg transition-colors">
+                Cancelar
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

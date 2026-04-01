@@ -1,0 +1,237 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}{% if is_dashboard_sublogin %}Seu resumo{% else %}Visão geral{% endif %}{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
+    <p class="text-slate-500 text-sm">{% if is_dashboard_sublogin %}Resumo do seu atendimento e atalhos rápidos.{% else %}Resumo do seu atendimento multicanal, desempenho e atalhos rápidos.{% endif %}</p>
+
+    {% if billing_banner %}
+    <div class="p-4 rounded-xl border {{ 'bg-red-50 border-red-200 text-red-800' if billing_banner.type == 'danger' else 'bg-amber-50 border-amber-200 text-amber-800' }}">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="text-sm font-semibold">{{ billing_banner.message }}</div>
+            <a href="{{ url_for('public.precos') }}" class="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">
+                Ver planos / Assinar
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- KPIs principais -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
+                    <i class="fas fa-comments text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Conversas (7 dias)</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.total_conversas_7d or 0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                    <i class="fas fa-user-friends text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes únicos (7 dias)</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.clientes_unicos_7d or 0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-600">
+                    <i class="fas fa-plug text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Operadores ativos</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.total_operadores or 0 }}</p>
+                </div>
+            </div>
+        </div>
+        <a href="{{ url_for('customer.leads_list') }}" class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow block">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                    <i class="fas fa-filter text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Leads (30 dias)</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.total_leads_30d or 0 }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Leads qualificados / desqualificados -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                    <i class="fas fa-check-circle text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Leads qualificados (30 dias)</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.total_leads_qualificados_30d or 0 }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover transition-shadow">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-600">
+                    <i class="fas fa-times-circle text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Leads desqualificados (30 dias)</p>
+                    <p class="text-2xl font-bold text-slate-800">{{ kpis.total_leads_desqualificados_30d or 0 }}</p>
+                </div>
+            </div>
+        </div>
+        <a href="{{ url_for('customer.leads_list') }}" class="flex flex-col items-center justify-center p-5 bg-emerald-50 rounded-xl border-2 border-emerald-200 border-dashed text-emerald-800 hover:border-emerald-400 hover:bg-emerald-100 transition-colors">
+            <i class="fas fa-user-check text-2xl mb-2 text-emerald-600"></i>
+            <span class="text-sm font-semibold">Lista de leads</span>
+            <span class="text-xs text-emerald-600/90 mt-0.5">Ver e qualificar leads</span>
+        </a>
+    </div>
+
+    <!-- Gráficos principais -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-slate-700">Distribuição por canal (7 dias)</h3>
+            </div>
+            <canvas id="chart-canais" class="w-full h-64"></canvas>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-slate-700">Volume por horário (7 dias)</h3>
+            </div>
+            <canvas id="chart-horas" class="w-full h-64"></canvas>
+        </div>
+    </div>
+
+    <!-- Relatórios & exportação rápida -->
+    {% if has_feature('exports') %}
+    <div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-sm font-semibold text-slate-700">Relatórios & Exportação</h3>
+                <p class="text-xs text-slate-400 mt-1">Exporte clientes e leads em Excel (CSV) e PDF.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="/painel/export/clientes.csv"
+                   class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <i class="fas fa-file-excel text-emerald-500"></i>
+                    <span>Clientes (Excel/CSV)</span>
+                </a>
+                <a href="/painel/export/leads.csv"
+                   class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <i class="fas fa-file-excel text-emerald-500"></i>
+                    <span>Leads (Excel/CSV)</span>
+                </a>
+                <a href="/painel/export/leads.pdf"
+                   class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <i class="fas fa-file-pdf text-red-500"></i>
+                    <span>Leads (PDF)</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Atalhos -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% if not current_user.is_operador() or current_user.can_access_menu('chat') %}
+        <a href="{{ url_for('customer.chat') }}" class="flex flex-col items-center justify-center p-6 bg-white rounded-xl border border-slate-200/80 card-shadow card-hover transition-all text-slate-700 hover:border-blue-200">
+            <i class="fas fa-comment-dots text-blue-500 text-3xl mb-3"></i>
+            <span class="font-semibold text-sm">Abrir Chat</span>
+            <span class="text-xs text-slate-400 mt-1">Atendimento em tempo real</span>
+        </a>
+        {% endif %}
+        {% if not current_user.is_operador() or current_user.can_access_menu('conexoes') %}
+        <a href="{{ url_for('customer.conexoes') }}" class="flex flex-col items-center justify-center p-6 bg-white rounded-xl border border-slate-200/80 card-shadow card-hover transition-all text-slate-700 hover:border-emerald-200">
+            <i class="fab fa-whatsapp text-emerald-500 text-3xl mb-3"></i>
+            <span class="font-semibold text-sm">Conexões</span>
+            <span class="text-xs text-slate-400 mt-1">WhatsApp, Instagram, Messenger</span>
+        </a>
+        {% endif %}
+        <a href="{{ url_for('customer.perfil') }}" class="flex flex-col items-center justify-center p-6 bg-white rounded-xl border border-slate-200/80 card-shadow card-hover transition-all text-slate-700 hover:border-slate-300">
+            <i class="fas fa-user-circle text-slate-500 text-3xl mb-3"></i>
+            <span class="font-semibold text-sm">Perfil & Equipe</span>
+            <span class="text-xs text-slate-400 mt-1">Dados da conta e sublogins</span>
+        </a>
+        {% if has_feature('chatbots') and (not current_user.is_operador() or current_user.can_access_menu('chatbots')) %}
+        <a href="{{ url_for('customer.chatbots_list') }}" class="flex flex-col items-center justify-center p-6 bg-white rounded-xl border border-slate-200/80 card-shadow card-hover transition-all text-slate-700 hover:border-violet-200">
+            <i class="fas fa-robot text-violet-600 text-3xl mb-3"></i>
+            <span class="font-semibold text-sm">Chatbots</span>
+            <span class="text-xs text-slate-400 mt-1">Crie e edite seus fluxos</span>
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Chart.js para visualizações simples -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var canaisData = {{ (kpis.canais_distribuicao or {}) | tojson }};
+    var horasData = {{ (kpis.horas_distribuicao or {}) | tojson }};
+
+    var canaisCtx = document.getElementById('chart-canais');
+    if (canaisCtx && typeof Chart !== 'undefined') {
+        var labelsCanais = Object.keys(canaisData);
+        var valuesCanais = Object.values(canaisData);
+        new Chart(canaisCtx, {
+            type: 'doughnut',
+            data: {
+                labels: labelsCanais.length ? labelsCanais : ['Sem dados'],
+                datasets: [{
+                    data: valuesCanais.length ? valuesCanais : [1],
+                    backgroundColor: ['#10b981', '#3b82f6', '#f97316', '#6366f1', '#22c55e', '#eab308']
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    var horasCtx = document.getElementById('chart-horas');
+    if (horasCtx && typeof Chart !== 'undefined') {
+        var horas = Object.keys(horasData).map(function (h) { return parseInt(h, 10); }).sort(function (a, b) { return a - b; });
+        var labelsHoras = horas.map(function (h) { return (h < 10 ? '0' + h : h) + ':00'; });
+        var valuesHoras = horas.map(function (h) { return horasData[h]; });
+        if (!horas.length) {
+            labelsHoras = ['Sem dados'];
+            valuesHoras = [0];
+        }
+        new Chart(horasCtx, {
+            type: 'bar',
+            data: {
+                labels: labelsHoras,
+                datasets: [{
+                    label: 'Mensagens',
+                    data: valuesHoras,
+                    backgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

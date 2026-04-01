@@ -1,0 +1,179 @@
+{% extends "layout.html" %}
+
+{% block title %}Chat Multicanal{% endblock %}
+{% block page_title %}Atendimento em Tempo Real{% endblock %}
+
+{% block head %}
+<style>
+    .active-user { background-color: #eff6ff !important; border-right: 4px solid #2563eb !important; }
+    /* scroll controlado só no JS (rolarFinal) para não animar ao abrir conversa */
+    #chat-container { scroll-behavior: auto; }
+    #chat-container::-webkit-scrollbar { width: 6px; }
+    #chat-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+    .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    /* Respeita quebras de linha (\n) no texto das mensagens */
+    .msg-text { white-space: pre-line; }
+    /* Badge de notificação */
+    .chat-badge { min-width: 18px; height: 18px; padding: 0 5px; font-size: 10px; font-weight: 700; border-radius: 9px; background: #ef4444; color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+    .chat-badge-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; flex-shrink: 0; }
+    .canal-btn { position: relative; }
+    .canal-btn .chat-badge { position: absolute; top: 2px; right: 2px; }
+    @media (min-width: 640px) { .canal-btn .chat-badge { top: 4px; right: 4px; } }
+    /* Mobile: lista ou conversa em tela cheia */
+    @media (max-width: 639px) {
+        #chat-layout.mobile-list-view #chat-list-aside { display: flex !important; }
+        #chat-layout.mobile-list-view #chat-area { display: none !important; }
+        #chat-layout.mobile-chat-view #chat-list-aside { display: none !important; }
+        #chat-layout.mobile-chat-view #chat-area { display: flex !important; }
+    #chat-layout.mobile-chat-view #btn-voltar-lista { display: flex !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="chat-layout" class="flex h-full overflow-hidden bg-white rounded-tl-xl border border-slate-200/80 border-t-0 border-l-0 card-shadow mobile-list-view">
+    <aside id="chat-list-aside" class="w-full sm:w-80 border-r border-slate-200/80 flex flex-col bg-slate-50/80 shrink-0 sm:shrink-0">
+        <div class="p-4 border-b border-slate-200/80 bg-white space-y-2">
+            <div class="flex gap-1 rounded-lg bg-slate-100 p-1" id="canais-wrap">
+                {% if can_use_channel_ui('whatsapp') %}
+                <button type="button" id="canal-whatsapp" class="canal-btn flex-1 py-2.5 px-1 text-xs font-semibold rounded-md transition flex flex-col items-center gap-0.5" data-canal="whatsapp" title="WhatsApp">
+                    <i class="fab fa-whatsapp text-lg text-emerald-600"></i>
+                    <span class="hidden sm:inline">WhatsApp</span>
+                    <span id="badge-whatsapp" class="chat-badge hidden absolute top-0.5 right-0.5" style="display: none">0</span>
+                </button>
+                {% endif %}
+                {% if can_use_channel_ui('facebook') %}
+                <button type="button" id="canal-messenger" class="canal-btn flex-1 py-2.5 px-1 text-xs font-semibold rounded-md transition flex flex-col items-center gap-0.5 text-slate-500" data-canal="facebook" title="Messenger">
+                    <i class="fab fa-facebook-messenger text-lg text-blue-600"></i>
+                    <span class="hidden sm:inline">Messenger</span>
+                    <span id="badge-facebook" class="chat-badge hidden absolute top-0.5 right-0.5" style="display: none">0</span>
+                </button>
+                {% endif %}
+                {% if can_use_channel_ui('instagram') %}
+                <button type="button" id="canal-instagram" class="canal-btn flex-1 py-2.5 px-1 text-xs font-semibold rounded-md transition flex flex-col items-center gap-0.5 text-slate-500" data-canal="instagram" title="Instagram">
+                    <i class="fab fa-instagram text-lg text-pink-500"></i>
+                    <span class="hidden sm:inline">Instagram</span>
+                    <span id="badge-instagram" class="chat-badge hidden absolute top-0.5 right-0.5" style="display: none">0</span>
+                </button>
+                {% endif %}
+                {% if can_use_channel_ui('website') %}
+                <button type="button" id="canal-website" class="canal-btn flex-1 py-2.5 px-1 text-xs font-semibold rounded-md transition flex flex-col items-center gap-0.5 text-slate-500" data-canal="website" title="Site">
+                    <i class="fas fa-globe text-lg text-slate-600"></i>
+                    <span class="hidden sm:inline">Site</span>
+                    <span id="badge-website" class="chat-badge hidden absolute top-0.5 right-0.5" style="display: none">0</span>
+                </button>
+                {% endif %}
+            </div>
+            <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+                <input type="checkbox" id="som-notificacao" checked class="rounded border-slate-300 text-slate-800 focus:ring-slate-800">
+                <span>Som de notificação</span>
+            </label>
+            <button type="button" id="btn-marcar-todas-lidas" class="hidden text-xs text-slate-500 hover:text-slate-700 hover:underline mt-1" title="Limpa notificações de conversas que não aparecem na lista">
+                Marcar todas como lidas
+            </button>
+            <input type="text" id="input-busca-contato" placeholder="Buscar contato..." 
+                   class="w-full px-4 py-2.5 bg-slate-100 border-0 rounded-xl text-sm outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white transition">
+        </div>
+        <div id="lista-contatos" class="flex-1 overflow-y-auto">
+            <div class="p-8 text-center text-slate-400 text-xs">
+                <i class="fa-solid fa-circle-notch fa-spin mb-2 text-lg"></i><br>
+                Carregando conversas...
+            </div>
+        </div>
+    </aside>
+
+    <section id="chat-area" class="flex-1 flex flex-col bg-slate-50/50 min-w-0">
+        <div id="chat-header" class="min-h-[3.25rem] border-b border-slate-200/80 bg-white flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-5 z-10 overflow-hidden">
+            <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <button type="button" id="btn-voltar-lista" class="hidden p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-100 transition shrink-0" aria-label="Voltar à lista de conversas" title="Voltar à lista">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <img id="chat-foto-header" src="https://ui-avatars.com/api/?name=?&background=cbd5e1" 
+                     class="w-9 h-9 rounded-full object-cover border border-slate-200 flex-shrink-0">
+                <div class="min-w-0 flex-1">
+                    <p id="chat-nome" class="text-sm font-semibold text-slate-800 truncate" title="Selecione um contato">Selecione um contato</p>
+                    <p id="chat-status" class="text-[10px] text-slate-500 font-medium uppercase tracking-wider truncate">
+                        <span id="canal-label">WhatsApp</span><span id="chat-numero-prefix" class="hidden"> · </span><span id="chat-numero" class="hidden"></span>
+                    </p>
+                </div>
+            </div>
+            <div id="chat-etiqueta-wrap" class="hidden flex items-center gap-2 flex-shrink-0">
+                <span id="indicador-ia" class="hidden items-center gap-1 text-[10px] text-emerald-600 font-medium uppercase tracking-wider" title="IA atendendo" aria-hidden="true">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
+                    <span>IA</span>
+                </span>
+                <button type="button" id="btn-assumir-atendimento" class="text-xs font-medium px-2.5 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition whitespace-nowrap" title="Assumir atendimento (para de responder com bot)">
+                    <i class="fas fa-user-check mr-1"></i><span class="hidden sm:inline">Assumir</span>
+                </button>
+                <button type="button" id="btn-finalizar-atendimento" class="text-xs font-medium px-2.5 py-1.5 rounded-md bg-slate-600 text-white hover:bg-slate-500 transition whitespace-nowrap" title="Marcar conversa como finalizada">
+                    <i class="fas fa-flag-checkered mr-1"></i><span class="hidden sm:inline">Finalizar</span>
+                </button>
+                <div class="flex items-center gap-1.5 border-l border-slate-200 pl-2">
+                    <span class="text-[10px] text-slate-500 uppercase tracking-wider hidden sm:inline">Setores</span>
+                    <select id="chat-setor" class="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-700 focus:ring-2 focus:ring-slate-800 focus:border-slate-800 min-w-[7rem]">
+                        <option value="">Geral</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div id="chat-empty" class="h-full flex flex-col items-center justify-center text-slate-400">
+                <i class="fa-regular fa-comments text-5xl mb-4 opacity-30"></i>
+                <p class="text-sm font-medium">Mensagens aparecerão aqui</p>
+                <p class="text-xs mt-1">Selecione uma conversa ou aguarde novos contatos</p>
+            </div>
+        </div>
+
+        <footer class="p-3 sm:p-4 bg-white border-t border-slate-200/80 flex-shrink-0">
+            <div class="max-w-4xl mx-auto flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                <input type="file" id="input-anexo" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,audio/*" class="hidden">
+                <button type="button" id="btn-anexo" title="Enviar imagem ou documento (WhatsApp)" class="text-slate-500 hover:text-slate-700 w-10 h-10 rounded-xl flex items-center justify-center border border-slate-200 hover:border-slate-300 transition">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <button type="button" id="btn-mic" title="Enviar áudio (mensagem de voz)" class="text-slate-500 hover:text-slate-700 w-10 h-10 rounded-xl flex items-center justify-center border border-slate-200 hover:border-slate-300 transition">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <span id="gravando-label" class="hidden text-xs text-red-600 font-medium items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Gravando...
+                </span>
+                <button type="button" id="btn-parar-audio" title="Parar e enviar" class="hidden bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
+                    Parar e enviar
+                </button>
+                <textarea id="input-msg" rows="1" placeholder="Digite sua mensagem..."
+                          class="flex-1 border border-slate-200 rounded-2xl px-4 py-3 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition text-sm leading-5 min-h-[46px] max-h-[150px] resize-none overflow-y-hidden"></textarea>
+                <button onclick="enviarMensagemManual()" id="btn-enviar"
+                        class="bg-slate-800 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-slate-900 transition active:scale-95">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </footer>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const MEU_ID = "{{ current_cliente_id }}";
+    const PRIMEIRO_CANAL = "{{ 'whatsapp' if can_use_channel_ui('whatsapp') else 'facebook' if can_use_channel_ui('facebook') else 'instagram' if can_use_channel_ui('instagram') else 'website' if can_use_channel_ui('website') else 'whatsapp' }}";
+    window.CHAT_ATENDENTE_NOME = {{ (current_user.nome or current_user.email or 'Atendente')|tojson }};
+    window.CHAT_OPERADOR_ID = {{ (current_user.operador_id or '')|tojson }};
+    (function() {
+        var layout = document.getElementById('chat-layout');
+        var btnVoltar = document.getElementById('btn-voltar-lista');
+        window.agenteiaMobileChatView = function(showChat) {
+            if (!layout) return;
+            if (showChat) {
+                layout.classList.remove('mobile-list-view');
+                layout.classList.add('mobile-chat-view');
+            } else {
+                layout.classList.remove('mobile-chat-view');
+                layout.classList.add('mobile-list-view');
+            }
+        };
+        if (btnVoltar) btnVoltar.addEventListener('click', function() { window.agenteiaMobileChatView(false); });
+    })();
+</script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

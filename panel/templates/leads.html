@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+{% block title %}Leads{% endblock %}
+{% block page_title %}Leads{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+        <h3 class="font-semibold text-emerald-900 flex items-center gap-2">
+            <i class="fas fa-user-check text-emerald-600"></i>
+            Qualificar leads manualmente
+        </h3>
+        <p class="text-slate-600 text-sm mt-1">Use a coluna <strong>Qualificar</strong> na tabela abaixo para marcar cada lead como <strong>Pendente</strong>, <strong>Qualificado</strong> ou <strong>Desqualificado</strong>. As métricas do dashboard são atualizadas automaticamente.</p>
+    </div>
+    <p class="text-slate-600 text-sm">Leads capturados pelos fluxos. Filtre por status e período.</p>
+
+    <div class="bg-white rounded-xl border border-slate-200/80 card-shadow p-4">
+        <form method="get" action="{{ url_for('customer.leads_list') }}" class="space-y-3">
+            <div class="flex flex-wrap items-end gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+                    <select name="status" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                        <option value="">Todos</option>
+                        <option value="pendente" {{ 'selected' if status_filter == 'pendente' else '' }}>Pendente</option>
+                        <option value="qualificado" {{ 'selected' if status_filter == 'qualificado' else '' }}>Qualificado</option>
+                        <option value="desqualificado" {{ 'selected' if status_filter == 'desqualificado' else '' }}>Desqualificado</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Canal (chat)</label>
+                    <select name="canal" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                        <option value="">Todos</option>
+                        <option value="whatsapp" {{ 'selected' if canal_filter == 'whatsapp' else '' }}>WhatsApp</option>
+                        <option value="instagram" {{ 'selected' if canal_filter == 'instagram' else '' }}>Instagram</option>
+                        <option value="facebook" {{ 'selected' if canal_filter == 'facebook' else '' }}>Facebook</option>
+                        <option value="messenger" {{ 'selected' if canal_filter == 'messenger' else '' }}>Messenger</option>
+                        <option value="website" {{ 'selected' if canal_filter == 'website' else '' }}>Website</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Últimos (dias)</label>
+                    <input type="number" name="dias" value="{{ dias }}" min="1" max="365" class="w-20 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Pesquisar (nome, e-mail ou telefone)</label>
+                    <input type="text" name="busca" value="{{ busca or '' }}" placeholder="Digite para buscar..."
+                           class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                </div>
+                <button type="submit" class="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-900 transition shadow-sm border border-slate-700">
+                    <i class="fas fa-filter mr-1"></i>Filtrar
+                </button>
+                <a href="{{ url_for('customer.dashboard') }}" class="text-sm text-slate-500 hover:text-slate-700 self-center">Ver no dashboard</a>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                <span class="text-xs text-slate-500">Exportar:</span>
+                <a href="/painel/export/leads.csv?status={{ status_filter }}&canal={{ canal_filter }}&dias={{ dias }}"
+                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <i class="fas fa-file-excel text-emerald-500"></i>
+                    <span>Leads Excel/CSV</span>
+                </a>
+                <a href="/painel/export/leads.pdf?status={{ status_filter }}&canal={{ canal_filter }}&dias={{ dias }}"
+                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <i class="fas fa-file-pdf text-red-500"></i>
+                    <span>Leads PDF</span>
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-xl border border-slate-200/80 card-shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
+                    <tr>
+                        <th class="px-4 py-3">Nome</th>
+                        <th class="px-4 py-3">E-mail</th>
+                        <th class="px-4 py-3">Telefone</th>
+                        <th class="px-4 py-3">Canal</th>
+                        <th class="px-4 py-3">Data</th>
+                        <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3 w-44">Qualificar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lead in leads %}
+                    <tr class="border-b border-slate-100 hover:bg-slate-50/50" data-lead-id="{{ lead.id }}">
+                        <td class="px-4 py-3 text-slate-800">{{ lead.nome or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ lead.email or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ lead.telefone or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ lead.canal or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ (lead.created_at or '')[:10] if lead.created_at else '—' }}</td>
+                        <td class="px-4 py-3">
+                            <span class="lead-status-badge px-2 py-0.5 rounded text-xs font-medium
+                                {% if (lead.status or 'pendente') == 'qualificado' %}bg-emerald-100 text-emerald-800
+                                {% elif (lead.status or 'pendente') == 'desqualificado' %}bg-red-100 text-red-800
+                                {% else %}bg-slate-100 text-slate-700{% endif %}">
+                                {{ lead.status or 'pendente' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <select class="lead-status-select px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none" data-lead-id="{{ lead.id }}">
+                                <option value="pendente" {{ 'selected' if (lead.status or '') == 'pendente' else '' }}>Pendente</option>
+                                <option value="qualificado" {{ 'selected' if (lead.status or '') == 'qualificado' else '' }}>Qualificado</option>
+                                <option value="desqualificado" {{ 'selected' if (lead.status or '') == 'desqualificado' else '' }}>Desqualificado</option>
+                            </select>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">Nenhum lead encontrado para os filtros selecionados.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    document.querySelectorAll('.lead-status-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            var leadId = this.getAttribute('data-lead-id');
+            var status = this.value;
+            if (!leadId || !status) return;
+            var row = this.closest('tr');
+            var badge = row ? row.querySelector('.lead-status-badge') : null;
+            fetch('/api/leads/' + leadId, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ status: status }),
+                credentials: 'same-origin'
+            }).then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); }).then(function(out) {
+                if (out.ok && badge) {
+                    badge.textContent = status;
+                    badge.className = 'lead-status-badge px-2 py-0.5 rounded text-xs font-medium ';
+                    if (status === 'qualificado') badge.className += 'bg-emerald-100 text-emerald-800';
+                    else if (status === 'desqualificado') badge.className += 'bg-red-100 text-red-800';
+                    else badge.className += 'bg-slate-100 text-slate-700';
+                } else if (out.data && out.data.erro) alert(out.data.erro);
+            }).catch(function() { alert('Erro ao atualizar status.'); });
+        });
+    });
+})();
+</script>
+{% endblock %}

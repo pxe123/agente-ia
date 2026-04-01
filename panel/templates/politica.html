@@ -1,0 +1,58 @@
+{% extends "layout_public.html" %}
+{% block title %}Política de Privacidade{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold text-slate-900 mb-6">Política de Privacidade</h1>
+<p class="text-sm text-slate-500 mb-8">Última atualização: fevereiro de 2025.</p>
+
+<div class="prose prose-slate max-w-none space-y-6 text-slate-700">
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">1. Quem somos / Identificação do responsável</h2>
+        <p>Up Digital Brasil (&quot;nós&quot;, &quot;nosso&quot;) opera a plataforma de atendimento multicanal com inteligência artificial acessível em <strong>updigitalbrasil.com.br</strong> e via API em <strong>api.updigitalbrasil.com.br</strong>. Esta política descreve como tratamos os dados dos usuários do nosso serviço e dos usuários finais que interagem com nossos clientes via WhatsApp, Instagram, Messenger e chat no site.</p>
+        <p class="mt-3 text-slate-600">Para cumprimento da LGPD e das políticas das plataformas que utilizamos (Meta), informamos o contato do responsável pelo tratamento de dados: <strong>contato@updigitalbrasil.com.br</strong>. Caso a Meta ou autoridades solicitem a identificação legal da empresa (razão social, endereço, CNPJ), ela será fornecida mediante solicitação ao mesmo e-mail ou através do App Dashboard da Meta quando aplicável.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">2. Dados que coletamos</h2>
+        <ul class="list-disc pl-6 space-y-1">
+            <li><strong>Conta do cliente:</strong> e-mail, nome (quando informado), senha (armazenada de forma criptografada) e dados de conexão com canais (ex.: tokens e IDs da Meta para WhatsApp, Instagram e Messenger).</li>
+            <li><strong>Mensagens e histórico:</strong> conteúdo das conversas processadas pela plataforma (WhatsApp, Instagram, Messenger, chat do site) para atendimento e melhoria do serviço de IA.</li>
+            <li><strong>Dados técnicos:</strong> endereço IP, tipo de navegador e de dispositivo, data e hora de acesso, quando necessário para segurança e operação do serviço.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">3. Finalidade do tratamento</h2>
+        <p>Utilizamos os dados para: (a) prestar o serviço de atendimento multicanal e resposta por IA; (b) conectar e gerenciar integrações com WhatsApp, Instagram e Messenger conforme autorizado pelo cliente; (c) melhorar a qualidade das respostas e do produto; (d) cumprir obrigações legais e (e) comunicar-nos com você sobre o serviço quando necessário.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">4. Base legal e compartilhamento</h2>
+        <p>O tratamento é baseado em execução de contrato, consentimento quando aplicável e legítimo interesse. Podemos compartilhar dados apenas com: prestadores que nos auxiliam na operação (hospedagem, e-mail, análise), autoridades quando exigido por lei, e plataformas da Meta (Facebook/WhatsApp/Instagram) na medida necessária para as integrações que você ativa. Não vendemos seus dados pessoais.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">5. Retenção</h2>
+        <p>Mantemos os dados enquanto sua conta estiver ativa e conforme necessário para cumprimento legal e resolução de disputas. Histórico de mensagens pode ser mantido pelo período configurado ou exigido pela operação do serviço.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">6. Seus direitos (LGPD e usuários Meta)</h2>
+        <p>Você pode acessar, corrigir, portar e solicitar a exclusão dos seus dados. Para <strong>solicitar a exclusão de dados</strong>, utilize o canal descrito na nossa página <a href="{{ url_for('legal.exclusao_de_dados') }}" class="text-emerald-600 hover:underline">Exclusão de Dados</a> ou envie um e-mail para o contato indicado nesta política. Atendemos pedidos de exclusão em conformidade com nossa política e com os requisitos das plataformas que utilizamos (incluindo Meta).</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">7. Segurança</h2>
+        <p>Adotamos medidas técnicas e organizacionais para proteger os dados contra acesso não autorizado, perda ou alteração indevida, em conformidade com as boas práticas de mercado.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">8. Contato</h2>
+        <p>Para dúvidas, pedidos de acesso ou exclusão de dados, entre em contato com o responsável pelo tratamento:</p>
+        <ul class="list-disc pl-6 mt-2 space-y-1">
+            <li><strong>E-mail:</strong> contato@updigitalbrasil.com.br (ou o e-mail oficial divulgado no site)</li>
+            <li><strong>Site:</strong> updigitalbrasil.com.br</li>
+        </ul>
+        <p class="mt-3">Respondemos em prazo razoável, em geral em até 15 dias. Se você for usuário de uma plataforma Meta (Facebook, Instagram, WhatsApp) e tiver solicitações relacionadas ao uso do nosso app nessas plataformas, utilize o mesmo canal; em casos em que a Meta exija informações adicionais da empresa, podemos fornecê-las mediante solicitação formal.</p>
+    </section>
+</div>
+{% endblock %}

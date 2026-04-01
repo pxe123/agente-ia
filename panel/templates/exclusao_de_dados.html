@@ -1,0 +1,39 @@
+{% extends "layout_public.html" %}
+{% block title %}Exclusão de Dados{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold text-slate-900 mb-6">Exclusão de Dados</h1>
+<p class="text-sm text-slate-500 mb-8">Última atualização: fevereiro de 2025.</p>
+
+<div class="prose prose-slate max-w-none space-y-6 text-slate-700">
+    <p>Conforme exigido pelas políticas da Meta (Facebook, Instagram, WhatsApp) e pela legislação aplicável (como a LGPD), permitimos que usuários solicitem a <strong>exclusão dos seus dados</strong> associados ao uso da nossa plataforma e das integrações com WhatsApp, Instagram e Messenger.</p>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">Como solicitar a exclusão</h2>
+        <p>Envie um e-mail para:</p>
+        <p class="my-3 p-4 bg-slate-100 rounded-xl font-mono text-slate-800"><strong>contato@updigitalbrasil.com.br</strong></p>
+        <p>Inclua na mensagem:</p>
+        <ul class="list-disc pl-6 space-y-1 mt-2">
+            <li>Assunto: &quot;Solicitação de exclusão de dados&quot;</li>
+            <li>O e-mail ou identificador da conta que você utiliza em nossa plataforma (ou o número/canal pelo qual nos contactou via WhatsApp, Instagram ou Messenger)</li>
+            <li>Breve descrição do que deseja excluir (ex.: conta completa, apenas histórico de conversas)</li>
+        </ul>
+        <p class="mt-4">Responderemos em até <strong>15 (quinze) dias úteis</strong> para confirmar o recebimento e o andamento do pedido. A exclusão será realizada no prazo técnico necessário, em conformidade com nossas políticas e com as obrigações das plataformas que utilizamos.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">O que será excluído</h2>
+        <p>Após a validação do pedido, excluiremos os dados que mantemos sobre você em nossos sistemas, tais como: dados de cadastro (e-mail, nome), tokens e configurações de conexão com canais (WhatsApp, Instagram, Messenger), histórico de mensagens associado à sua conta ou ao identificador informado. Dados que precisarmos reter por obrigação legal ou para resolução de disputas serão mantidos apenas pelo período necessário.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">Usuários finais (WhatsApp, Instagram, Messenger)</h2>
+        <p>Se você é um usuário que conversou com um negócio que usa nossa plataforma (por exemplo, via WhatsApp ou Instagram desse negócio), e deseja que seus dados daquelas conversas sejam excluídos do nosso sistema, envie a solicitação para o e-mail acima informando o canal (WhatsApp/Instagram/Messenger), o número ou perfil usado e, se possível, o nome ou identificação do negócio. Processaremos em conformidade com nossa Política de Privacidade e com as regras da Meta.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">Contato</h2>
+        <p>Para qualquer dúvida sobre exclusão de dados ou privacidade: <strong>contato@updigitalbrasil.com.br</strong>.</p>
+        <p class="mt-2">Consulte também nossa <a href="{{ url_for('legal.politica') }}" class="text-emerald-600 hover:underline">Política de Privacidade</a> e nossos <a href="{{ url_for('legal.termos') }}" class="text-emerald-600 hover:underline">Termos de Uso</a>.</p>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "admin/layout.html" %}
+{% block title %}Dashboard Admin{% endblock %}
+{% block page_title %}Visão geral do SaaS{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8" id="stats-cards">
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de clientes</p>
+                <p class="text-2xl font-bold text-slate-800 mt-1" id="stat-clientes">—</p>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
+                <i class="fas fa-users text-xl"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mensagens (total)</p>
+                <p class="text-2xl font-bold text-slate-800 mt-1" id="stat-mensagens">—</p>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                <i class="fas fa-comments text-xl"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Com WhatsApp</p>
+                <p class="text-2xl font-bold text-slate-800 mt-1" id="stat-whatsapp">—</p>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-600">
+                <i class="fab fa-whatsapp text-xl"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-800 mb-4">Clientes por plano</h2>
+    <div id="planos-list" class="flex flex-wrap gap-3">
+        <span class="text-slate-400 text-sm">Carregando...</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+    try {
+        const r = await fetch('/admin/api/stats');
+        const d = await r.json();
+        if (d.erro) { document.getElementById('stats-cards').innerHTML = '<p class="text-red-600">' + d.erro + '</p>'; return; }
+        document.getElementById('stat-clientes').textContent = d.total_clientes ?? '—';
+        document.getElementById('stat-mensagens').textContent = d.total_mensagens ?? '—';
+        document.getElementById('stat-whatsapp').textContent = d.clientes_com_whatsapp ?? '—';
+        const planos = d.por_plano || {};
+        const el = document.getElementById('planos-list');
+        el.innerHTML = Object.keys(planos).length ? Object.entries(planos).map(([p, n]) =>
+            '<span class="px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-medium text-slate-700">' + p + ': ' + n + '</span>'
+        ).join('') : '<span class="text-slate-500 text-sm">Nenhum dado</span>';
+    } catch (e) {
+        document.getElementById('planos-list').textContent = 'Erro ao carregar.';
+    }
+})();
+</script>
+{% endblock %}

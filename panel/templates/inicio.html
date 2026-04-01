@@ -1,0 +1,1471 @@
+{% extends "layout_public.html" %}
+{% block title %}ZapAction – Cada demora no WhatsApp é uma venda perdida{% endblock %}
+{% block head %}
+<meta name="description" content="Pare de perder vendas: respostas automáticas 24h, mais vendas no WhatsApp e visibilidade de onde você perde dinheiro. ZapAction.">
+<link rel="canonical" href="{{ PUBLIC_BASE_URL }}/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ZapAction">
+<meta property="og:title" content="ZapAction – Cada demora no WhatsApp é uma venda perdida">
+<meta property="og:description" content="Pare de perder vendas. Respostas automáticas 24h, mais vendas no WhatsApp e saiba onde perde dinheiro.">
+<meta property="og:url" content="{{ PUBLIC_BASE_URL }}/">
+<meta property="og:image" content="{{ PUBLIC_BASE_URL }}/static/images/og-zapaction.png">
+<meta property="og:image:alt" content="ZapAction — Pare de perder vendas no WhatsApp">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ZapAction – Cada demora no WhatsApp é uma venda perdida">
+<meta name="twitter:description" content="Pare de perder vendas. Respostas automáticas 24h, mais vendas no WhatsApp e veja onde perde dinheiro.">
+<meta name="twitter:image" content="{{ PUBLIC_BASE_URL }}/static/images/og-zapaction.png">
+<meta name="twitter:image:alt" content="ZapAction — Pare de perder vendas no WhatsApp">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ZapAction",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "url": "{{ PUBLIC_BASE_URL }}/",
+  "description": "Pare de perder vendas no WhatsApp: respostas automáticas 24h, automação multicanal, chatbot, filas por setor e indicadores para ver onde perde dinheiro.",
+  "offers": {
+    "@type": "AggregateOffer",
+    "priceCurrency": "BRL",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "O ZapAction é oficial do WhatsApp?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Não. O ZapAction é uma plataforma independente de automação de atendimento. Não somos afiliados, associados ou endossados pelo WhatsApp ou pela Meta."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Como o ZapAction funciona?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "O ZapAction conecta seu WhatsApp a uma plataforma de atendimento onde você pode criar automações e respostas automáticas, organizar múltiplos atendentes e gerenciar conversas em um só lugar."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Preciso da API oficial do WhatsApp?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Não necessariamente. O ZapAction oferece formas práticas de conexão para facilitar o uso por empresas, sem necessidade de processos complexos."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Posso usar com equipe?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sim. Você pode adicionar múltiplos atendentes e organizar o atendimento de forma profissional dentro da plataforma."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "O ZapAction envia mensagens automáticas?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sim, é possível configurar mensagens automáticas e fluxos de atendimento, sempre respeitando boas práticas para uso do WhatsApp."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Existe risco de bloqueio no WhatsApp?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Como em qualquer uso da plataforma, o WhatsApp possui políticas próprias. O uso responsável e dentro das boas práticas reduz significativamente riscos."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Para quem o ZapAction é indicado?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Para empresas que desejam automatizar atendimento, organizar conversas e aumentar vendas pelo WhatsApp."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Preciso instalar algo?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Não. O ZapAction funciona online, direto no navegador."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Tem teste gratuito?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sim, você pode testar a plataforma gratuitamente antes de contratar."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Como funciona o pagamento?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Usamos um gateway de pagamentos seguro do Mercado Pago, com cobrança recorrente da assinatura; não armazenamos dados de pagamento em nossa plataforma."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Meus dados estão seguros?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sim. Utilizamos boas práticas de segurança para proteger as informações dos usuários."
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+<style>
+@keyframes org-robot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.org-robot-bob { animation: org-robot-bob 2.6s ease-in-out infinite; transform-origin: 100px 150px; }
+@media (prefers-reduced-motion: reduce) {
+  .org-robot-bob { animation: none; }
+  .org-sort-bubble { transition-duration: 0.01ms !important; }
+  .dash-bar-pulse { animation: none !important; transform: scaleY(1) !important; }
+  .dash-trend-line { stroke-dashoffset: 0 !important; transition: none !important; }
+}
+@keyframes dashBarPulse {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+.dash-bar-pulse {
+  transform-origin: bottom center;
+  transform: scaleY(0.45);
+  animation: dashBarPulse 2.8s ease-in-out infinite;
+}
+.dash-bar-pulse:nth-child(1) { animation-delay: 0s; }
+.dash-bar-pulse:nth-child(2) { animation-delay: 0.15s; }
+.dash-bar-pulse:nth-child(3) { animation-delay: 0.3s; }
+.dash-bar-pulse:nth-child(4) { animation-delay: 0.45s; }
+.dash-bar-pulse:nth-child(5) { animation-delay: 0.6s; }
+.dash-bar-pulse:nth-child(6) { animation-delay: 0.75s; }
+.dash-bar-pulse:nth-child(7) { animation-delay: 0.9s; }
+.plan-featured {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  border-color: #334155 !important;
+  color: #fff;
+}
+.plan-featured-hover {
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease, filter 320ms ease;
+  transform: translateZ(0);
+  will-change: transform, box-shadow, filter;
+}
+.plan-featured-hover:hover {
+  transform: translateY(-10px) scale(1.045);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45), 0 8px 20px rgba(16, 185, 129, 0.25);
+  filter: saturate(1.08);
+}
+.plan-featured-cta {
+  background: #10b981;
+  color: #fff;
+}
+.plan-featured-cta:hover { background: #059669; }
+/* Título do hero: 2 linhas fixas; 1ª linha não quebra no meio (nowrap + tamanho no h1) */
+.hero-title-cq {
+  container-type: inline-size;
+  min-width: 0;
+}
+.hero-title-cq h1.hero-title-h1 {
+  font-size: clamp(1.2rem, calc(100cqw / 14.2), 3.05rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+}
+@supports not (container-type: inline-size) {
+  .hero-title-cq h1.hero-title-h1 {
+    font-size: clamp(1.35rem, 3.4vw + 0.55rem, 2.85rem);
+  }
+}
+.hero-title-line {
+  display: block;
+}
+.hero-title-cq .hero-title-line:first-child {
+  white-space: nowrap;
+}
+</style>
+<section class="relative overflow-hidden rounded-[32px] border border-slate-200 bg-white">
+  <div class="pointer-events-none absolute inset-0">
+    {# Gradientes suaves no azul do menu (sidebar-accent) #}
+    <div class="absolute -top-44 -left-36 w-[620px] h-[620px] bg-blue-600/5 blur-3xl rounded-full"></div>
+    <div class="absolute -top-36 right-0 w-[620px] h-[620px] bg-blue-600/10 blur-3xl rounded-full"></div>
+    <div class="absolute -bottom-52 left-1/3 w-[680px] h-[680px] bg-slate-400/10 blur-3xl rounded-full"></div>
+    <div class="absolute inset-0 opacity-[0.35]" style="background-image:linear-gradient(rgba(148,163,184,.10) 1px, transparent 1px),linear-gradient(90deg, rgba(148,163,184,.10) 1px, transparent 1px);background-size:72px 72px;mask-image:radial-gradient(60% 45% at 50% 30%, black 42%, transparent 78%);"></div>
+  </div>
+
+  <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-10 items-center px-6 sm:px-10 py-10 sm:py-16">
+    <div class="max-w-xl w-full min-w-0 hero-title-cq">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-slate-200 text-xs text-slate-600 shadow-sm">
+        <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+        Pare de perder vendas • Respostas automáticas 24h
+      </div>
+
+      <h1 class="hero-title-h1 mt-5 w-full font-black tracking-tight text-slate-900">
+        <span class="sr-only">ZapAction – Cada demora no WhatsApp é uma venda perdida</span>
+        <span aria-hidden="true" class="block text-slate-900">
+          <span class="hero-title-line">Cada demora no WhatsApp</span>
+          <span class="hero-title-line mt-1">é uma venda perdida</span>
+        </span>
+      </h1>
+      <p class="mt-3 text-lg sm:text-xl font-bold tracking-tight min-h-[1.35em]">
+        <span id="typewriter" class="bg-gradient-to-r from-blue-700 via-indigo-600 to-sky-600 bg-clip-text text-transparent">Pare de perder vendas.</span><span class="inline-block w-[10px] h-[1.1em] align-[-0.1em] ml-1 bg-slate-900/60" id="tw-caret"></span>
+      </p>
+      <p class="mt-3 text-base sm:text-lg text-slate-700 font-medium leading-relaxed max-w-lg">
+        Mais vendas no WhatsApp, respostas automáticas 24h e visão clara de onde você está perdendo clientes — tudo em um só painel.
+      </p>
+
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <a href="#planos" data-scroll aria-label="Ver planos e preços da ZapAction" class="group inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/20">
+          Ver planos e preços
+          <span class="group-hover:translate-x-0.5 transition-transform">→</span>
+        </a>
+        <a href="#organizacao" data-scroll aria-label="Entender como funciona a organização de atendimento" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-slate-800 hover:text-slate-900 bg-white hover:bg-slate-50 transition border border-slate-200 shadow-sm">
+          Entender como funciona
+          <span class="text-slate-500">▸</span>
+        </a>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-2 text-[12px] text-slate-600">
+        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Respostas automáticas 24h</span>
+        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Mais vendas no WhatsApp</span>
+        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Veja onde perde dinheiro</span>
+      </div>
+    </div>
+
+    <!-- Mockup de chat animado -->
+    <div class="relative">
+      <div class="absolute -inset-2 rounded-[32px] bg-gradient-to-tr from-indigo-500/15 via-emerald-500/10 to-sky-500/15 blur-2xl"></div>
+      <div class="relative rounded-[32px] border border-slate-200 bg-white shadow-xl shadow-slate-900/10 overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
+            <span class="text-sm font-semibold text-slate-800">Chat ao vivo</span>
+            <span class="text-xs text-slate-400 hidden sm:inline">• Chatbot + humano</span>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-slate-500">
+            <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> WhatsApp</span>
+            <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Instagram</span>
+            <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> Messenger</span>
+          </div>
+        </div>
+
+        <div class="p-5">
+          <div id="chat-window" class="space-y-3 min-h-[260px]">
+            <!-- mensagens entram via JS -->
+          </div>
+
+          <div class="mt-4 flex items-center justify-between text-[11px] text-slate-500">
+            <span class="inline-flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> indicadores em tempo real
+            </span>
+            <span class="inline-flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> automação ativa
+            </span>
+          </div>
+
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+              <div class="text-[10px] sm:text-[11px] text-slate-500 leading-snug">Nunca mais deixe cliente sem resposta</div>
+              <div class="text-lg font-black text-slate-900 mt-1">54s</div>
+            </div>
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+              <div class="text-[10px] sm:text-[11px] text-slate-500 leading-snug">Responda automaticamente 24h</div>
+              <div class="text-lg font-black text-slate-900 mt-1">7</div>
+            </div>
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+              <div class="text-[10px] sm:text-[11px] text-slate-500 leading-snug">Veja exatamente onde perde clientes</div>
+              <div class="text-lg font-black text-slate-900 mt-1">23</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="mt-3 text-center text-xs text-slate-500">Simulação animada de conversa ao vivo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 2. PROBLEMA -->
+<section id="problema" class="py-10 sm:py-14 rounded-[32px] bg-slate-50 border border-slate-100 px-4 sm:px-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+    <div class="max-w-xl">
+      <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">O problema não é falta de leads. É falta de resposta.</h2>
+      <p class="mt-3 text-slate-600 leading-relaxed">
+        Você já recebe mensagens todos os dias.<br>
+        O problema é que não responde a tempo — e o cliente compra de outro.
+      </p>
+      <p class="mt-3 text-slate-600 leading-relaxed">
+        O ZapAction resolve isso automaticamente.
+      </p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+        <div class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
+          <i class="fas fa-stopwatch"></i>
+        </div>
+        <div class="font-semibold text-slate-900">Você demora para responder</div>
+        <p class="mt-1 text-sm text-slate-600">O cliente chama — e fecha com outro em minutos.</p>
+      </div>
+      <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+        <div class="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mb-3">
+          <i class="fas fa-user-slash"></i>
+        </div>
+        <div class="font-semibold text-slate-900">Você perde clientes sem perceber</div>
+        <p class="mt-1 text-sm text-slate-600">Conversas somem e oportunidades nunca voltam.</p>
+      </div>
+      <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+        <div class="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center mb-3">
+          <i class="fas fa-people-arrows"></i>
+        </div>
+        <div class="font-semibold text-slate-900">Seu atendimento vira bagunça</div>
+        <p class="mt-1 text-sm text-slate-600">Ninguém sabe quem respondeu — e o cliente fica esperando.</p>
+      </div>
+      <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+        <div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mb-3">
+          <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="font-semibold text-slate-900">Você não sabe onde está perdendo dinheiro</div>
+        <p class="mt-1 text-sm text-slate-600">Sem dados, você continua errando sem perceber.</p>
+      </div>
+    </div>
+  </div>
+  <div class="mt-4 max-w-3xl">
+    <p class="text-slate-700 font-semibold leading-relaxed">
+      Com o ZapAction, tudo isso é resolvido automaticamente.
+    </p>
+    <p class="mt-2 text-slate-600 leading-relaxed">
+      Respostas rápidas, atendimento organizado e total controle das conversas.
+    </p>
+  </div>
+</section>
+
+<!-- Organização do atendimento (scroll reveal) -->
+<section id="organizacao" class="mt-10 sm:mt-14">
+  <div class="reveal grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+    <div class="max-w-xl">
+      <div class="text-[12px] uppercase tracking-wider text-slate-500 font-semibold">Organização de atendimento</div>
+      <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Do caos no WhatsApp ao atendimento organizado</h2>
+      <p class="mt-2 text-base sm:text-lg text-slate-700 font-medium leading-snug">
+        Cada mensagem segue um fluxo automático — do primeiro contato até o atendimento certo.
+      </p>
+      <p class="mt-3 text-slate-600 leading-relaxed">
+        O cliente chama, o chatbot responde na hora, entende o que ele precisa e direciona automaticamente para o setor correto — com responsável definido e histórico completo.
+      </p>
+      <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+          <div class="text-slate-900 font-semibold">Cada setor no seu lugar</div>
+          <div class="text-sm text-slate-600 mt-1">Vendas, suporte e financeiro separados — sem mistura e sem confusão.</div>
+        </div>
+        <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+          <div class="text-slate-900 font-semibold">Cada atendimento com responsável</div>
+          <div class="text-sm text-slate-600 mt-1">Saiba exatamente quem está cuidando de cada cliente</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="relative">
+      <div class="absolute -inset-2 rounded-[28px] bg-gradient-to-tr from-indigo-500/10 via-emerald-500/10 to-sky-500/10 blur-2xl"></div>
+      <div class="relative rounded-[28px] bg-white border border-slate-200 p-4 sm:p-6 overflow-hidden shadow-sm">
+        <p class="text-center text-[11px] sm:text-xs text-slate-500 mb-3">Demonstração: o chatbot separa cada pedido nas abas certas.</p>
+
+        <div id="org-sort-demo" class="relative min-h-[300px] sm:min-h-[280px]">
+          <div class="flex justify-center gap-2 sm:gap-4 mb-1 max-w-md mx-auto" id="org-sort-tabs">
+            <div class="org-sort-tab flex-1 min-w-0 max-w-[140px] sm:max-w-none rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-2 py-3 sm:px-4 sm:py-3.5 text-center transition-all duration-300 min-h-[52px] flex flex-col items-center justify-center" data-tab="vendas">
+              <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-slate-400">Vendas</div>
+              <div class="org-sort-check mt-1.5 mx-auto h-5 w-5 shrink-0 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center opacity-0 scale-50">✓</div>
+            </div>
+            <div class="org-sort-tab flex-1 min-w-0 max-w-[140px] sm:max-w-none rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-2 py-3 sm:px-4 sm:py-3.5 text-center transition-all duration-300 min-h-[52px] flex flex-col items-center justify-center" data-tab="suporte">
+              <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-slate-400">Suporte</div>
+              <div class="org-sort-check mt-1.5 mx-auto h-5 w-5 shrink-0 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center opacity-0 scale-50">✓</div>
+            </div>
+            <div class="org-sort-tab flex-1 min-w-0 max-w-[140px] sm:max-w-none rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-2 py-3 sm:px-4 sm:py-3.5 text-center transition-all duration-300 min-h-[52px] flex flex-col items-center justify-center" data-tab="financeiro">
+              <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-slate-400">Financeiro</div>
+              <div class="org-sort-check mt-1.5 mx-auto h-5 w-5 shrink-0 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center opacity-0 scale-50">✓</div>
+            </div>
+          </div>
+
+          <div class="relative h-[210px] sm:h-[200px] flex items-end justify-center" id="org-sort-stage">
+            <div id="org-sort-bubble" class="org-sort-bubble absolute z-20 pointer-events-none opacity-0 left-0 top-0">
+              <span class="org-sort-bubble-text block rounded-2xl border border-blue-200 bg-gradient-to-b from-white to-blue-50 px-3 py-2 text-xs font-bold text-blue-800 shadow-md shadow-blue-500/10">Vendas</span>
+            </div>
+
+            <svg id="org-robot-svg" class="relative z-10 w-[168px] h-[152px] sm:w-[200px] sm:h-[180px] drop-shadow-[0_12px_24px_rgba(15,23,42,0.12)]" viewBox="0 0 200 180" role="img" aria-label="Robô organizando atendimentos por setor">
+              <defs>
+                <linearGradient id="robotBody" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#60a5fa"/>
+                  <stop offset="100%" stop-color="#2563eb"/>
+                </linearGradient>
+                <linearGradient id="robotMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#e2e8f0"/>
+                  <stop offset="100%" stop-color="#94a3b8"/>
+                </linearGradient>
+                <filter id="robotSoft" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="b"/>
+                  <feOffset dx="0" dy="2" in="b" result="o"/>
+                  <feMerge><feMergeNode in="o"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <g class="org-robot-bob" style="transform-origin:100px 160px">
+                <ellipse cx="100" cy="158" rx="52" ry="10" fill="rgba(15,23,42,0.06)"/>
+                <g id="org-robot-arm-l" transform="translate(42, 108)">
+                  <rect x="-6" y="-4" width="28" height="12" rx="6" fill="url(#robotMetal)" stroke="#cbd5e1" stroke-width="1"/>
+                </g>
+                <g id="org-robot-arm-r" transform="translate(158, 108)">
+                  <rect x="-22" y="-4" width="28" height="12" rx="6" fill="url(#robotMetal)" stroke="#cbd5e1" stroke-width="1"/>
+                </g>
+                <rect x="48" y="72" width="104" height="88" rx="22" fill="url(#robotBody)" stroke="#1d4ed8" stroke-width="1.5" filter="url(#robotSoft)"/>
+                <rect x="62" y="88" width="76" height="44" rx="10" fill="rgba(255,255,255,0.2)"/>
+                <circle cx="82" cy="108" r="7" fill="white"/>
+                <circle cx="118" cy="108" r="7" fill="white"/>
+                <circle cx="84" cy="109" r="3" fill="#1e293b"/>
+                <circle cx="120" cy="109" r="3" fill="#1e293b"/>
+                <rect x="86" y="124" width="28" height="6" rx="3" fill="rgba(255,255,255,0.35)"/>
+                <rect x="88" y="20" width="24" height="44" rx="8" fill="url(#robotBody)" stroke="#1d4ed8" stroke-width="1.2"/>
+                <line x1="100" y1="20" x2="100" y2="8" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="100" cy="5" r="5" fill="#f472b6" stroke="#db2777" stroke-width="1"/>
+                <path d="M100 64 L92 72 L108 72 Z" fill="#93c5fd"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- 4. BENEFÍCIOS -->
+<section id="beneficios" class="py-10 sm:py-14 rounded-[32px] bg-slate-50 border border-slate-100 px-4 sm:px-6">
+  <div class="text-center max-w-2xl mx-auto">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Menos tempo perdido. Mais vendas fechadas.</h2>
+    <p class="mt-3 text-slate-600">Automatize o atendimento, responda mais rápido e transforme mais conversas em vendas.</p>
+  </div>
+  <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Nunca mais perca uma conversa</div>
+      <p class="mt-1 text-sm text-slate-600">Todas as mensagens em um só lugar, com alerta em tempo real.</p>
+    </div>
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Responda clientes automaticamente 24h</div>
+      <p class="mt-1 text-sm text-slate-600">Mesmo offline, seu cliente recebe resposta na hora.</p>
+    </div>
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Equipe organizada e sem confusão</div>
+      <p class="mt-1 text-sm text-slate-600">Cada atendimento com responsável definido e setores separados.</p>
+    </div>
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Tenha todo o histórico na mão</div>
+      <p class="mt-1 text-sm text-slate-600">Retome conversas e feche vendas com mais contexto.</p>
+    </div>
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Transforme mais conversas em vendas</div>
+      <p class="mt-1 text-sm text-slate-600">Responder rápido aumenta drasticamente o fechamento.</p>
+    </div>
+    <div class="reveal p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="font-semibold text-slate-900">Controle total do seu time e acessos</div>
+      <p class="mt-1 text-sm text-slate-600">Defina quem pode acessar e atender cada cliente.</p>
+    </div>
+  </div>
+</section>
+<!-- Flow Builder (destaque principal) -->
+<section id="flowbuilder" class="mt-10 sm:mt-14">
+  <div class="reveal rounded-[32px] border border-slate-200 bg-white p-6 sm:p-10 overflow-hidden relative shadow-sm">
+    <div class="absolute -top-32 right-0 w-[480px] h-[480px] bg-indigo-500/10 blur-3xl rounded-full"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start relative">
+      <div class="max-w-xl">
+        <div class="text-[12px] uppercase tracking-wider text-slate-500 font-semibold">Automação de WhatsApp</div>
+        <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Crie automações arrastando e conectando blocos</h2>
+        <p class="mt-2 text-base sm:text-lg text-slate-700 font-medium leading-snug">
+          Monte seu chatbot como um fluxo visual — sem código, sem complicação.
+        </p>
+        <p class="mt-4 text-slate-600 leading-relaxed">
+          Basta escolher o que você quer que o chatbot faça, arrastar o bloco para a tela e conectar com o próximo passo.
+        </p>
+        <p class="mt-3 text-slate-600 leading-relaxed">
+          Em poucos minutos, seu fluxo está pronto e funcionando.
+        </p>
+        <div class="mt-4 rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/95 via-white to-slate-50/80 px-4 py-4 sm:px-5 sm:py-4 shadow-sm ring-1 ring-emerald-500/10">
+          <p class="text-sm sm:text-base text-slate-800 leading-relaxed font-medium">
+            É tão simples quanto montar um Lego.
+          </p>
+        </div>
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Visual e fácil de entender</div>
+            <div class="text-sm text-slate-600 mt-1">Veja todo o fluxo do atendimento em um só lugar.</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Sem código, sem complicação</div>
+            <div class="text-sm text-slate-600 mt-1">Qualquer pessoa consegue criar automações.</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Controle total do atendimento</div>
+            <div class="text-sm text-slate-600 mt-1">Você decide cada passo da conversa.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="absolute -inset-2 rounded-[28px] bg-gradient-to-tr from-amber-500/10 via-emerald-500/10 to-indigo-500/10 blur-2xl"></div>
+        <div class="relative mx-auto max-w-[560px] lg:max-w-none">
+          {# Notebook + vídeo (arquivo: static/videos/flow-builder-demo.mp4 — comprimir com ffmpeg se precisar) #}
+          <div class="flow-laptop select-none">
+            <div class="rounded-t-[14px] border-x-2 border-t-2 border-slate-700 bg-gradient-to-b from-slate-700 to-slate-800 px-2 pt-2 pb-1.5 sm:px-3 sm:pt-2.5 shadow-[0_20px_40px_-12px_rgba(15,23,42,0.45)]">
+              <div class="flex items-center gap-1.5 px-1 pb-1.5">
+                <span class="h-2 w-2 rounded-full bg-red-500/90"></span>
+                <span class="h-2 w-2 rounded-full bg-amber-400/90"></span>
+                <span class="h-2 w-2 rounded-full bg-emerald-500/80"></span>
+              </div>
+              <div class="relative overflow-hidden rounded-md bg-slate-950 ring-1 ring-slate-600/60 aspect-video">
+                <video
+                  id="flow-builder-video"
+                  class="h-full w-full object-cover object-top pointer-events-none select-none"
+                  playsinline
+                  muted
+                  loop
+                  preload="none"
+                  disablepictureinpicture
+                  disableremoteplayback
+                  aria-hidden="true"
+                >
+                  <source src="{{ url_for('static', filename='videos/flow-builder-demo.mp4') }}" type="video/mp4">
+                </video>
+              </div>
+            </div>
+            <div class="relative z-10 mx-auto h-[10px] w-[78%] rounded-b-md border-x border-slate-800 bg-gradient-to-b from-slate-700 to-slate-800 shadow-inner"></div>
+            <div class="mx-auto -mt-px h-3 w-[92%] rounded-b-xl border border-t-0 border-slate-800/90 bg-gradient-to-b from-slate-800 to-slate-900 shadow-md"></div>
+          </div>
+          <p class="mt-4 text-center text-[11px] text-slate-500">Demonstração do Flow Builder — reprodução contínua, sem som.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. CTA FINAL -->
+<section id="cta-final" class="py-10 sm:py-14">
+  <div class="rounded-[32px] p-6 sm:p-8 relative overflow-hidden border border-slate-200 bg-white shadow-sm">
+    <div class="pointer-events-none absolute -bottom-24 -left-24 w-96 h-96 bg-gradient-to-tr from-emerald-500/18 via-indigo-500/12 to-fuchsia-500/14 blur-3xl rounded-full"></div>
+    <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+      <div class="max-w-xl">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Pare de perder clientes por demora no WhatsApp</h2>
+        <p class="mt-3 text-slate-600">Crie sua conta agora, conecte seu WhatsApp e veja seu atendimento funcionando em minutos.</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3 lg:justify-end">
+        <a href="{{ url_for('public.cadastro_get') }}" aria-label="Começar grátis agora na ZapAction" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-sm shadow-emerald-500/20">
+          Começar grátis agora
+          <i class="fas fa-arrow-right text-sm"></i>
+        </a>
+        <a href="{{ url_for('public.precos') }}" aria-label="Comparar planos e recursos da ZapAction" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-semibold transition border border-slate-200 shadow-sm">
+          Comparar planos
+          <i class="fas fa-tags text-sm"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. SOLUÇÃO — painel + dashboard (mock animado) -->
+<section id="solucao" class="py-10 sm:py-14">
+  <div class="bg-white border border-slate-200 rounded-[28px] p-6 sm:p-8 shadow-sm relative overflow-hidden">
+    <div class="pointer-events-none absolute -top-24 -right-24 w-80 h-80 bg-gradient-to-br from-indigo-500/22 via-emerald-500/10 to-fuchsia-500/18 blur-2xl rounded-full"></div>
+    <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div class="max-w-xl">
+        <div class="text-[12px] uppercase tracking-wider text-slate-500 font-semibold">Painel em tempo real</div>
+        <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Saiba exatamente onde você está perdendo vendas</h2>
+        <p class="mt-3 text-slate-600 leading-relaxed">
+          Veja em tempo real quem está atendendo, quem está parado e onde estão as filas — tudo atualizado enquanto sua equipe trabalha.
+        </p>
+        <p class="mt-3 text-slate-600 leading-relaxed">
+          Você para de adivinhar — e começa a agir com base no que realmente está acontecendo.
+        </p>
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Veja sua operação acontecendo ao vivo</div>
+            <div class="text-sm text-slate-600 mt-1">Saiba quem está online, atendendo e onde estão os gargalos.</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Descubra o que está funcionando (e o que não está)</div>
+            <div class="text-sm text-slate-600 mt-1">Analise tempo de resposta, volume e desempenho da equipe.</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+            <div class="text-slate-900 font-semibold">Reduza tempo de resposta</div>
+            <div class="text-sm text-slate-600 mt-1">Identifique atrasos e corrija antes de perder clientes.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div id="dashboard-demo" class="relative rounded-[28px] bg-slate-50 border border-slate-200 p-5 sm:p-6 overflow-hidden shadow-sm">
+          <div class="flex items-center justify-between gap-2 mb-4">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white text-xs font-black">A</span>
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-slate-800 truncate">Painel de atendimento</div>
+                <div class="text-[10px] text-slate-500">Hoje · todos os canais</div>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ao vivo
+            </span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-5">
+            <div class="rounded-xl bg-white border border-slate-200 p-3 shadow-sm">
+              <div class="text-[10px] text-slate-500">Em atendimento</div>
+              <div class="mt-1 text-lg font-black text-slate-900 tabular-nums">12</div>
+            </div>
+            <div class="rounded-xl bg-white border border-slate-200 p-3 shadow-sm">
+              <div class="text-[10px] text-slate-500">Tempo médio</div>
+              <div class="mt-1 text-lg font-black text-blue-700 tabular-nums">2m</div>
+            </div>
+            <div class="rounded-xl bg-white border border-slate-200 p-3 shadow-sm">
+              <div class="text-[10px] text-slate-500">Resolvidos</div>
+              <div class="mt-1 text-lg font-black text-emerald-700 tabular-nums">48</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] font-semibold text-slate-700">Volume (7 dias)</span>
+                <span class="text-[10px] text-slate-400">msgs</span>
+              </div>
+              <div class="flex h-[100px] items-end justify-between gap-1 px-0.5">
+                <div class="dash-bar-pulse h-[35%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+                <div class="dash-bar-pulse h-[55%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+                <div class="dash-bar-pulse h-[45%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+                <div class="dash-bar-pulse h-[70%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+                <div class="dash-bar-pulse h-[62%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+                <div class="dash-bar-pulse h-[88%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-indigo-600 to-sky-500"></div>
+                <div class="dash-bar-pulse h-[78%] w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-blue-700 to-blue-500"></div>
+              </div>
+            </div>
+            <div class="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[11px] font-semibold text-slate-700">Tendência</span>
+                <span class="text-[10px] font-bold text-emerald-600">+18%</span>
+              </div>
+              <svg class="w-full h-[100px]" viewBox="0 0 240 90" preserveAspectRatio="none" role="img" aria-label="Gráfico de tendência de crescimento">
+                <defs>
+                  <linearGradient id="dashAreaSolucao" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(37,99,235,0.25)"/>
+                    <stop offset="100%" stop-color="rgba(37,99,235,0)"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0,75 L40,62 L80,68 L120,45 L160,52 L200,28 L240,35 L240,90 L0,90 Z" fill="url(#dashAreaSolucao)"/>
+                <path id="dash-trend-path" class="dash-trend-line" d="M0,75 L40,62 L80,68 L120,45 L160,52 L200,28 L240,35" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <p class="mt-4 text-center text-[10px] text-slate-400">Ilustração animada — seu painel mostra os dados reais da operação.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. DEMONSTRAÇÃO / MOCKUP -->
+<section id="demo" class="py-10 sm:py-14">
+  <div class="bg-white border border-slate-200 rounded-[28px] p-6 sm:p-8 text-slate-900 overflow-hidden relative shadow-sm">
+    <div class="pointer-events-none absolute -top-24 -left-24 w-96 h-96 bg-gradient-to-br from-blue-100/80 via-indigo-50 to-emerald-50 blur-3xl rounded-full"></div>
+    <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+      <div class="max-w-xl">
+        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Veja o produto em ação</h2>
+        <p class="mt-3 text-slate-600">Um painel para todos os canais, com automação e colaboração da equipe.</p>
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <a href="{{ url_for('public.cadastro_get') }}" aria-label="Criar conta para testar a ZapAction" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/20">
+            Criar conta e começar
+            <i class="fas fa-arrow-right text-sm"></i>
+          </a>
+          <a href="{{ url_for('public.precos') }}" aria-label="Ver preços e recursos disponíveis" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-800 font-semibold hover:bg-slate-50 transition shadow-sm">
+            Ver preços e planos
+            <i class="fas fa-tags text-sm"></i>
+          </a>
+        </div>
+      </div>
+      {# aspect-video e max-w arbitrários não estão no tailwind.css compilado — usar estilos inline para o ecrã ter altura #}
+      <div class="flex justify-center lg:justify-end">
+        <div class="w-full max-w-xl">
+          <div class="relative">
+            <div class="rounded-t-2xl bg-gradient-to-b from-slate-700 to-slate-800 p-2 pb-0 shadow-xl ring-1 ring-slate-700/70">
+              <div class="relative w-full overflow-hidden rounded-t-lg bg-black ring-1 ring-black/50"
+                   style="aspect-ratio:16/9;min-height:180px">
+                <video
+                  id="demo-product-video"
+                  class="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+                  playsinline
+                  muted
+                  loop
+                  preload="none"
+                  disablepictureinpicture
+                  disableremoteplayback
+                  aria-hidden="true"
+                >
+                  <source src="{{ url_for('static', filename='landing/videos/chat.mp4') }}" type="video/mp4" />
+                </video>
+                <span class="pointer-events-none absolute left-1/2 top-2 z-10 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-slate-800 ring-1 ring-slate-600/60" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="mx-[7%] h-2 rounded-b-sm bg-gradient-to-b from-slate-600 to-slate-700 shadow-inner"></div>
+            <div class="relative mx-[1%] h-3 rounded-b-xl bg-gradient-to-b from-slate-700 to-slate-900 border-t border-slate-600/40 shadow-md"></div>
+            <div class="mx-auto mt-0.5 h-1 w-20 rounded-full bg-slate-400/35"></div>
+          </div>
+          <p class="mt-3 text-center text-[11px] text-slate-500">Demonstração em loop — vídeo só carrega ao rolar até aqui.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. PLANOS -->
+<section id="planos" class="py-10 sm:py-14 rounded-[32px] bg-slate-50 border border-slate-100 px-4 sm:px-6">
+  <div class="text-center max-w-2xl mx-auto">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Planos para crescer</h2>
+    <p class="mt-3 text-slate-600">Comece no trial e ative a assinatura quando estiver pronto.</p>
+  </div>
+
+  {% set _plans = plans if plans is defined and plans else [] %}
+
+  {% if _plans|length > 0 %}
+  <div class="mt-10 max-w-6xl mx-auto w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+    {% for p in _plans %}
+    {% set ent = p.entitlements_json if p.entitlements_json is mapping else {} %}
+    {% set is_featured = ent.get('featured', False) %}
+    {% set max_chatbots = ent.get('max_chatbots') %}
+    {% set max_sublogins_raw = ent.get('max_usuarios_internos') if ent.get('max_usuarios_internos') is not none else ent.get('max_operadores') %}
+    <div class="reveal {{ 'plan-featured plan-featured-hover' if is_featured else 'bg-white border border-slate-200 hover:shadow-md transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.01]' }} rounded-[28px] p-6 sm:p-7 shadow-sm flex flex-col h-full">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-xs font-bold {{ 'text-slate-200' if is_featured else 'text-slate-500' }} uppercase tracking-wide">Plano</div>
+          <h3 class="mt-1 text-xl font-extrabold {{ 'text-white' if is_featured else 'text-slate-900' }} truncate">{{ p.name or p.plan_key }}</h3>
+          <p class="mt-1 text-sm {{ 'text-slate-200' if is_featured else 'text-slate-600' }}">{{ (p.trial_days or 0) }} dias de teste</p>
+        </div>
+        <span class="text-xs px-2 py-1 rounded-full {{ 'bg-white/10 text-white border border-white/20' if is_featured else 'bg-slate-100 text-slate-700 border border-slate-200' }}">{{ p.currency or 'BRL' }}</span>
+      </div>
+      {% if is_featured %}
+      <div class="mt-3">
+        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+          <i class="fas fa-star text-[10px]"></i> Mais vantajoso
+        </span>
+      </div>
+      {% endif %}
+
+      <div class="mt-5 text-4xl font-extrabold {{ 'text-white' if is_featured else 'text-slate-900' }}">
+        R$ {{ ('%.2f'|format((p.price or 0)|float)).replace('.', ',') }}
+        <span class="text-sm font-semibold {{ 'text-slate-200' if is_featured else 'text-slate-500' }}">/mês</span>
+      </div>
+
+      <ul class="mt-5 space-y-2 text-sm {{ 'text-slate-100' if is_featured else 'text-slate-600' }} flex-1">
+        {% if ent.get('whatsapp', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> WhatsApp</li>{% endif %}
+        {% if ent.get('instagram', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Instagram</li>{% endif %}
+        {% if ent.get('messenger', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Messenger</li>{% endif %}
+        {% if ent.get('site', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Chat no site</li>{% endif %}
+        {% if ent.get('chatbots', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Chatbots: {{ max_chatbots if max_chatbots is not none else 'Ilimitado' }}</li>{% endif %}
+        {% if ent.get('usuarios_setores', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Sub-logins: {{ max_sublogins_raw if max_sublogins_raw is not none else 'Ilimitado' }}</li>{% endif %}
+        {% if ent.get('exports', True) %}<li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Exportações</li>{% endif %}
+      </ul>
+
+      <a href="{{ url_for('public.cadastro_get') }}?plano={{ p.plan_key }}" aria-label="Selecionar o plano {{ p.name or p.plan_key }} e iniciar teste" class="mt-6 inline-flex w-full min-h-[48px] items-center justify-center gap-2 px-5 py-3.5 rounded-2xl {{ 'plan-featured-cta' if is_featured else 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-500/20' }} font-semibold transition">
+        Começar teste
+        <i class="fas fa-arrow-right text-sm"></i>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="mt-10 max-w-6xl mx-auto w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+    {% set fallback = [
+      {'name': 'Básico', 'price': 'R$ 97', 'desc': 'Para começar e organizar o atendimento.'},
+      {'name': 'Profissional', 'price': 'R$ 197', 'desc': 'Para equipes vendendo todos os dias no WhatsApp.'},
+      {'name': 'Avançado', 'price': 'R$ 397', 'desc': 'Para operação com automação e escala.'},
+    ] %}
+    {% for f in fallback %}
+    <div class="reveal bg-white border border-slate-200 rounded-[28px] p-6 sm:p-7 shadow-sm hover:shadow-md transition flex flex-col h-full">
+      <div class="text-xs font-bold text-slate-500 uppercase tracking-wide">Plano</div>
+      <h3 class="mt-1 text-xl font-extrabold text-slate-900">{{ f.name }}</h3>
+      <p class="mt-1 text-sm text-slate-600">{{ f.desc }}</p>
+      <div class="mt-5 text-4xl font-extrabold text-slate-900">{{ f.price }}<span class="text-sm font-semibold text-slate-500">/mês</span></div>
+      <ul class="mt-5 space-y-2 text-sm text-slate-600 flex-1">
+        <li class="flex items-center gap-2"><i class="fas fa-check text-emerald-600"></i> Multicanal</li>
+        <li class="flex items-center gap-2"><i class="fas fa-check text-emerald-600"></i> Histórico</li>
+        <li class="flex items-center gap-2"><i class="fas fa-check text-emerald-600"></i> Equipe</li>
+      </ul>
+      <a href="{{ url_for('public.cadastro_get') }}" aria-label="Criar conta e começar teste da ZapAction" class="mt-6 inline-flex w-full min-h-[48px] items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-sm shadow-emerald-500/20">
+        Começar teste
+        <i class="fas fa-arrow-right text-sm"></i>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="mt-8 text-center text-sm text-slate-600">
+    Já tem conta? <a class="font-semibold text-blue-700 underline decoration-slate-300 hover:decoration-blue-500" href="{{ APP_BASE_URL }}/login">Entrar</a>
+  </div>
+</section>
+
+<!-- 7. PROVA SOCIAL -->
+<section id="prova-social" class="py-10 sm:py-14">
+  <div class="text-center max-w-2xl mx-auto">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Times pequenos fechando como grandes</h2>
+  </div>
+  <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="reveal p-6 rounded-[28px] bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="text-sm text-slate-600 leading-relaxed">“A fila unificada salvou nosso WhatsApp. O chatbot segura o básico e o time fecha os pedidos.”</div>
+      <div class="mt-5 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">M</div>
+        <div class="min-w-0">
+          <div class="font-semibold text-slate-900">Marina Alves</div>
+          <div class="text-xs text-slate-500">Moda feminina · Loja online</div>
+        </div>
+      </div>
+    </div>
+    <div class="reveal p-6 rounded-[28px] bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="text-sm text-slate-600 leading-relaxed">“Antes a equipe se atropelava. Agora cada conversa tem responsável e setor. Virou processo.”</div>
+      <div class="mt-5 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">R</div>
+        <div class="min-w-0">
+          <div class="font-semibold text-slate-900">Rafael Souza</div>
+          <div class="text-xs text-slate-500">Assistência técnica · 6 atendentes</div>
+        </div>
+      </div>
+    </div>
+    <div class="reveal p-6 rounded-[28px] bg-white border border-slate-200 shadow-sm hover:shadow-md transition">
+      <div class="text-sm text-slate-600 leading-relaxed">“O Flow Builder nos ajudou a qualificar lead antes do humano. Reduziu tempo e aumentou conversão.”</div>
+      <div class="mt-5 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-fuchsia-100 text-fuchsia-700 flex items-center justify-center font-bold">C</div>
+        <div class="min-w-0">
+          <div class="font-semibold text-slate-900">Carla Mendes</div>
+          <div class="text-xs text-slate-500">Clínica · Agendamentos no WhatsApp</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 9. FAQ -->
+<section id="faq" class="py-10 sm:py-14 rounded-[32px] bg-slate-50 border border-slate-100 px-4 sm:px-6">
+  <div class="text-center max-w-2xl mx-auto">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">FAQ</h2>
+    <p class="mt-3 text-slate-600">Respostas rápidas para as dúvidas mais comuns.</p>
+  </div>
+  <div class="mt-8 max-w-3xl mx-auto space-y-3">
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">O ZapAction é oficial do WhatsApp?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <div class="mt-3 text-sm text-slate-600 space-y-2">
+        <p>Não. O ZapAction é uma plataforma independente de automação de atendimento.</p>
+        <p>Não somos afiliados, associados ou endossados pelo WhatsApp ou pela Meta.</p>
+      </div>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Como o ZapAction funciona?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <div class="mt-3 text-sm text-slate-600">
+        <p>O ZapAction conecta seu WhatsApp a uma plataforma de atendimento onde você pode:</p>
+        <ul class="mt-2 ml-4 list-disc space-y-1">
+          <li>Criar automações e respostas automáticas</li>
+          <li>Organizar múltiplos atendentes</li>
+          <li>Gerenciar conversas em um só lugar</li>
+        </ul>
+      </div>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Preciso da API oficial do WhatsApp?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Não necessariamente. O ZapAction oferece formas práticas de conexão para facilitar o uso por empresas, sem necessidade de processos complexos.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Posso usar com equipe?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Sim. Você pode adicionar múltiplos atendentes e organizar o atendimento de forma profissional dentro da plataforma.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">O ZapAction envia mensagens automáticas?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Sim, é possível configurar mensagens automáticas e fluxos de atendimento, sempre respeitando boas práticas para uso do WhatsApp.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Existe risco de bloqueio no WhatsApp?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <div class="mt-3 text-sm text-slate-600 space-y-2">
+        <p>Como em qualquer uso da plataforma, o WhatsApp possui políticas próprias.</p>
+        <p>O uso responsável e dentro das boas práticas reduz significativamente riscos.</p>
+      </div>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Para quem o ZapAction é indicado?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <div class="mt-3 text-sm text-slate-600">
+        <p>Para empresas que desejam:</p>
+        <ul class="mt-2 ml-4 list-disc space-y-1">
+          <li>Automatizar atendimento</li>
+          <li>Organizar conversas</li>
+          <li>Aumentar vendas pelo WhatsApp</li>
+        </ul>
+      </div>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Preciso instalar algo?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Não. O ZapAction funciona online, direto no navegador.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Tem teste grátis?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Sim, você pode testar a plataforma gratuitamente antes de contratar.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Como funciona o pagamento?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Usamos gateway de pagamentos seguro do Mercado Pago que cobra como assinatura de forma recorrente; não salvamos dados de pagamento em nossa plataforma.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">Meus dados estão seguros?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Sim. Utilizamos boas práticas de segurança para proteger as informações dos usuários.</p>
+    </details>
+  </div>
+</section>
+
+<p class="text-center text-slate-500 text-xs pt-6">
+  ZapAction é uma plataforma da Up Digital Brasil. Conecte seus canais em <strong>Conexões</strong> e ative o chatbot no painel.
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  // Typewriter (título)
+  var target = document.getElementById("typewriter");
+  var caret = document.getElementById("tw-caret");
+  if (target) {
+    var phrases = [
+      "Pare de perder vendas.",
+      "Respostas automáticas 24h.",
+      "Mais vendas no WhatsApp.",
+      "Veja onde perde dinheiro.",
+    ];
+    var pIdx = 0;
+    var charIdx = 0;
+    var deleting = false;
+    function tick() {
+      var text = phrases[pIdx] || "";
+      if (!deleting) {
+        charIdx = Math.min(text.length, charIdx + 1);
+      } else {
+        charIdx = Math.max(0, charIdx - 1);
+      }
+      target.textContent = text.slice(0, charIdx);
+      if (!deleting && charIdx >= text.length) {
+        deleting = true;
+        setTimeout(tick, 1300);
+        return;
+      }
+      if (deleting && charIdx <= 0) {
+        deleting = false;
+        pIdx = (pIdx + 1) % phrases.length;
+        setTimeout(tick, 420);
+        return;
+      }
+      // Mais lento e “premium”
+      setTimeout(tick, deleting ? 42 : 58);
+    }
+    tick();
+    if (caret) {
+      setInterval(function() {
+        caret.style.opacity = caret.style.opacity === "0" ? "1" : "0";
+      }, 650);
+    }
+  }
+
+  // Scroll suave para âncoras
+  document.querySelectorAll('[data-scroll]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      var href = a.getAttribute('href') || '';
+      if (!href.startsWith('#')) return;
+      var el = document.querySelector(href);
+      if (!el) return;
+      e.preventDefault();
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      history.replaceState({}, '', href);
+    });
+  });
+
+  // Reveal on scroll (leve, sem libs)
+  var items = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+  items.forEach(function(el) {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(12px)';
+    el.style.transition = 'opacity 600ms ease, transform 600ms ease';
+  });
+  var io = new IntersectionObserver(function(entries) {
+    entries.forEach(function(en) {
+      if (!en.isIntersecting) return;
+      en.target.style.opacity = '1';
+      en.target.style.transform = 'translateY(0)';
+      io.unobserve(en.target);
+    });
+  }, { threshold: 0.12 });
+  items.forEach(function(el) { io.observe(el); });
+
+  // Chat mock animado (mensagens sobem + "Chatbot digitando...")
+  var chat = document.getElementById("chat-window");
+  if (chat) {
+    var messages = [
+      { from: "user", channel: "WhatsApp", text: "Oi! Tem entrega hoje?" },
+      { from: "bot", channel: "Chatbot", text: "Temos sim. Qual bairro e qual item?" },
+      { from: "user", channel: "WhatsApp", text: "Centro. Quero 2 unidades." },
+      { from: "bot", channel: "Chatbot", text: "Perfeito. Fecho agora e te envio o link de pagamento. Pode ser?" },
+    ];
+    function bubbleHTML(m) {
+      var isUser = m.from === "user";
+      var left = isUser
+        ? "<div class='w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-700 flex items-center justify-center text-[10px] font-bold'>C</div>"
+        : "";
+      var right = !isUser
+        ? "<div class='w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shadow-sm'>BOT</div>"
+        : "";
+      var bubbleCls = isUser
+        ? "bg-slate-100 border border-slate-200 text-slate-700"
+        : "bg-blue-600 text-white shadow-sm shadow-blue-600/20";
+      var wrapCls = isUser ? "justify-start" : "justify-end";
+      return (
+        "<div class='chat-line flex items-end gap-2 " + wrapCls + " opacity-0 translate-y-4'>" +
+          left +
+          "<div class='max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-snug " + bubbleCls + "'>" +
+            "<div class='text-[10px] opacity-70 mb-1'>" + m.channel + "</div>" +
+            "<div>" + m.text + "</div>" +
+          "</div>" +
+          right +
+        "</div>"
+      );
+    }
+    function typingHTML() {
+      return (
+        "<div id='typing' class='chat-line flex items-end gap-2 justify-end opacity-0 translate-y-4'>" +
+          "<div class='max-w-[85%] px-4 py-2.5 rounded-2xl text-sm bg-blue-50 border border-blue-100 text-slate-800'>" +
+            "<div class='text-[10px] opacity-70 mb-1'>Chatbot digitando…</div>" +
+            "<div class='flex items-center gap-1'>" +
+              "<span class='w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse'></span>" +
+              "<span class='w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse' style='animation-delay:120ms'></span>" +
+              "<span class='w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse' style='animation-delay:240ms'></span>" +
+            "</div>" +
+          "</div>" +
+          "<div class='w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shadow-sm'>BOT</div>" +
+        "</div>"
+      );
+    }
+    function animateIn(el) {
+      requestAnimationFrame(function() {
+        el.style.transition = "opacity 520ms ease, transform 520ms ease";
+        el.style.opacity = "1";
+        el.style.transform = "translateY(0)";
+      });
+    }
+    function push(m, delayMs) {
+      setTimeout(function() {
+        var div = document.createElement("div");
+        div.innerHTML = bubbleHTML(m);
+        var node = div.firstChild;
+        chat.appendChild(node);
+        animateIn(node);
+        chat.scrollTop = chat.scrollHeight;
+      }, delayMs);
+    }
+    var t = 300;
+    // primeira msg
+    push(messages[0], t); t += 900;
+    // typing
+    setTimeout(function() {
+      var div = document.createElement("div");
+      div.innerHTML = typingHTML();
+      var node = div.firstChild;
+      chat.appendChild(node);
+      animateIn(node);
+      chat.scrollTop = chat.scrollHeight;
+    }, t);
+    t += 800;
+    setTimeout(function() {
+      var typing = document.getElementById("typing");
+      if (typing) typing.remove();
+      push(messages[1], 0);
+    }, t);
+    t += 900;
+    push(messages[2], t); t += 1000;
+    setTimeout(function() {
+      var div = document.createElement("div");
+      div.innerHTML = typingHTML();
+      var node = div.firstChild;
+      chat.appendChild(node);
+      animateIn(node);
+      chat.scrollTop = chat.scrollHeight;
+    }, t);
+    t += 900;
+    setTimeout(function() {
+      var typing2 = document.getElementById("typing");
+      if (typing2) typing2.remove();
+      push(messages[3], 0);
+    }, t);
+  }
+
+  // Animação das linhas (SVG) ao revelar seções
+  function dashAnimate(id, durationMs) {
+    var p = document.getElementById(id);
+    if (!p) return;
+    var ms = typeof durationMs === "number" ? durationMs : 900;
+    try {
+      var len = p.getTotalLength();
+      p.style.strokeDasharray = String(len);
+      p.style.strokeDashoffset = String(len);
+      p.getBoundingClientRect();
+      p.style.transition = "stroke-dashoffset " + ms + "ms cubic-bezier(0.4, 0, 0.2, 1)";
+      p.style.strokeDashoffset = "0";
+    } catch (e) {}
+  }
+  // Vídeo do Flow Builder: preload=none no HTML; só baixa/reproduz quando a seção entra na tela; loop infinito; sem controles.
+  (function flowBuilderVideo() {
+    var v = document.getElementById("flow-builder-video");
+    var sec = document.getElementById("flowbuilder");
+    if (!v || !sec) return;
+    var reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    if (reduce) {
+      try { v.pause(); } catch (e2) {}
+      var srcEl = v.querySelector("source");
+      if (srcEl) srcEl.removeAttribute("src");
+      return;
+    }
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (!en.isIntersecting) {
+          try { v.pause(); } catch (e3) {}
+          return;
+        }
+        v.play().catch(function() {});
+      });
+    }, { threshold: 0.12, rootMargin: "80px 0px" });
+    io.observe(sec);
+  })();
+
+  // Vídeo "Veja o produto em ação": leve (preload none), loop ao visível, sem controlos.
+  (function demoProductVideo() {
+    var v = document.getElementById("demo-product-video");
+    var sec = document.getElementById("demo");
+    if (!v || !sec) return;
+    var reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    if (reduce) {
+      try { v.pause(); } catch (e2) {}
+      var srcEl = v.querySelector("source");
+      if (srcEl) srcEl.removeAttribute("src");
+      try { v.load(); } catch (e3) {}
+      return;
+    }
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (!en.isIntersecting) {
+          try { v.pause(); } catch (e4) {}
+          return;
+        }
+        v.play().catch(function() {});
+      });
+    }, { threshold: 0.12, rootMargin: "80px 0px" });
+    io.observe(sec);
+  })();
+
+  var solucaoSec = document.getElementById("solucao");
+  if (solucaoSec) {
+    var dashSolucaoPlayed = false;
+    var solucaoIo = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (!en.isIntersecting || dashSolucaoPlayed) return;
+        var rm = false;
+        try { rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+        if (!rm) dashAnimate("dash-trend-path", 1100);
+        dashSolucaoPlayed = true;
+        solucaoIo.disconnect();
+      });
+    }, { threshold: 0.2 });
+    solucaoIo.observe(solucaoSec);
+  }
+
+  // Demo "conectar nós" (somente a conexão entre duas caixas)
+  (function connectNodesDemo() {
+    var canvas = document.getElementById("connect-canvas");
+    if (!canvas) return;
+    var svg = document.getElementById("connect-svg");
+    var path1 = document.getElementById("connect-path-1");
+    var startOut = canvas.querySelector('[data-handle="start_out"]');
+    var msgIn = canvas.querySelector('[data-handle="msg_in"]');
+    if (!svg || !path1 || !startOut || !msgIn) return;
+
+    function centerOf(el) {
+      var r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    function rel(el) {
+      var box = svg.getBoundingClientRect();
+      var c = centerOf(el);
+      return { x: c.x - box.left, y: c.y - box.top };
+    }
+
+    function syncSvgViewport() {
+      var w = svg.clientWidth || 1;
+      var h = svg.clientHeight || 1;
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+      return { w: w, h: h };
+    }
+
+    function setBezier(pathEl, a, b) {
+      if (!pathEl) return;
+      var dx = Math.max(36, Math.min(120, Math.abs(b.x - a.x) * 0.35));
+      var c1x = a.x + dx;
+      var c1y = a.y;
+      var c2x = b.x - dx;
+      var c2y = b.y;
+      pathEl.setAttribute("d", "M " + a.x.toFixed(1) + " " + a.y.toFixed(1) + " C " + c1x.toFixed(1) + " " + c1y.toFixed(1) + ", " + c2x.toFixed(1) + " " + c2y.toFixed(1) + ", " + b.x.toFixed(1) + " " + b.y.toFixed(1));
+    }
+
+    function layoutPaths() {
+      syncSvgViewport();
+      var p1a = rel(startOut), p1b = rel(msgIn);
+      setBezier(path1, p1a, p1b);
+    }
+
+    function animateOnce() {
+      layoutPaths();
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          dashAnimate("connect-path-1", 1100);
+        });
+      });
+    }
+
+    var played = false;
+    function startLoop() {
+      if (played) return;
+      played = true;
+      layoutPaths();
+      requestAnimationFrame(function(){ layoutPaths(); });
+      setTimeout(function(){ layoutPaths(); }, 60);
+      animateOnce();
+      setInterval(animateOnce, 4200);
+    }
+
+    function isInViewport(el) {
+      var r = el.getBoundingClientRect();
+      var vTop = 0;
+      var vBottom = window.innerHeight || document.documentElement.clientHeight;
+      return r.bottom > vTop && r.top < vBottom;
+    }
+
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (!en.isIntersecting) return;
+        startLoop();
+      });
+    }, { threshold: 0.15 });
+    io.observe(canvas);
+
+    // Fallback: se já estiver visível no carregamento, inicia sem depender do IntersectionObserver.
+    window.setTimeout(function() {
+      if (!played && isInViewport(canvas)) startLoop();
+    }, 350);
+
+    var resizeT;
+    window.addEventListener("resize", function() {
+      clearTimeout(resizeT);
+      resizeT = setTimeout(function() { layoutPaths(); }, 80);
+    });
+  })();
+
+  // Robô + balões → abas (organização de atendimento)
+  (function orgSortDemo() {
+    var demo = document.getElementById("org-sort-demo");
+    var stage = document.getElementById("org-sort-stage");
+    var bubble = document.getElementById("org-sort-bubble");
+    if (!demo || !stage || !bubble) return;
+    var textEl = bubble.querySelector(".org-sort-bubble-text");
+    if (!textEl) return;
+
+    var steps = [
+      { tab: "vendas", label: "Vendas" },
+      { tab: "suporte", label: "Suporte" },
+      { tab: "financeiro", label: "Financeiro" }
+    ];
+
+    var reduceMotion = false;
+    try {
+      reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (e) {}
+
+    var scheduled = null;
+    var stepIndex = 0;
+    var running = false;
+
+    function clearTabs() {
+      demo.querySelectorAll(".org-sort-tab").forEach(function(t) {
+        t.classList.remove("border-emerald-400", "bg-emerald-50", "border-solid");
+        t.classList.add("border-dashed", "border-slate-200", "bg-slate-50/80");
+        var chk = t.querySelector(".org-sort-check");
+        if (chk) {
+          chk.style.opacity = "0";
+          chk.style.transform = "scale(0.5)";
+        }
+      });
+    }
+
+    function tabCenter(tabEl, stageRect) {
+      var tr = tabEl.getBoundingClientRect();
+      return {
+        left: tr.left + tr.width / 2 - stageRect.left,
+        top: tr.top + tr.height / 2 - stageRect.top
+      };
+    }
+
+    function bubbleDims() {
+      var r = bubble.getBoundingClientRect();
+      return { w: r.width || 72, h: r.height || 34 };
+    }
+
+    function startHand(stageRect) {
+      return {
+        left: stageRect.width * 0.52 + 6,
+        top: stageRect.height - 118
+      };
+    }
+
+    function playNext() {
+      if (reduceMotion) return;
+      var step = steps[stepIndex];
+      var tabEl = demo.querySelector('.org-sort-tab[data-tab="' + step.tab + '"]');
+      if (!tabEl) return;
+
+      textEl.textContent = step.label;
+      try { void bubble.offsetWidth; } catch (e) {}
+
+      var sr = stage.getBoundingClientRect();
+      var sp = startHand(sr);
+      var dims = bubbleDims();
+
+      bubble.style.transition = "none";
+      bubble.style.opacity = "0";
+      bubble.style.left = (sp.left - dims.w / 2) + "px";
+      bubble.style.top = (sp.top - dims.h / 2) + "px";
+
+      requestAnimationFrame(function() {
+        bubble.style.transition = reduceMotion ? "none" : "opacity 0.35s ease";
+        bubble.style.opacity = "1";
+      });
+
+      var moveDelay = reduceMotion ? 0 : 420;
+      setTimeout(function() {
+        var sr2 = stage.getBoundingClientRect();
+        var tc = tabCenter(tabEl, sr2);
+        dims = bubbleDims();
+        bubble.style.transition = reduceMotion ? "none" : "left 0.92s cubic-bezier(0.4,0,0.2,1), top 0.92s cubic-bezier(0.4,0,0.2,1)";
+        bubble.style.left = (tc.left - dims.w / 2) + "px";
+        bubble.style.top = (tc.top - dims.h / 2) + "px";
+      }, moveDelay);
+
+      setTimeout(function() {
+        tabEl.classList.remove("border-dashed");
+        tabEl.classList.add("border-emerald-400", "bg-emerald-50", "border-solid");
+        var chk = tabEl.querySelector(".org-sort-check");
+        if (chk) {
+          chk.style.opacity = "1";
+          chk.style.transform = "scale(1)";
+        }
+        bubble.style.transition = reduceMotion ? "none" : "opacity 0.35s ease";
+        bubble.style.opacity = "0";
+      }, moveDelay + (reduceMotion ? 0 : 920));
+
+      stepIndex++;
+      var gap = reduceMotion ? 50 : 2000;
+      scheduled = setTimeout(function() {
+        if (stepIndex >= steps.length) {
+          clearTabs();
+          stepIndex = 0;
+          scheduled = setTimeout(playNext, reduceMotion ? 0 : 750);
+        } else {
+          playNext();
+        }
+      }, gap);
+    }
+
+    function startLoop() {
+      if (running) return;
+      running = true;
+      clearTabs();
+      stepIndex = 0;
+      if (scheduled) clearTimeout(scheduled);
+      scheduled = setTimeout(playNext, reduceMotion ? 0 : 350);
+    }
+
+    function stopLoop() {
+      running = false;
+      if (scheduled) clearTimeout(scheduled);
+      scheduled = null;
+      bubble.style.opacity = "0";
+    }
+
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (en.isIntersecting) startLoop();
+        else stopLoop();
+      });
+    }, { threshold: 0.2 });
+    io.observe(demo);
+
+    window.addEventListener("resize", function() {
+      if (!running) return;
+      clearTabs();
+      stepIndex = 0;
+      if (scheduled) clearTimeout(scheduled);
+      scheduled = setTimeout(playNext, 200);
+    });
+  })();
+})();
+</script>
+{% endblock %}

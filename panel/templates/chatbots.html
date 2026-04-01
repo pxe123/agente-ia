@@ -1,0 +1,168 @@
+{% extends "layout.html" %}
+{% block title %}Meus Chatbots{% endblock %}
+{% block page_title %}Meus Chatbots{% endblock %}
+{% block content %}
+<div class="p-6 lg:p-8 max-w-4xl mx-auto">
+    <p class="text-slate-500 text-sm mb-4">Crie chatbots e edite o fluxo de conversa de cada um. Cada chatbot pode ser usado em uma ou mais redes.</p>
+
+    <div id="chatbots-quota-banner" class="hidden mb-4 p-3 rounded-lg text-sm border"></div>
+
+    <a id="btn-criar-chatbot" href="{{ url_for('customer.chatbot_novo') }}" class="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors mb-8">
+        <i class="fas fa-plus"></i>
+        Criar chatbot
+    </a>
+
+    <div id="chatbots-list" class="space-y-4">
+        <p class="text-slate-400 text-sm">Carregando…</p>
+    </div>
+
+    <div id="chatbots-empty" class="hidden text-center py-12 px-4 bg-white rounded-xl border border-dashed border-slate-200">
+        <i class="fas fa-robot text-4xl text-slate-300 mb-4"></i>
+        <p class="text-slate-600 font-medium">Você ainda não tem chatbots</p>
+        <p id="empty-quota-msg" class="hidden text-amber-800 text-sm mt-2 mb-4 max-w-md mx-auto">
+            Seu plano não permite criar chatbots neste momento (limite atingido ou plano sem vagas). Ajuste o plano ou fale com o suporte.
+        </p>
+        <p id="empty-default-hint" class="text-slate-500 text-sm mt-1 mb-6">Crie o primeiro para começar a configurar o fluxo de conversa.</p>
+        <a id="empty-criar-cta" href="{{ url_for('customer.chatbot_novo') }}" class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors">
+            <i class="fas fa-plus"></i>
+            Criar seu primeiro chatbot
+        </a>
+    </div>
+</div>
+
+<script>
+(function() {
+    const listEl = document.getElementById('chatbots-list');
+    const emptyEl = document.getElementById('chatbots-empty');
+    const bannerEl = document.getElementById('chatbots-quota-banner');
+    const btnCriar = document.getElementById('btn-criar-chatbot');
+    const emptyCta = document.getElementById('empty-criar-cta');
+    const emptyQuotaMsg = document.getElementById('empty-quota-msg');
+    const emptyDefaultHint = document.getElementById('empty-default-hint');
+
+    function applyQuota(q, chatbotsLen) {
+        q = q || {};
+        var lim = q.limit;
+        var used = (q.used != null && q.used !== undefined) ? q.used : chatbotsLen;
+        var canCreate = q.can_create !== false;
+
+        if (bannerEl) {
+            if (lim != null && lim !== undefined) {
+                bannerEl.classList.remove('hidden');
+                if (canCreate) {
+                    bannerEl.className = 'mb-4 p-3 rounded-lg text-sm border bg-slate-50 border-slate-200 text-slate-700';
+                    var restam = lim - used;
+                    bannerEl.textContent = 'Plano: ' + used + ' de ' + lim + ' chatbot(s).' +
+                        (restam > 0 ? ' Você pode criar mais ' + restam + '.' : '');
+                } else {
+                    bannerEl.className = 'mb-4 p-3 rounded-lg text-sm border bg-amber-50 border-amber-200 text-amber-900';
+                    bannerEl.textContent = 'Limite do plano atingido (' + used + ' de ' + lim + ' chatbots). Para criar outro chatbot (e configurar o fluxo), exclua um existente ou faça upgrade do plano.';
+                }
+            } else {
+                bannerEl.classList.add('hidden');
+                bannerEl.textContent = '';
+            }
+        }
+        if (btnCriar) {
+            if (canCreate) {
+                btnCriar.classList.remove('pointer-events-none', 'opacity-50', 'cursor-not-allowed');
+                btnCriar.removeAttribute('aria-disabled');
+            } else {
+                btnCriar.classList.add('pointer-events-none', 'opacity-50', 'cursor-not-allowed');
+                btnCriar.setAttribute('aria-disabled', 'true');
+            }
+        }
+        if (emptyCta) {
+            if (canCreate) {
+                emptyCta.classList.remove('hidden');
+            } else {
+                emptyCta.classList.add('hidden');
+            }
+        }
+        if (emptyQuotaMsg) {
+            if (!canCreate && chatbotsLen === 0 && lim != null) {
+                emptyQuotaMsg.classList.remove('hidden');
+            } else {
+                emptyQuotaMsg.classList.add('hidden');
+            }
+        }
+        if (emptyDefaultHint) {
+            if (!canCreate && chatbotsLen === 0 && lim != null) {
+                emptyDefaultHint.classList.add('hidden');
+            } else {
+                emptyDefaultHint.classList.remove('hidden');
+            }
+        }
+    }
+
+    function renderList(data) {
+        var chatbots = data.chatbots || [];
+        var q = data.quota || {};
+        applyQuota(q, chatbots.length);
+
+        if (chatbots.length === 0) {
+            listEl.classList.add('hidden');
+            emptyEl.classList.remove('hidden');
+            return;
+        }
+        emptyEl.classList.add('hidden');
+        listEl.classList.remove('hidden');
+        listEl.innerHTML = chatbots.map(function(cb) {
+            var nome = (cb.nome || 'Sem nome').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var desc = (cb.descricao || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var id = cb.id;
+            var url = '{{ url_for("customer.chatbot_fluxo", chatbot_id="__ID__") }}'.replace('__ID__', id);
+            return '<div class="bg-white rounded-xl border border-slate-200/80 p-5 card-shadow card-hover flex flex-wrap items-center justify-between gap-4 chatbot-card" data-chatbot-id="' + id + '">' +
+                '<div class="min-w-0">' +
+                '<h3 class="font-semibold text-slate-800 truncate">' + nome + '</h3>' +
+                (desc ? '<p class="text-sm text-slate-500 mt-1 line-clamp-2">' + desc + '</p>' : '') +
+                '</div>' +
+                '<div class="flex items-center gap-2 shrink-0">' +
+                '<a href="' + url + '" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm">' +
+                '<i class="fas fa-project-diagram"></i> Editar fluxo</a>' +
+                '<button type="button" class="chatbot-btn-excluir inline-flex items-center gap-2 px-4 py-2 border border-red-200 bg-white hover:bg-red-50 text-red-600 font-medium rounded-lg transition-colors text-sm" data-chatbot-id="' + id + '" title="Apagar este atendimento">' +
+                '<i class="fas fa-trash-alt"></i> Excluir</button>' +
+                '</div>' +
+                '</div>';
+        }).join('');
+
+        listEl.querySelectorAll('.chatbot-btn-excluir').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = this.getAttribute('data-chatbot-id');
+                if (!id || !confirm('Apagar este atendimento? O chatbot e o fluxo serão removidos.')) return;
+                var card = listEl.querySelector('.chatbot-card[data-chatbot-id="' + id + '"]');
+                if (card) card.style.opacity = '0.5';
+                fetch('/api/chatbots/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'include' })
+                    .then(function(r) { return r.json(); })
+                    .then(function() {
+                        loadChatbots();
+                    })
+                    .catch(function() {
+                        if (card) card.style.opacity = '1';
+                        alert('Erro ao apagar. Tente novamente.');
+                    });
+            });
+        });
+    }
+
+    function loadChatbots() {
+        listEl.classList.remove('hidden');
+        listEl.innerHTML = '<p class="text-slate-400 text-sm">Carregando…</p>';
+        fetch('/api/chatbots', { credentials: 'include' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.erro) {
+                    listEl.innerHTML = '<p class="text-red-600 text-sm">' + data.erro + '</p>';
+                    return;
+                }
+                renderList(data);
+            })
+            .catch(function() {
+                listEl.innerHTML = '<p class="text-red-600 text-sm">Erro ao carregar a lista.</p>';
+            });
+    }
+
+    loadChatbots();
+})();
+</script>
+{% endblock %}

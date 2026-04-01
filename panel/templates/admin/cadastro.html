@@ -1,0 +1,58 @@
+{% extends "admin/layout.html" %}
+{% block title %}Cadastrar cliente{% endblock %}
+{% block page_title %}Cadastrar novo cliente{% endblock %}
+
+{% block content %}
+<div class="max-w-xl">
+    <p class="text-slate-600 text-sm mb-6">Preencha os dados para criar uma conta. A conta é criada no login (Supabase Auth) e no painel; o cliente poderá entrar na tela de login com este e-mail e a senha definida.</p>
+
+    <form method="post" action="{{ url_for('admin.cadastro_post') }}" class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <div>
+            <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">Nome (opcional)</label>
+            <input type="text" id="nome" name="nome" value="{{ request.form.nome or '' }}"
+                   class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                   placeholder="Ex: João Silva">
+        </div>
+        <div>
+            <label for="email" class="block text-sm font-medium text-slate-700 mb-1">E-mail <span class="text-red-500">*</span></label>
+            <input type="email" id="email" name="email" value="{{ request.form.email or '' }}" required
+                   class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                   placeholder="cliente@exemplo.com">
+        </div>
+        <div>
+            <label for="senha" class="block text-sm font-medium text-slate-700 mb-1">Senha <span class="text-red-500">*</span></label>
+            <input type="password" id="senha" name="senha" required minlength="6"
+                   class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                   placeholder="Mínimo 6 caracteres">
+        </div>
+        <div>
+            <label for="senha2" class="block text-sm font-medium text-slate-700 mb-1">Confirmar senha <span class="text-red-500">*</span></label>
+            <input type="password" id="senha2" name="senha2" required minlength="6"
+                   class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                   placeholder="Repita a senha">
+        </div>
+        <div>
+            <label for="plano" class="block text-sm font-medium text-slate-700 mb-1">Plano</label>
+            <select id="plano" name="plano" class="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+                <option value="social" {{ 'selected' if (request.form.plano or 'social') == 'social' }}>Social</option>
+                <option value="profissional" {{ 'selected' if request.form.plano == 'profissional' }}>Profissional</option>
+                <option value="empresa" {{ 'selected' if request.form.plano == 'empresa' }}>Empresa</option>
+            </select>
+        </div>
+        {% if mensagem %}
+        <div class="p-3 rounded-lg {{ 'bg-red-50 text-red-700' if erro else 'bg-emerald-50 text-emerald-700' }} text-sm">
+            {{ mensagem }}
+        </div>
+        {% endif %}
+        <div class="flex gap-3 pt-2">
+            <button type="submit" class="px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition">
+                <i class="fas fa-user-plus mr-2"></i>Cadastrar
+            </button>
+            <a href="{{ url_for('admin.clientes') }}" class="px-5 py-2.5 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition">
+                Cancelar
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

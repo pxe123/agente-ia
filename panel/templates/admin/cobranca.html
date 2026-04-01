@@ -1,0 +1,133 @@
+{% extends "admin/layout.html" %}
+{% block title %}Cobrança{% endblock %}
+{% block page_title %}Cobrança (assinaturas e status){% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <label class="text-sm text-slate-600">Status</label>
+      <select id="f-status" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        <option value="">Todos</option>
+        <option value="active">active</option>
+        <option value="authorized">authorized</option>
+        <option value="trialing">trialing</option>
+        <option value="pending">pending</option>
+        <option value="past_due">past_due</option>
+        <option value="canceled">canceled</option>
+        <option value="inactive">inactive</option>
+      </select>
+      <button id="btn-load" class="px-3 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Carregar</button>
+    </div>
+    <div class="text-xs text-slate-500" id="info"></div>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm min-w-[950px]">
+      <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+        <tr>
+          <th class="px-4 py-3 text-left">Cliente</th>
+          <th class="px-4 py-3 text-left">Plano</th>
+          <th class="px-4 py-3 text-left">Status</th>
+          <th class="px-4 py-3 text-left">Trial ends</th>
+          <th class="px-4 py-3 text-left">Preapproval</th>
+          <th class="px-4 py-3 text-left">Período</th>
+          <th class="px-4 py-3 text-left">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="rows" class="divide-y divide-slate-100">
+        <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const rows = document.getElementById('rows');
+  const info = document.getElementById('info');
+  const fStatus = document.getElementById('f-status');
+  const btn = document.getElementById('btn-load');
+
+  function badge(status) {
+    const s = String(status || '—');
+    const cls =
+      (s === 'active' || s === 'authorized') ? 'bg-emerald-100 text-emerald-700' :
+      (s === 'trialing') ? 'bg-blue-100 text-blue-700' :
+      (s === 'past_due') ? 'bg-amber-100 text-amber-800' :
+      (s === 'canceled') ? 'bg-red-100 text-red-700' :
+      'bg-slate-100 text-slate-700';
+    return '<span class="px-2 py-0.5 rounded text-xs ' + cls + '">' + s + '</span>';
+  }
+
+  async function load() {
+    rows.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Carregando…</td></tr>';
+    const qs = new URLSearchParams();
+    if (fStatus.value) qs.set('status', fStatus.value);
+    const r = await fetch('/admin/api/cobranca/clientes?' + qs.toString());
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      rows.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-600">' + (d.erro || 'Erro') + '</td></tr>';
+      return;
+    }
+    const list = d.clientes || [];
+    info.textContent = list.length + ' cliente(s)';
+    if (!list.length) {
+      rows.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Nenhum cliente.</td></tr>';
+      return;
+    }
+    rows.innerHTML = list.map(c => {
+      const id = c.id;
+      const email = c.email || '—';
+      const plan = c.billing_plan_key || c.plano || '—';
+      const st = c.billing_status || '—';
+      const trial = c.trial_ends_at ? String(c.trial_ends_at).slice(0,10) : '—';
+      const pid = c.mp_preapproval_id || '—';
+      const period = c.billing_current_period_end ? String(c.billing_current_period_end).slice(0,10) : '—';
+      return '<tr class="hover:bg-slate-50">' +
+        '<td class="px-4 py-3"><div class="font-medium text-slate-800">' + email + '</div><div class="text-xs text-slate-400">' + (id ? id.slice(0,8) + '…' : '') + '</div></td>' +
+        '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">' + plan + '</span></td>' +
+        '<td class="px-4 py-3">' + badge(st) + '</td>' +
+        '<td class="px-4 py-3 text-slate-600">' + trial + '</td>' +
+        '<td class="px-4 py-3 text-slate-600 font-mono text-xs">' + pid + '</td>' +
+        '<td class="px-4 py-3 text-slate-600">' + period + '</td>' +
+        '<td class="px-4 py-3">' +
+          '<button class="btn-reconcile px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm" data-id="' + id + '">Reconciliar</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    rows.querySelectorAll('.btn-reconcile').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id = b.dataset.id;
+        if (!id) return;
+        b.disabled = true;
+        const orig = b.textContent;
+        b.textContent = '...';
+        try {
+          const r2 = await fetch('/admin/api/cobranca/reconciliar/' + encodeURIComponent(id), { method: 'POST' });
+          const d2 = await r2.json().catch(() => ({}));
+          if (d2.ok) {
+            b.textContent = d2.job_id ? 'Job enfileirado' : 'OK';
+            setTimeout(load, 800);
+          } else {
+            b.textContent = 'Erro';
+            alert(d2.erro || 'Falha ao reconciliar');
+          }
+        } finally {
+          setTimeout(() => { b.disabled = false; b.textContent = orig; }, 1500);
+        }
+      });
+    });
+  }
+
+  btn.addEventListener('click', load);
+  load();
+})();
+</script>
+{% endblock %}
+

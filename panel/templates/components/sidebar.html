@@ -1,0 +1,64 @@
+<aside id="app-sidebar" class="sidebar-accent flex flex-col w-64 h-screen flex-shrink-0 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 transform -translate-x-full transition-transform duration-200 ease-out lg:translate-x-0 lg:relative lg:inset-auto" aria-label="Menu principal">
+    <div class="p-5 border-b border-slate-700/50">
+        <a href="{{ url_for('customer.dashboard') }}" class="flex items-center gap-2">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="ZapAction" class="h-11 w-11 object-contain flex-shrink-0">
+            <span class="font-bold text-slate-100 text-lg tracking-tight">Zap<span class="text-emerald-400">Action</span></span>
+        </a>
+    </div>
+
+    <nav class="flex-1 py-4 px-3 space-y-0.5">
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.dashboard' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.dashboard') }}">
+            <i class="fas fa-chart-line w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Dashboard</span>
+        </a>
+        {% if current_user.is_authenticated and has_any_channel() and (not current_user.is_operador() or current_user.can_access_menu('chat')) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.chat' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.chat') }}">
+            <i class="fas fa-comments w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Chat</span>
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and has_any_channel() and (not current_user.is_operador() or current_user.can_access_menu('conexoes')) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.conexoes' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.conexoes') }}">
+            <i class="fas fa-plug w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Conexões</span>
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and has_feature('chatbots') and (not current_user.is_operador() or current_user.can_access_menu('chatbots')) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.chatbots_list' or request.endpoint == 'customer.chatbot_novo' or request.endpoint == 'customer.chatbot_fluxo' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.chatbots_list') }}">
+            <i class="fas fa-robot w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Chatbots</span>
+        </a>
+        {% endif %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.leads_list' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.leads_list') }}">
+            <i class="fas fa-user-check w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Leads (qualificar)</span>
+        </a>
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.perfil' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.perfil') }}">
+            <i class="fas fa-user w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Perfil</span>
+        </a>
+        {% if current_user.is_authenticated and has_feature('usuarios_setores') and (not current_user.is_operador() or current_user.can_access_menu('usuarios_setores')) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.usuarios_setores' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.usuarios_setores') }}">
+            <i class="fas fa-users-cog w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Usuários e setores</span>
+        </a>
+        {% endif %}
+        {% if is_admin(current_user) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400/90 hover:bg-amber-500/10 hover:text-amber-300 transition-colors" href="{{ url_for('admin.dashboard') }}">
+            <i class="fas fa-shield-halved w-5 text-center"></i>
+            <span class="font-medium text-sm">Admin</span>
+        </a>
+        {% endif %}
+    </nav>
+
+    <div class="p-3 border-t border-slate-700/50">
+        <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/50">
+            <img class="w-8 h-8 rounded-full bg-slate-600" src="https://ui-avatars.com/api/?name={{ (current_user.email or '') | urlencode }}&background=475569&color=fff&size=64" alt="">
+            <span class="text-slate-300 text-sm font-medium truncate flex-1">{{ (current_user.email or '').split('@')[0] or '?' }}</span>
+        </div>
+        <a href="{{ url_for('customer.logout') }}" class="flex items-center gap-3 px-3 py-2.5 mt-1 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+            <i class="fas fa-sign-out-alt w-5 text-center"></i>
+            <span class="font-medium text-sm">Sair</span>
+        </a>
+    </div>
+</aside>

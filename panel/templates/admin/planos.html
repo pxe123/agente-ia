@@ -1,0 +1,451 @@
+{% extends "admin/layout.html" %}
+{% block title %}Planos{% endblock %}
+{% block page_title %}Planos e Entitlements{% endblock %}
+
+{% block content %}
+<p class="mb-4 text-sm text-slate-600 rounded-lg border border-amber-100 bg-amber-50/80 px-4 py-3">
+  <strong>Canais (WhatsApp, Instagram, Messenger):</strong> o plano libera recursos, mas cada canal pode ainda ser cortado globalmente em
+  <a href="{{ url_for('admin.canais_globais') }}" class="text-blue-700 font-medium hover:underline">Admin → Canais globais</a>.
+</p>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <h2 class="font-semibold text-slate-800">Planos</h2>
+      <button id="btn-novo" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg">
+        <i class="fas fa-plus mr-1"></i>Novo
+      </button>
+    </div>
+    <div id="plans-list" class="space-y-2 text-sm text-slate-600">
+      <div class="text-slate-400">Carregando…</div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <h2 class="font-semibold text-slate-800 mb-4">Editar</h2>
+    <div class="space-y-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-600">plan_key</label>
+          <input id="f-key" class="w-full px-3 py-2 border border-slate-200 rounded-lg" placeholder="social">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-600">Nome</label>
+          <input id="f-name" class="w-full px-3 py-2 border border-slate-200 rounded-lg" placeholder="Social">
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-600">Preço</label>
+          <input id="f-price" type="number" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg" placeholder="99.90">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-600">Moeda</label>
+          <input id="f-currency" class="w-full px-3 py-2 border border-slate-200 rounded-lg" placeholder="BRL">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-600">Trial (dias)</label>
+          <input id="f-trial" type="number" class="w-full px-3 py-2 border border-slate-200 rounded-lg" placeholder="7">
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="f-active" type="checkbox" class="rounded border-slate-300">
+        <label for="f-active" class="text-sm text-slate-700">Ativo</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="f-featured" type="checkbox" class="rounded border-slate-300">
+        <label for="f-featured" class="text-sm text-slate-700">Plano mais vantajoso (destaque público)</label>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-600">O que inclui no plano</label>
+        <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-whatsapp" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fab fa-whatsapp text-green-600 mr-1"></i>WhatsApp</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-instagram" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fab fa-instagram text-pink-500 mr-1"></i>Instagram</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-messenger" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fab fa-facebook-messenger text-blue-600 mr-1"></i>Messenger</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-site" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fas fa-globe text-slate-600 mr-1"></i>Chat no site</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-exports" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fas fa-file-export text-amber-600 mr-1"></i>Exportações</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-flow_builder" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fas fa-project-diagram text-violet-600 mr-1"></i>Flow Builder</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-chatbots" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fas fa-robot text-slate-700 mr-1"></i>Chatbots</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input id="ent-usuarios_setores" type="checkbox" class="rounded border-slate-300">
+            <span class="text-sm text-slate-700"><i class="fas fa-users-gear text-slate-700 mr-1"></i>Usuários e setores</span>
+          </label>
+        </div>
+        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-slate-600">Máx. usuários internos (sublogins)</label>
+            <input id="f-max-ui" type="number" min="0" step="1" class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vazio = ilimitado" title="Chave JSON: max_usuarios_internos">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-slate-600">Máx. operadores</label>
+            <input id="f-max-op" type="number" min="0" step="1" class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vazio = usar só max_usuarios_internos" title="Chave JSON: max_operadores (se ambos existirem, vale o menor)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-slate-600">Máx. chatbots</label>
+            <input id="f-max-cb" type="number" min="0" step="1" class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vazio = ilimitado" title="Chave JSON: max_chatbots">
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2">Outras chaves numéricas no JSON abaixo são preservadas ao salvar.</p>
+        <details class="mt-3">
+          <summary class="text-xs text-slate-500 cursor-pointer select-none">Avançado (ver JSON)</summary>
+          <textarea id="f-ent" rows="6" class="mt-2 w-full px-3 py-2 border border-slate-200 rounded-lg font-mono text-xs"
+            placeholder='{\"whatsapp\":true,\"instagram\":false,\"exports\":false}'></textarea>
+        </details>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button id="btn-salvar" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg">Salvar</button>
+        <button type="button" id="btn-duplicar" class="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold rounded-lg" title="Copia entitlements e preço; defina um plan_key novo e salve">Duplicar</button>
+        <button id="btn-excluir" class="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-lg">Excluir</button>
+      </div>
+      <p class="text-[11px] text-slate-500">Novo plano: <code class="bg-slate-100 px-1 rounded">plan_key</code> só em minúsculas, números, <code class="bg-slate-100 px-1 rounded">-</code> e <code class="bg-slate-100 px-1 rounded">_</code> (ex.: <code class="bg-slate-100 px-1 rounded">pro_anual</code>).</p>
+      <div id="status" class="text-xs text-slate-500"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const listEl = document.getElementById('plans-list');
+  const statusEl = document.getElementById('status');
+  const fKey = document.getElementById('f-key');
+  const fName = document.getElementById('f-name');
+  const fPrice = document.getElementById('f-price');
+  const fCurrency = document.getElementById('f-currency');
+  const fTrial = document.getElementById('f-trial');
+  const fActive = document.getElementById('f-active');
+  const fFeatured = document.getElementById('f-featured');
+  const fEnt = document.getElementById('f-ent');
+  const entWhatsapp = document.getElementById('ent-whatsapp');
+  const entInstagram = document.getElementById('ent-instagram');
+  const entMessenger = document.getElementById('ent-messenger');
+  const entSite = document.getElementById('ent-site');
+  const entExports = document.getElementById('ent-exports');
+  const entFlow = document.getElementById('ent-flow_builder');
+  const entChatbots = document.getElementById('ent-chatbots');
+  const entUsuariosSetores = document.getElementById('ent-usuarios_setores');
+  const fMaxUi = document.getElementById('f-max-ui');
+  const fMaxOp = document.getElementById('f-max-op');
+  const fMaxCb = document.getElementById('f-max-cb');
+  const btnNovo = document.getElementById('btn-novo');
+  const btnSalvar = document.getElementById('btn-salvar');
+  const btnDuplicar = document.getElementById('btn-duplicar');
+  const btnExcluir = document.getElementById('btn-excluir');
+
+  let plans = [];
+  let selectedKey = null;
+
+  function setStatus(t) { statusEl.textContent = t || ''; }
+
+  function buildToggleObject() {
+    return {
+      whatsapp: !!entWhatsapp.checked,
+      instagram: !!entInstagram.checked,
+      messenger: !!entMessenger.checked,
+      site: !!entSite.checked,
+      exports: !!entExports.checked,
+      flow_builder: !!entFlow.checked,
+      chatbots: !!entChatbots.checked,
+      usuarios_setores: !!entUsuariosSetores.checked,
+      featured: !!(fFeatured && fFeatured.checked)
+    };
+  }
+
+  function applyNumericInputsTo(base) {
+    const u = (fMaxUi && fMaxUi.value) ? fMaxUi.value.trim() : '';
+    if (u === '') delete base.max_usuarios_internos;
+    else {
+      const n = parseInt(u, 10);
+      if (!isNaN(n) && n >= 0) base.max_usuarios_internos = n;
+    }
+    const o = (fMaxOp && fMaxOp.value) ? fMaxOp.value.trim() : '';
+    if (o === '') delete base.max_operadores;
+    else {
+      const n = parseInt(o, 10);
+      if (!isNaN(n) && n >= 0) base.max_operadores = n;
+    }
+    const c = (fMaxCb && fMaxCb.value) ? fMaxCb.value.trim() : '';
+    if (c === '') delete base.max_chatbots;
+    else {
+      const n = parseInt(c, 10);
+      if (!isNaN(n) && n >= 0) base.max_chatbots = n;
+    }
+  }
+
+  /** Base = JSON atual; sobrescreve flags dos toggles e dos campos numéricos; preserva outras chaves. */
+  function syncJsonFromControls() {
+    let base = {};
+    try {
+      const parsed = JSON.parse(fEnt.value || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) base = parsed;
+    } catch (e) { return; }
+    Object.assign(base, buildToggleObject());
+    applyNumericInputsTo(base);
+    try { fEnt.value = JSON.stringify(base, null, 2); } catch (e) {}
+  }
+
+  function collectEntitlementsForSave() {
+    let base = {};
+    try {
+      const parsed = JSON.parse(fEnt.value || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) base = parsed;
+    } catch (e) {
+      throw new Error('JSON de entitlements inválido. Corrija o bloco Avançado.');
+    }
+    Object.assign(base, buildToggleObject());
+    applyNumericInputsTo(base);
+    return base;
+  }
+
+  function selectPlan(key) {
+    const p = plans.find(x => x.plan_key === key);
+    if (!p) return;
+    selectedKey = key;
+    fKey.value = p.plan_key || '';
+    fKey.readOnly = true;
+    fName.value = p.name || '';
+    fPrice.value = p.price != null ? p.price : '';
+    fCurrency.value = p.currency || 'BRL';
+    fTrial.value = p.trial_days != null ? p.trial_days : 7;
+    fActive.checked = p.active !== false;
+    const ent = (p.entitlements_json && typeof p.entitlements_json === 'object') ? p.entitlements_json : {};
+    entWhatsapp.checked = !!ent.whatsapp;
+    entInstagram.checked = !!ent.instagram;
+    entMessenger.checked = !!ent.messenger;
+    entSite.checked = !!ent.site;
+    entExports.checked = !!ent.exports;
+    entFlow.checked = (typeof ent.flow_builder === 'undefined') ? true : !!ent.flow_builder;
+    entChatbots.checked = (typeof ent.chatbots === 'undefined') ? true : !!ent.chatbots;
+    entUsuariosSetores.checked = !!ent.usuarios_setores;
+    if (fFeatured) fFeatured.checked = !!ent.featured;
+    if (fMaxUi) {
+      const m = ent.max_usuarios_internos;
+      fMaxUi.value = (m !== undefined && m !== null && m !== '') ? String(m) : '';
+    }
+    if (fMaxOp) {
+      const m = ent.max_operadores;
+      fMaxOp.value = (m !== undefined && m !== null && m !== '') ? String(m) : '';
+    }
+    if (fMaxCb) {
+      const m = ent.max_chatbots;
+      fMaxCb.value = (m !== undefined && m !== null && m !== '') ? String(m) : '';
+    }
+    try { fEnt.value = JSON.stringify(ent || {}, null, 2); } catch(e) { fEnt.value = '{}'; }
+    setStatus('');
+  }
+
+  function clearForm() {
+    selectedKey = null;
+    fKey.value = '';
+    fKey.readOnly = false;
+    fName.value = '';
+    fPrice.value = '';
+    fCurrency.value = 'BRL';
+    fTrial.value = 7;
+    fActive.checked = true;
+    entWhatsapp.checked = true;
+    entInstagram.checked = false;
+    entMessenger.checked = false;
+    entSite.checked = true;
+    entExports.checked = false;
+    entFlow.checked = true;
+    entChatbots.checked = true;
+    entUsuariosSetores.checked = false;
+    if (fFeatured) fFeatured.checked = false;
+    if (fMaxUi) fMaxUi.value = '';
+    if (fMaxOp) fMaxOp.value = '';
+    if (fMaxCb) fMaxCb.value = '';
+    try {
+      fEnt.value = JSON.stringify({
+        whatsapp: true, instagram: false, messenger: false, site: true,
+        exports: false, flow_builder: true, chatbots: true, usuarios_setores: false
+      }, null, 2);
+    } catch (e) { fEnt.value = '{}'; }
+    syncJsonFromControls();
+  }
+
+  function bindEntitlementSync() {
+    [entWhatsapp, entInstagram, entMessenger, entSite, entExports, entFlow, entChatbots, entUsuariosSetores, fFeatured].forEach((cb) => {
+      cb.addEventListener('change', () => syncJsonFromControls());
+    });
+    if (fMaxUi) fMaxUi.addEventListener('input', () => syncJsonFromControls());
+    if (fMaxOp) fMaxOp.addEventListener('input', () => syncJsonFromControls());
+    if (fMaxCb) fMaxCb.addEventListener('input', () => syncJsonFromControls());
+    fEnt.addEventListener('input', () => {
+      try {
+        const ent = JSON.parse(fEnt.value || '{}');
+        if (ent && typeof ent === 'object') {
+          if (typeof ent.whatsapp !== 'undefined') entWhatsapp.checked = !!ent.whatsapp;
+          if (typeof ent.instagram !== 'undefined') entInstagram.checked = !!ent.instagram;
+          if (typeof ent.messenger !== 'undefined') entMessenger.checked = !!ent.messenger;
+          if (typeof ent.site !== 'undefined') entSite.checked = !!ent.site;
+          if (typeof ent.exports !== 'undefined') entExports.checked = !!ent.exports;
+          if (typeof ent.flow_builder !== 'undefined') entFlow.checked = !!ent.flow_builder;
+          if (typeof ent.chatbots !== 'undefined') entChatbots.checked = !!ent.chatbots;
+          if (typeof ent.usuarios_setores !== 'undefined') entUsuariosSetores.checked = !!ent.usuarios_setores;
+          if (fFeatured && typeof ent.featured !== 'undefined') fFeatured.checked = !!ent.featured;
+          if (fMaxUi && typeof ent.max_usuarios_internos !== 'undefined') fMaxUi.value = String(ent.max_usuarios_internos);
+          if (fMaxOp && typeof ent.max_operadores !== 'undefined') fMaxOp.value = String(ent.max_operadores);
+          if (fMaxCb && typeof ent.max_chatbots !== 'undefined') fMaxCb.value = String(ent.max_chatbots);
+        }
+      } catch(e) {}
+    });
+  }
+
+  function duplicatePlan() {
+    if (!selectedKey) return;
+    const nameWas = fName.value.trim();
+    selectedKey = null;
+    fKey.readOnly = false;
+    fKey.value = '';
+    fName.value = nameWas ? (nameWas + ' (cópia)') : 'Cópia';
+    syncJsonFromControls();
+    setStatus('Defina um plan_key único (slug) e clique em Salvar.');
+    renderList();
+  }
+
+  function renderList() {
+    if (!plans.length) { listEl.innerHTML = '<div class="text-slate-500">Nenhum plano.</div>'; return; }
+    listEl.innerHTML = plans.map(p => {
+      const on = p.active !== false;
+      const key = p.plan_key;
+      const price = (p.price != null) ? String(p.price) : '0';
+      const u = p.usage || {};
+      const cp = (u.clientes_plano != null) ? u.clientes_plano : 0;
+      const cb = (u.clientes_billing != null) ? u.clientes_billing : 0;
+      const diverge = (cp !== cb) && (cp > 0 || cb > 0);
+      const clientsLine = 'Cli. ' + cp + ' (plano) · ' + cb + ' (billing)' +
+        (diverge ? ' <span class="text-amber-700" title="Totais em plano e billing diferem (ver clientes)">*</span>' : '') +
+        ' · <a href="/admin/clientes?plano=' + encodeURIComponent(key) + '" class="text-blue-600 hover:underline">ver</a>';
+      return '' +
+        '<div class="flex items-center gap-2">' +
+          '<button type="button" data-key="' + key + '" class="flex-1 text-left px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 ' + (selectedKey === key ? 'bg-slate-50' : '') + '">' +
+            '<div class="flex items-center justify-between gap-2">' +
+              '<div class="min-w-0"><div class="font-semibold text-slate-800 truncate">' + (p.name || key) + '</div><div class="text-xs text-slate-500">' + key + ' • R$ ' + price + ' • trial ' + (p.trial_days ?? 0) + 'd</div><div class="text-[11px] text-slate-500 mt-0.5">' + clientsLine + '</div></div>' +
+              '<span class="text-xs px-2 py-0.5 rounded ' + (on ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500') + '">' + (on ? 'Ativo' : 'Inativo') + '</span>' +
+            '</div>' +
+          '</button>' +
+          '<button type="button" data-del-key="' + key + '" class="shrink-0 px-2 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50" title="Excluir plano">' +
+            '<i class="fas fa-trash-alt"></i>' +
+          '</button>' +
+        '</div>';
+    }).join('');
+    listEl.querySelectorAll('button[data-key]').forEach(b => b.addEventListener('click', () => selectPlan(b.dataset.key)));
+    listEl.querySelectorAll('button[data-del-key]').forEach(b => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const key = b.dataset.delKey;
+      if (!key) return;
+      if (!confirm('Excluir o plano ' + key + '?')) return;
+      setStatus('Excluindo…');
+      const url = '/admin/api/plans/' + encodeURIComponent(key);
+      const r = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || '').trim() },
+        credentials: 'same-origin'
+      });
+      const raw = await r.text().catch(() => '');
+      let d = {};
+      try { d = raw ? JSON.parse(raw) : {}; } catch (e) { d = { ok: false, erro: 'Resposta não-JSON do servidor.' }; }
+      try { console.log('[admin/planos delete]', { url, status: r.status, redirected: r.redirected, responseUrl: r.url, raw }); } catch (e) {}
+      if (!d.ok) { setStatus((d.erro || 'Erro') + ' (HTTP ' + r.status + ')'); return; }
+      setStatus('Excluído.');
+      if (selectedKey === key) clearForm();
+      await loadPlans();
+    }));
+  }
+
+  async function loadPlans() {
+    setStatus('Carregando…');
+    const r = await fetch('/admin/api/plans');
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.erro || 'Erro'); return; }
+    plans = d.plans || [];
+    setStatus('');
+    renderList();
+  }
+
+  btnNovo.addEventListener('click', () => { clearForm(); renderList(); });
+  if (btnDuplicar) btnDuplicar.addEventListener('click', duplicatePlan);
+
+  btnSalvar.addEventListener('click', async () => {
+    try {
+      const pk = fKey.value.trim();
+      if (!selectedKey) {
+        if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(pk)) {
+          setStatus('plan_key inválido: minúsculas, números, hífen e underscore; comece com letra ou número.');
+          return;
+        }
+      }
+      const ent = collectEntitlementsForSave();
+      const payload = {
+        plan_key: pk,
+        name: fName.value.trim(),
+        price: parseFloat(fPrice.value || '0'),
+        currency: (fCurrency.value || 'BRL').trim(),
+        trial_days: parseInt(fTrial.value || '0', 10),
+        active: !!fActive.checked,
+        entitlements_json: ent
+      };
+      setStatus('Salvando…');
+      const csrf = ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || '').trim();
+      const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf };
+      let r;
+      if (selectedKey) {
+        r = await fetch('/admin/api/plans/' + encodeURIComponent(selectedKey), { method: 'PATCH', headers, body: JSON.stringify(payload), credentials: 'same-origin' });
+      } else {
+        r = await fetch('/admin/api/plans', { method: 'POST', headers, body: JSON.stringify(payload), credentials: 'same-origin' });
+      }
+      const d = await r.json().catch(() => ({}));
+      if (!d.ok) throw new Error(d.erro || 'Erro ao salvar.');
+      setStatus('Salvo.');
+      await loadPlans();
+      if (payload.plan_key) selectPlan(payload.plan_key);
+    } catch (e) {
+      setStatus(e.message || 'Erro.');
+    }
+  });
+
+  btnExcluir.addEventListener('click', async () => {
+    if (!selectedKey) return;
+    if (!confirm('Excluir o plano ' + selectedKey + '?')) return;
+    setStatus('Excluindo…');
+    const url = '/admin/api/plans/' + encodeURIComponent(selectedKey);
+    const r = await fetch(url, { method: 'DELETE', headers: { 'X-CSRF-Token': ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || '').trim() }, credentials: 'same-origin' });
+    const raw = await r.text().catch(() => '');
+    let d = {};
+    try { d = raw ? JSON.parse(raw) : {}; } catch (e) { d = { ok: false, erro: 'Resposta não-JSON do servidor.' }; }
+    try { console.log('[admin/planos delete]', { url, status: r.status, redirected: r.redirected, responseUrl: r.url, raw }); } catch (e) {}
+    if (!d.ok) { setStatus((d.erro || 'Erro') + ' (HTTP ' + r.status + ')'); return; }
+    setStatus('Excluído.');
+    clearForm();
+    await loadPlans();
+  });
+
+  clearForm();
+  bindEntitlementSync();
+  loadPlans();
+})();
+</script>
+{% endblock %}
+

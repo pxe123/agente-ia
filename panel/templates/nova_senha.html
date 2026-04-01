@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova senha | ZapAction</title>
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+    <div class="w-full max-w-md bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+        <h1 class="text-xl font-bold text-slate-800">Definir nova senha</h1>
+        <p class="text-slate-500 text-sm mt-2">Após salvar, você pode entrar no painel com a nova senha.</p>
+        <div id="err" class="hidden mt-3 p-3 rounded-lg text-sm bg-red-50 text-red-700"></div>
+        <div id="ok" class="hidden mt-3 p-3 rounded-lg text-sm bg-emerald-50 text-emerald-800"></div>
+        <form id="f" class="mt-6 space-y-4">
+            <div>
+                <label class="block text-sm text-slate-600 mb-1">Nova senha</label>
+                <input type="password" id="p1" required minlength="6" class="w-full px-4 py-3 border border-slate-200 rounded-xl" autocomplete="new-password">
+            </div>
+            <div>
+                <label class="block text-sm text-slate-600 mb-1">Confirmar</label>
+                <input type="password" id="p2" required minlength="6" class="w-full px-4 py-3 border border-slate-200 rounded-xl" autocomplete="new-password">
+            </div>
+            <button type="submit" id="btn" class="w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl">Salvar</button>
+        </form>
+        <p class="mt-4 text-center"><a href="/login" class="text-emerald-700 text-sm">Voltar ao login</a></p>
+    </div>
+    <script>
+    (function() {
+        var url = {{ supabase_url | tojson }};
+        var key = {{ supabase_anon_key | tojson }};
+        if (!url || !key) {
+            document.getElementById("err").textContent = "Configuração incompleta (Supabase).";
+            document.getElementById("err").classList.remove("hidden");
+            return;
+        }
+        var supa = window.supabase.createClient(url, key);
+        if (window.location.hash && window.location.hash.length > 1) {
+            var params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+            var access = params.get("access_token");
+            var refresh = params.get("refresh_token");
+            if (access && refresh) {
+                supa.auth.setSession({ access_token: access, refresh_token: refresh }).catch(function() {});
+            }
+        }
+        document.getElementById("f").addEventListener("submit", function(e) {
+            e.preventDefault();
+            var p1 = document.getElementById("p1").value;
+            var p2 = document.getElementById("p2").value;
+            if (p1 !== p2) {
+                document.getElementById("err").textContent = "As senhas não coincidem.";
+                document.getElementById("err").classList.remove("hidden");
+                return;
+            }
+            document.getElementById("btn").disabled = true;
+            supa.auth.updateUser({ password: p1 }).then(function(res) {
+                if (res.error) throw res.error;
+                document.getElementById("ok").textContent = "Senha atualizada. Redirecionando…";
+                document.getElementById("ok").classList.remove("hidden");
+                setTimeout(function() { window.location.href = "/login"; }, 1500);
+            }).catch(function(err) {
+                document.getElementById("err").textContent = (err && err.message) ? err.message : "Não foi possível salvar.";
+                document.getElementById("err").classList.remove("hidden");
+                document.getElementById("btn").disabled = false;
+            });
+        });
+    })();
+    </script>
+</body>
+</html>

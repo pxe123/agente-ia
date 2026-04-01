@@ -1,0 +1,58 @@
+{% extends "layout_public.html" %}
+{% block title %}Termos de Uso{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold text-slate-900 mb-6">Termos de Uso</h1>
+<p class="text-sm text-slate-500 mb-8">Última atualização: fevereiro de 2025.</p>
+
+<div class="prose prose-slate max-w-none space-y-6 text-slate-700">
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">1. Aceitação</h2>
+        <p>Ao acessar ou usar os serviços da Up Digital Brasil (&quot;Plataforma&quot;), você concorda com estes Termos de Uso. Se não concordar, não utilize o serviço. O uso de integrações com WhatsApp, Instagram e Messenger está sujeito também às políticas e termos dessas plataformas (Meta).</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">2. Descrição do serviço</h2>
+        <p>A Plataforma oferece atendimento multicanal com inteligência artificial (IA), permitindo conectar canais como WhatsApp, Instagram Direct, Facebook Messenger e chat para site. O cliente é responsável por configurar suas contas nas redes e pelo conteúdo das conversas e das respostas geradas pela IA.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">3. Cadastro e conta</h2>
+        <p>É necessário cadastro com dados verdadeiros. Você é responsável por manter a confidencialidade da senha e por todas as atividades realizadas em sua conta. Notifique-nos imediatamente em caso de uso não autorizado.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">4. Uso aceitável</h2>
+        <p>É proibido usar a Plataforma para: atividades ilegais; spam ou assédio; disseminação de conteúdo ofensivo, discriminatório ou que viole direitos de terceiros; burlar limites ou políticas das plataformas (Meta, etc.); ou qualquer uso que prejudique a operação do serviço ou de outros usuários. Reservamo-nos o direito de suspender ou encerrar contas que violem estes termos.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">5. Propriedade intelectual</h2>
+        <p>O software, marcas e conteúdos da Plataforma são de propriedade da Up Digital Brasil ou de seus licenciadores. O cliente mantém os direitos sobre o conteúdo que envia (mensagens, configurações). Ao usar a IA, você autoriza o processamento necessário para a prestação do serviço.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">6. Privacidade e dados</h2>
+        <p>O tratamento de dados pessoais é regido pela nossa <a href="{{ url_for('legal.politica') }}" class="text-emerald-600 hover:underline">Política de Privacidade</a>. Ao conectar canais da Meta (WhatsApp, Instagram, Messenger), você deve cumprir as políticas dessas plataformas e obter os consentimentos necessários dos usuários finais quando aplicável.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">7. Limitação de responsabilidade</h2>
+        <p>O serviço é oferecido &quot;como está&quot;, dentro das capacidades técnicas disponíveis. Não nos responsabilizamos por: (a) conteúdo gerado pela IA ou enviado por usuários; (b) indisponibilidade de terceiros (Meta, provedores); (c) perdas indiretas ou lucros cessantes. Nossa responsabilidade total, quando cabível, limita-se ao valor pago pelo cliente nos 12 (doze) meses anteriores ao fato.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">8. Rescisão</h2>
+        <p>O cliente pode encerrar a conta a qualquer momento. Podemos suspender ou encerrar o acesso em caso de violação destes termos, inadimplência ou por decisão operacional, com aviso quando razoável. Após o encerramento, os dados serão tratados conforme a Política de Privacidade e a página de <a href="{{ url_for('legal.exclusao_de_dados') }}" class="text-emerald-600 hover:underline">Exclusão de Dados</a>.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">9. Alterações</h2>
+        <p>Podemos alterar estes Termos com aviso na Plataforma ou por e-mail. O uso continuado após a divulgação constitui aceitação. Em caso de mudança relevante, você poderá rescindir o uso se não concordar.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">10. Contato e identificação</h2>
+        <p>Dúvidas sobre estes Termos ou sobre a Up Digital Brasil: <strong>contato@updigitalbrasil.com.br</strong> (ou o e-mail oficial divulgado no site). O serviço é operado pela Up Digital Brasil; informações legais adicionais da empresa podem ser solicitadas por esse canal quando necessário para cumprimento de obrigações (incluindo requisitos da Meta para uso de WhatsApp, Instagram e Messenger).</p>
+    </section>
+</div>
+{% endblock %}

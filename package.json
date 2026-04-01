@@ -1,0 +1,10 @@
+{
+  "name": "agente-ia",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i panel/static/css/input.css -o panel/static/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

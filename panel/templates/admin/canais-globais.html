@@ -1,0 +1,133 @@
+{% extends "admin/layout.html" %}
+{% block title %}Canais globais{% endblock %}
+{% block page_title %}Canais globais{% endblock %}
+
+{% block content %}
+<div class="max-w-xl bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+  <p class="text-sm text-slate-600 mb-6">
+    Mesmo que o <strong>plano</strong> do cliente permita o canal, ele só funciona no painel se estiver <strong>habilitado aqui</strong>.
+    O <strong>chat no site</strong> continua só pelo plano (sem kill switch global nesta tela).
+  </p>
+  <div class="space-y-4">
+    <label class="flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+      <input type="checkbox" id="wa-on" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-5 h-5">
+      <span>
+        <span class="font-semibold text-slate-800 block"><i class="fab fa-whatsapp text-emerald-600 mr-1"></i> WhatsApp (WAHA)</span>
+        <span class="text-xs text-slate-500">Sessão/QR, envio, inbox, WhatsApp Cloud (Meta) manual/OAuth</span>
+      </span>
+    </label>
+    <label class="flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+      <input type="checkbox" id="ig-on" class="rounded border-slate-300 text-pink-600 focus:ring-pink-500 w-5 h-5">
+      <span>
+        <span class="font-semibold text-slate-800 block"><i class="fab fa-instagram text-pink-500 mr-1"></i> Instagram Direct</span>
+        <span class="text-xs text-slate-500">Envio, inbox, conexão e OAuth</span>
+      </span>
+    </label>
+    <label class="flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+      <input type="checkbox" id="ms-on" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-5 h-5">
+      <span>
+        <span class="font-semibold text-slate-800 block"><i class="fab fa-facebook-messenger text-blue-600 mr-1"></i> Facebook Messenger</span>
+        <span class="text-xs text-slate-500">Envio, inbox, conexão e OAuth</span>
+      </span>
+    </label>
+  </div>
+  <div class="mt-6 space-y-3">
+    <button type="button" id="btn-salvar" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg">
+      Salvar alterações
+    </button>
+    <p class="text-xs font-semibold text-slate-600">Testar conectividade (não altera toggles)</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" id="btn-test-waha" class="px-3 py-2 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-sm font-medium rounded-lg">
+        <i class="fab fa-whatsapp mr-1"></i> WhatsApp (WAHA)
+      </button>
+      <button type="button" id="btn-test-ig" class="px-3 py-2 border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-900 text-sm font-medium rounded-lg">
+        <i class="fab fa-instagram mr-1"></i> Instagram (Meta API)
+      </button>
+      <button type="button" id="btn-test-ms" class="px-3 py-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 text-sm font-medium rounded-lg">
+        <i class="fab fa-facebook-messenger mr-1"></i> Messenger (Meta API)
+      </button>
+    </div>
+    <span id="status" class="block text-xs text-slate-500"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const wa = document.getElementById('wa-on');
+  const ig = document.getElementById('ig-on');
+  const ms = document.getElementById('ms-on');
+  const statusEl = document.getElementById('status');
+  const btn = document.getElementById('btn-salvar');
+  const btnTestWaha = document.getElementById('btn-test-waha');
+  const btnTestIg = document.getElementById('btn-test-ig');
+  const btnTestMs = document.getElementById('btn-test-ms');
+  function setStatus(t) { statusEl.textContent = t || ''; }
+  async function load() {
+    setStatus('Carregando…');
+    const r = await fetch('/admin/api/canais-globais', { credentials: 'same-origin' });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.erro || 'Erro ao carregar'); return; }
+    wa.checked = !!d.whatsapp_enabled;
+    ig.checked = !!d.instagram_enabled;
+    ms.checked = !!d.messenger_enabled;
+    setStatus('');
+  }
+  btn.addEventListener('click', async () => {
+    setStatus('Salvando…');
+    const csrf = ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || '').trim();
+    const r = await fetch('/admin/api/canais-globais', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({
+        whatsapp_enabled: !!wa.checked,
+        instagram_enabled: !!ig.checked,
+        messenger_enabled: !!ms.checked,
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.erro || 'Erro ao salvar'); return; }
+    wa.checked = !!d.whatsapp_enabled;
+    ig.checked = !!d.instagram_enabled;
+    ms.checked = !!d.messenger_enabled;
+    setStatus('Salvo.');
+  });
+  async function testWaha() {
+    setStatus('A testar WhatsApp (WAHA)…');
+    try {
+      const r = await fetch('/admin/api/waha-status', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (d.erro) { setStatus('WhatsApp (WAHA): ' + d.erro); return; }
+      if (d.status === 'online') {
+        setStatus('WhatsApp (WAHA): online' + (d.version ? ' · ' + d.version : '') + '.');
+      } else {
+        setStatus('WhatsApp (WAHA): offline — verifique WAHA_URL/WAHA_API_KEY e se o servidor alcança o container.');
+      }
+    } catch (e) {
+      setStatus('WhatsApp (WAHA): falha de rede.');
+    }
+  }
+  async function testMeta(channel, label) {
+    setStatus('A testar ' + label + '…');
+    try {
+      const r = await fetch('/admin/api/meta-status?channel=' + encodeURIComponent(channel), { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (d.erro) { setStatus(label + ': ' + d.erro); return; }
+      if (d.status === 'online') {
+        setStatus(label + ': Graph API OK' + (d.app_name ? ' · app: ' + d.app_name : '') + '.');
+      } else {
+        setStatus(label + ': offline — ' + (d.detail || 'verifique META_APP_ID e META_APP_SECRET.'));
+      }
+    } catch (e) {
+      setStatus(label + ': falha de rede.');
+    }
+  }
+  if (btnTestWaha) btnTestWaha.addEventListener('click', () => testWaha());
+  if (btnTestIg) btnTestIg.addEventListener('click', () => testMeta('instagram', 'Instagram'));
+  if (btnTestMs) btnTestMs.addEventListener('click', () => testMeta('messenger', 'Messenger'));
+  load();
+})();
+</script>
+{% endblock %}

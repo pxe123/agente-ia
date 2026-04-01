@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block title %}Editar fluxo — {{ chatbot_nome }}{% endblock %}
+{% block page_title %}{{ chatbot_nome }}{% endblock %}
+{% block content %}
+<div class="flex-1 flex flex-col min-h-0">
+    <div class="px-4 sm:px-6 py-3 flex flex-wrap items-center gap-4 border-b border-slate-200/80 bg-white/80">
+        <a href="{{ url_for('customer.chatbots_list') }}" class="inline-flex items-center gap-1 text-slate-600 hover:text-slate-800 text-sm font-medium">
+            <i class="fas fa-arrow-left"></i> Voltar aos chatbots
+        </a>
+        <div class="flex items-center gap-4 flex-wrap" id="chatbot-canais-wrap">
+            <span class="text-sm font-medium text-slate-600">Onde este chatbot roda:</span>
+            <div class="flex flex-wrap gap-3" id="chatbot-canais-list">
+                {% for ch in channel_options %}
+                <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                    <input type="checkbox" class="chatbot-canal-cb rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-channel="{{ ch.id }}" value="{{ ch.id }}">
+                    <span>{{ ch.label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <span class="text-xs text-slate-500 hidden" id="chatbot-canais-status">Salvando…</span>
+        </div>
+    </div>
+    <iframe
+        id="flow-iframe"
+        src="{{ url_for('flow_builder_index') }}?chatbot_id={{ chatbot_id }}"
+        title="Editor de fluxo — {{ chatbot_nome }}"
+        class="flex-1 w-full min-h-0 border-0"
+        style="min-height: 480px; height: calc(100vh - 12rem);"
+    ></iframe>
+</div>
+<script>
+(function() {
+    var iframe = document.getElementById('flow-iframe');
+    if (iframe) {
+        iframe.addEventListener('load', function hideFlowSidebar() {
+            try {
+                var doc = iframe.contentDocument;
+                if (doc && doc.head) {
+                    var style = doc.createElement('style');
+                    style.textContent = '.flow-sidebar { display: none !important; }';
+                    doc.head.appendChild(style);
+                }
+            } catch (e) {}
+        });
+    }
+})();
+</script>
+<script>
+(function() {
+    var chatbotId = "{{ chatbot_id }}";
+    var currentChannels = {{ channels | tojson }};
+    var checkboxes = document.querySelectorAll('.chatbot-canal-cb');
+    var statusEl = document.getElementById('chatbot-canais-status');
+    function setChecked() {
+        checkboxes.forEach(function(cb) {
+            cb.checked = currentChannels.indexOf(cb.dataset.channel) !== -1;
+        });
+    }
+    setChecked();
+    function saveChannels() {
+        var selected = [];
+        checkboxes.forEach(function(cb) { if (cb.checked) selected.push(cb.dataset.channel); });
+        if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Salvando…'; }
+        fetch('/api/chatbots/' + encodeURIComponent(chatbotId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ channels: selected })
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.ok) currentChannels = selected;
+            if (statusEl) { statusEl.textContent = data.ok ? 'Salvo.' : (data.erro || 'Erro'); statusEl.classList.remove('hidden'); setTimeout(function() { statusEl.classList.add('hidden'); }, 2000); }
+        }).catch(function() {
+            if (statusEl) { statusEl.textContent = 'Erro de conexão.'; statusEl.classList.remove('hidden'); }
+        });
+    }
+    checkboxes.forEach(function(cb) {
+        cb.addEventListener('change', saveChannels);
+    });
+})();
+</script>
+{% endblock %}

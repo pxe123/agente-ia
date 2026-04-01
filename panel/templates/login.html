@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!="dataLayer"?"&l="+l:"";j.async=true;j.src="https://www.googletagmanager.com/gtm.js?id="+i+dl;f.parentNode.insertBefore(j,f);})(window,document,"script","dataLayer","GTM-MGB3G8N5");</script>
+    <title>Login | ZapAction</title>
+    <link rel="icon" type="image/png" href="/static/images/logo.png">
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>body{font-family:Inter,system-ui,sans-serif}.login-side{background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%)}</style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800 antialiased flex">
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MGB3G8N5" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <div class="login-side hidden lg:flex lg:w-1/2 flex-col justify-between p-10 border-r border-slate-700/50 text-slate-300">
+        <a href="/" class="inline-flex items-center gap-2 text-white font-bold text-xl"><img src="/static/images/logo.png" alt="" class="h-12 w-12"> Zap<span class="text-emerald-400">Action</span></a>
+        <p class="text-slate-400 max-w-md">Atendimento multicanal com IA. WhatsApp, Instagram, Messenger e site.</p>
+        <p class="text-slate-500 text-sm">© ZapAction</p>
+    </div>
+    <div class="flex-1 flex flex-col justify-center items-center p-6">
+        <div class="w-full max-w-md space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+                <h2 class="text-xl font-bold text-slate-800">Dono da conta</h2>
+                <p class="text-slate-500 text-sm mt-1">Login com e-mail e senha (Supabase Auth).</p>
+                <div id="msg-cliente" class="hidden mt-3 p-3 rounded-xl text-sm"></div>
+                <div class="mt-4 space-y-3">
+                    <input type="email" id="cli-email" class="w-full px-4 py-3 border border-slate-200 rounded-xl" placeholder="seu@email.com" autocomplete="email">
+                    <input type="password" id="cli-pass" class="w-full px-4 py-3 border border-slate-200 rounded-xl" placeholder="Senha" autocomplete="current-password">
+                    <button type="button" id="btn-cli-login" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl">Entrar</button>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+                <h2 class="text-lg font-bold text-slate-800">Atualizar acesso</h2>
+                <p class="text-slate-500 text-sm mt-1">Estamos melhorando a segurança. Receba um link para definir senha.</p>
+                <div id="msg-access" class="hidden mt-3 p-3 rounded-xl text-sm"></div>
+                <div class="mt-4 flex flex-col gap-3">
+                    <input type="email" id="acc-email" class="w-full px-4 py-3 border border-slate-200 rounded-xl" placeholder="seu@email.com" autocomplete="email">
+                    <button type="button" id="btn-access" class="w-full py-3 border border-emerald-600 text-emerald-700 font-semibold rounded-xl hover:bg-emerald-50">Atualizar acesso</button>
+                </div>
+            </div>
+            <div class="bg-slate-100 rounded-2xl border border-slate-200 p-8">
+                <h2 class="text-lg font-bold text-slate-800">Funcionário (operador)</h2>
+                <p class="text-slate-500 text-sm mt-1">Acesso com senha definida pelo administrador.</p>
+                <form method="POST" action="/login" class="mt-4 space-y-3">
+                    <input type="hidden" name="csrf_token" value="{{ login_csrf or "" }}">
+                    <input type="email" name="username" required class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white" placeholder="E-mail de login" autocomplete="email">
+                    <input type="password" name="password" required class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white" placeholder="Senha" autocomplete="current-password">
+                    <button type="submit" class="w-full py-3 bg-slate-700 hover:bg-slate-800 text-white font-semibold rounded-xl">Entrar como funcionário</button>
+                </form>
+            </div>
+        </div>
+        <footer class="mt-8 text-center text-sm text-slate-500">
+            <p>&copy; Up Digital Brasil</p>
+        </footer>
+    </div>
+    <script>
+    (function() {
+        function show(el, text, ok) {
+            el.classList.remove("hidden", "bg-red-50", "text-red-700", "bg-emerald-50", "text-emerald-800");
+            el.textContent = text;
+            el.classList.add(ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200");
+            el.classList.remove("hidden");
+        }
+        document.getElementById("btn-cli-login").addEventListener("click", function() {
+            var email = (document.getElementById("cli-email") || {}).value || "";
+            var password = (document.getElementById("cli-pass") || {}).value || "";
+            var msg = document.getElementById("msg-cliente");
+            if (!email || !password) { show(msg, "Preencha e-mail e senha.", false); return; }
+            fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, password: password }) })
+                .then(function(r) { return r.json().then(function(d) { return { r: r, d: d }; }); })
+                .then(function(o) {
+                    if (o.d && o.d.ok && o.d.redirect) { window.location.href = o.d.redirect; return; }
+                    show(msg, (o.d && o.d.erro) || "Não foi possível entrar.", false);
+                })
+                .catch(function() { show(msg, "Erro de rede.", false); });
+        });
+        document.getElementById("btn-access").addEventListener("click", function() {
+            var email = (document.getElementById("acc-email") || {}).value || "";
+            var msg = document.getElementById("msg-access");
+            if (!email) { show(msg, "Informe o e-mail.", false); return; }
+            fetch("/auth/update-access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    show(msg, (d && d.message) || "Verifique seu e-mail.", true);
+                })
+                .catch(function() { show(msg, "Erro de rede.", false); });
+        });
+    })();
+    </script>
+    <script src="/static/embed/chat-widget.js" data-key="emb_gDyiR4pM3uFfJPYPwSxaK63r0Yc8W_ul" data-api-base="{{ APP_BASE_URL }}"></script>
+</body>
+</html>

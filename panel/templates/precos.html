@@ -1,0 +1,97 @@
+{% extends "layout_public.html" %}
+{% block title %}Planos | ZapAction{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-0">
+  <style>
+    .plan-featured {
+      background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+      border-color: #334155;
+      color: #fff;
+    }
+    .plan-featured-hover {
+      transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease, filter 320ms ease;
+      transform: translateZ(0);
+      will-change: transform, box-shadow, filter;
+    }
+    .plan-featured-hover:hover {
+      transform: translateY(-10px) scale(1.045);
+      box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45), 0 8px 20px rgba(16, 185, 129, 0.25);
+      filter: saturate(1.08);
+    }
+    .plan-featured-cta {
+      background: #10b981;
+      color: #fff;
+    }
+    .plan-featured-cta:hover { background: #059669; }
+  </style>
+  <div class="text-center mb-10 max-w-2xl mx-auto">
+    <h1 class="text-3xl font-bold text-slate-800">Escolha seu plano</h1>
+    <p class="text-slate-500 mt-2">Teste por alguns dias e ative a assinatura quando estiver pronto.</p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+    {% for p in plans %}
+    {% set ent = p.entitlements_json if p.entitlements_json is mapping else {} %}
+    {% set is_featured = ent.get('featured', False) %}
+    <div class="{{ 'plan-featured plan-featured-hover' if is_featured else 'bg-white border border-slate-200 transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.01]' }} rounded-2xl p-6 sm:p-7 shadow-sm flex flex-col h-full">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="font-bold {{ 'text-white' if is_featured else 'text-slate-800' }} truncate">{{ p.name or p.plan_key }}</h2>
+          <p class="text-xs {{ 'text-slate-200' if is_featured else 'text-slate-500' }} mt-0.5">{{ (p.trial_days or 0) }} dias de teste</p>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded {{ 'bg-white/10 text-white border border-white/20' if is_featured else 'bg-slate-100 text-slate-700' }}">{{ p.currency or 'BRL' }}</span>
+      </div>
+      {% if is_featured %}
+      <div class="mt-3">
+        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+          <i class="fas fa-star text-[10px]"></i> Mais vantajoso
+        </span>
+      </div>
+      {% endif %}
+      <div class="mt-4">
+        <div class="text-3xl font-bold {{ 'text-white' if is_featured else 'text-slate-900' }}">
+          R$ {{ ('%.2f'|format((p.price or 0)|float)).replace('.', ',') }}
+          <span class="text-sm font-medium {{ 'text-slate-200' if is_featured else 'text-slate-500' }}">/mês</span>
+        </div>
+      </div>
+      {# Só listamos o que está incluído; chave omitida = incluído (mesma ideia que entitlements no app). #}
+      {% set max_chatbots = ent.get('max_chatbots') %}
+      {% set max_sublogins_raw = ent.get('max_usuarios_internos') if ent.get('max_usuarios_internos') is not none else ent.get('max_operadores') %}
+      <ul class="mt-5 space-y-2 text-sm {{ 'text-slate-100' if is_featured else 'text-slate-600' }} flex-1">
+        {% if ent.get('site', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Chat no site</li>
+        {% endif %}
+        {% if ent.get('whatsapp', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> WhatsApp</li>
+        {% endif %}
+        {% if ent.get('instagram', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Instagram</li>
+        {% endif %}
+        {% if ent.get('messenger', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Messenger</li>
+        {% endif %}
+        {% if ent.get('chatbots', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Chatbots: {{ max_chatbots if max_chatbots is not none else 'Ilimitado' }}</li>
+        {% endif %}
+        {% if ent.get('usuarios_setores', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Sub-logins: {{ max_sublogins_raw if max_sublogins_raw is not none else 'Ilimitado' }}</li>
+        {% endif %}
+        {% if ent.get('exports', True) %}
+        <li class="flex items-center gap-2"><i class="fas fa-check {{ 'text-emerald-300' if is_featured else 'text-emerald-600' }}"></i> Exportações</li>
+        {% endif %}
+      </ul>
+      <a href="{{ url_for('public.cadastro_get') }}?plano={{ p.plan_key }}"
+         class="mt-6 inline-flex w-full min-h-[48px] items-center justify-center gap-2 px-4 py-3 rounded-xl {{ 'plan-featured-cta' if is_featured else 'bg-emerald-600 hover:bg-emerald-700 text-white' }} font-semibold transition">
+        Começar teste
+        <i class="fas fa-arrow-right"></i>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="mt-10 text-center text-sm text-slate-500">
+    Já tem conta? <a class="font-semibold text-slate-700 underline" href="{{ url_for('customer.login') }}">Entrar</a>
+  </div>
+</div>
+{% endblock %}
+

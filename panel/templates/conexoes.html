@@ -1,0 +1,439 @@
+{% extends "layout.html" %}
+
+{% block title %}Conexões{% endblock %}
+{% block page_title %}Conectar canais{% endblock %}
+
+{% block content %}
+<div class="p-6 lg:p-8 max-w-4xl mx-auto">
+    <p class="text-slate-500 text-sm mb-6">WhatsApp via WAHA (servidor). Conecte Instagram, Messenger e chat para site.</p>
+
+    <div class="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm mb-6">
+        <strong>Importante:</strong> Ao clicar em <strong>Conectar</strong>, você será levado ao site da <strong>Meta (Facebook)</strong>. Use o <strong>e-mail e a senha da sua conta Facebook</strong> (conta pessoal que administra a página). <em>Não use</em> o ID do app nem a chave secreta do app (Meta for Developers) — essas ficam só no servidor (.env).
+    </div>
+
+    <div class="space-y-6">
+        {% if can_use_channel_ui('whatsapp') %}
+        <!-- WhatsApp (apenas WAHA) -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                        <i class="fab fa-whatsapp text-2xl text-emerald-500"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800">WhatsApp</h3>
+                        <p class="text-xs text-slate-500">Via WAHA (servidor). Configurado no .env pelo administrador.</p>
+                    </div>
+                </div>
+                {% if waha_configured %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium">
+                    <i class="fas fa-check-circle"></i> Ativo (WAHA)
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
+                    <i class="fas fa-exclamation-circle"></i> Configure WAHA_URL e WAHA_API_KEY no .env
+                </span>
+                {% endif %}
+            </div>
+            <div class="p-6">
+                {% if not waha_configured %}
+                <p class="text-sm text-slate-600">Para ativar o WhatsApp via WAHA, configure <strong>WAHA_URL</strong> e <strong>WAHA_API_KEY</strong> no .env do servidor.</p>
+                {% else %}
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm space-y-3">
+                    <p><strong>Conexão automática via WAHA Plus:</strong> ao clicar em conectar, o sistema cria (na primeira vez) e reutiliza a mesma instância deste cliente, gerando QR aqui no painel.</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" id="btn-waha-conectar" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition">Conectar WhatsApp</button>
+                        <button type="button" id="btn-waha-atualizar-qr" class="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg transition">Atualizar QR</button>
+                        <button type="button" id="btn-waha-desconectar" class="px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition">Desconectar (trocar número)</button>
+                    </div>
+                    <p id="waha-status" class="text-xs text-slate-500">Aguardando ação.</p>
+                    <div id="waha-qr-wrap" class="hidden">
+                        <img id="waha-qr-img" alt="QR Code WhatsApp" class="w-64 h-64 rounded-lg border border-slate-200 bg-white p-2" />
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_use_channel_ui('instagram') %}
+        <!-- Instagram -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-pink-500/10 flex items-center justify-center">
+                        <i class="fab fa-instagram text-2xl text-pink-500"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800">Instagram Direct</h3>
+                        <p class="text-xs text-slate-500">Conecte com um clique.</p>
+                    </div>
+                </div>
+                {% if cliente.get('meta_ig_page_id') and cliente.get('meta_ig_token') %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium"><i class="fas fa-check-circle"></i> Conectado</span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-sm font-medium"><i class="fas fa-exclamation-circle"></i> Não configurado</span>
+                {% endif %}
+            </div>
+            <div class="p-6 space-y-4">
+                {% if meta_connected == 'ig' %}
+                <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+                    <i class="fas fa-check-circle mr-2"></i> Instagram conectado com sucesso.
+                </div>
+                {% endif %}
+                {% if meta_oauth_available %}
+                <p class="text-sm text-slate-600 mb-2">Use a <strong>sua conta Facebook</strong> (e-mail e senha pessoal) na tela da Meta — não use credenciais do app.</p>
+                <div class="flex flex-wrap items-center gap-3">
+                    {% if cliente.get('meta_ig_page_id') and cliente.get('meta_ig_token') %}
+                    <button type="button" id="btn-desconectar-ig" class="inline-flex items-center justify-center gap-2 px-5 py-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition">
+                        <i class="fas fa-unlink"></i> Desconectar
+                    </button>
+                    {% else %}
+                    <a href="{{ url_for('meta_oauth.meta_connect_instagram') }}" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-pink-500 hover:bg-pink-600 text-white font-semibold rounded-xl transition shadow-sm">
+                        <i class="fab fa-instagram text-xl"></i> Conectar Instagram (login Meta)
+                    </a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if not meta_oauth_available %}
+                <p class="text-sm text-slate-500">Entre em contato com o administrador para ativar a conexão com a Meta.</p>
+                {% endif %}
+                {% if is_admin(current_user) %}
+                <details class="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+                    <summary class="p-3 bg-slate-50 cursor-pointer text-sm font-medium text-slate-700 hover:bg-slate-100">Configuração manual (apenas admin)</summary>
+                    <div class="p-4 bg-white border-t border-slate-200 space-y-3">
+                        <p class="text-xs text-slate-500">Use o <strong>ID do Instagram</strong> (Instagram Business Account ID, usado pelo webhook). O <strong>ID da página Facebook</strong> e o <strong>Token</strong> são da página vinculada ao Instagram (Graph API Explorer).</p>
+                        <div class="grid gap-2">
+                            <label class="text-xs font-medium text-slate-600">ID do Instagram (Instagram Business Account ID)</label>
+                            {% set _ig_account_id = cliente.get('meta_ig_account_id') or '' %}
+                            <input type="text" id="meta_ig_account_id" value="{{ _ig_account_id if '@' not in _ig_account_id else '' }}" placeholder="Ex: 17841400008460056" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <label class="text-xs font-medium text-slate-600">ID da página Facebook (Page ID)</label>
+                            {% set _ig_page_id = cliente.get('meta_ig_page_id') or '' %}
+                            <input type="text" id="meta_ig_page_id" value="{{ _ig_page_id if '@' not in _ig_page_id else '' }}" placeholder="Ex: 58675360142106141" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <label class="text-xs font-medium text-slate-600">Token da página (Page Access Token)</label>
+                            <input type="password" id="meta_ig_token" value="{{ cliente.get('meta_ig_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                        </div>
+                        <button type="button" id="btn-salvar-instagram-manual" class="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white text-sm font-medium rounded-lg transition">Salvar</button>
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_use_channel_ui('facebook') %}
+        <!-- Facebook Messenger -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-blue-600/10 flex items-center justify-center">
+                        <i class="fab fa-facebook-messenger text-2xl text-blue-600"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800">Facebook Messenger</h3>
+                        <p class="text-xs text-slate-500">Conecte com um clique.</p>
+                    </div>
+                </div>
+                {% if cliente.get('meta_fb_page_id') and cliente.get('meta_fb_token') %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-medium"><i class="fas fa-check-circle"></i> Conectado</span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-sm font-medium"><i class="fas fa-exclamation-circle"></i> Não configurado</span>
+                {% endif %}
+            </div>
+            <div class="p-6 space-y-4">
+                {% if meta_connected == 'fb' %}
+                <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+                    <i class="fas fa-check-circle mr-2"></i> Messenger conectado com sucesso.
+                </div>
+                {% endif %}
+                {% if meta_oauth_available %}
+                <p class="text-sm text-slate-600">Clique em <strong>Conectar</strong> para abrir o Facebook e entrar com a <strong>sua conta Facebook</strong> (e-mail e senha pessoal). O ID e o token da página serão obtidos automaticamente.</p>
+                <div class="flex flex-wrap items-center gap-3">
+                    {% if cliente.get('meta_fb_page_id') and cliente.get('meta_fb_token') %}
+                    <button type="button" id="btn-desconectar-fb" class="inline-flex items-center justify-center gap-2 px-5 py-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition">
+                        <i class="fas fa-unlink"></i> Desconectar
+                    </button>
+                    {% else %}
+                    <a href="{{ url_for('meta_oauth.meta_connect_messenger') }}" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition shadow-sm">
+                        <i class="fab fa-facebook-messenger text-xl"></i> Conectar Messenger (login Meta)
+                    </a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if not meta_oauth_available %}
+                <p class="text-sm text-slate-500">Entre em contato com o administrador para ativar a conexão com a Meta.</p>
+                {% endif %}
+                {% if is_admin(current_user) %}
+                <details class="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+                    <summary class="p-3 bg-slate-50 cursor-pointer text-sm font-medium text-slate-700 hover:bg-slate-100">Configuração manual (apenas admin)</summary>
+                    <div class="p-4 bg-white border-t border-slate-200 space-y-3">
+                        <p class="text-xs text-slate-500">Só para suporte. Obtenha o ID e o token no <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" class="text-blue-600 underline">Graph API Explorer</a> e preencha abaixo.</p>
+                        <div class="grid gap-2">
+                            <label class="text-xs font-medium text-slate-600">ID da página (Page ID)</label>
+                            {% set _page_id = cliente.get('meta_fb_page_id') or '' %}
+                            <input type="text" id="meta_fb_page_id" value="{{ _page_id if '@' not in _page_id else '' }}" placeholder="Ex: 58675360142106141" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <label class="text-xs font-medium text-slate-600">Token da página (Page Access Token)</label>
+                            <input type="password" id="meta_fb_token" value="{{ cliente.get('meta_fb_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                        </div>
+                        <button type="button" id="btn-salvar-messenger-manual" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">Salvar</button>
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_use_channel_ui('website') %}
+        <!-- Chat para site -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-slate-700/10 flex items-center justify-center">
+                    <i class="fas fa-globe text-2xl text-slate-700"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800">Chat para seu site</h3>
+                    <p class="text-xs text-slate-500">Widget instalável: visiteantes do seu site conversam aqui e a IA responde em tempo real.</p>
+                </div>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-slate-700 mb-2 font-medium">Uma linha. Cole no seu site antes do <code>&lt;/body&gt;</code> e pronto.</p>
+                <p class="text-xs text-slate-500 mb-3">O script carrega sempre do nosso servidor de API (<code class="text-slate-600">/static/embed/chat-widget.js</code>); a sua chave vem abaixo. Em sites noutro domínio, use <code class="text-slate-600">data-api-base</code> como no exemplo — não use o caminho antigo <code class="text-slate-600">/webhook/meta/...</code> salvo compatibilidade.</p>
+                <div class="relative">
+                    <pre id="embed-snippet" class="bg-slate-900 text-slate-100 text-xs p-4 rounded-xl overflow-x-auto whitespace-pre-wrap font-mono break-all">Carregando...</pre>
+                    <button type="button" onclick="copiarEmbed()" class="absolute top-2 right-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition">
+                        <i class="fas fa-copy mr-1"></i> Copiar
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500 mt-3">As conversas aparecem no <a href="{{ url_for('customer.chat') }}" class="text-slate-700 font-medium underline">Chat</a>, canal <strong>Site</strong>.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Desconectar: chama a API e recarrega a página para atualizar o estado
+    function setupDesconectar(btnId, url, canalNome) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', async function() {
+            if (!confirm('Desconectar ' + canalNome + '? Os dados de conexão (ID e token) serão removidos do seu painel. Você pode reconectar depois.')) return;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Desconectando...';
+            try {
+                const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                const d = await r.json().catch(() => ({}));
+                if (r.ok && d.status === 'sucesso') {
+                    window.location.reload();
+                } else {
+                    alert('Erro: ' + (d.mensagem || 'Não foi possível desconectar.'));
+                }
+            } catch (err) {
+                alert('Erro de conexão.');
+            }
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        });
+    }
+    setupDesconectar('btn-desconectar-ig', '/api/conexoes/instagram/desconectar', 'Instagram');
+    setupDesconectar('btn-desconectar-fb', '/api/conexoes/facebook/desconectar', 'Messenger');
+
+    (function() {
+        var btn = document.getElementById('btn-salvar-messenger-manual');
+        if (!btn) return;
+        btn.addEventListener('click', async function() {
+            var pageId = (document.getElementById('meta_fb_page_id') || {}).value || '';
+            var token = (document.getElementById('meta_fb_token') || {}).value || '';
+            if (!pageId.trim()) { alert('Informe o ID da página.'); return; }
+            if (!token.trim()) { alert('Informe o Token da página.'); return; }
+            var orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
+            try {
+                var r = await fetch('/api/conexoes/facebook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ meta_fb_page_id: pageId.trim(), meta_fb_token: token.trim() })
+                });
+                var d = await r.json().catch(function() { return {}; });
+                if (r.ok && (d.status === 'sucesso' || d.status === 'ok')) {
+                    alert('Messenger configurado com sucesso.');
+                    window.location.reload();
+                } else {
+                    alert('Erro: ' + (d.mensagem || d.erro || 'Não foi possível salvar.'));
+                }
+            } catch (err) {
+                alert('Erro de conexão.');
+            }
+            btn.disabled = false;
+            btn.textContent = orig;
+        });
+    })();
+
+    (function() {
+        var btn = document.getElementById('btn-salvar-instagram-manual');
+        if (!btn) return;
+        btn.addEventListener('click', async function() {
+            var igAccountId = (document.getElementById('meta_ig_account_id') || {}).value || '';
+            var pageId = (document.getElementById('meta_ig_page_id') || {}).value || '';
+            var token = (document.getElementById('meta_ig_token') || {}).value || '';
+            if (!token.trim()) { alert('Informe o Token da página.'); return; }
+            if (pageId.indexOf('@') !== -1 || igAccountId.indexOf('@') !== -1) { alert('Use IDs numéricos, não e-mail.'); return; }
+            var orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
+            try {
+                var r = await fetch('/api/conexoes/instagram', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ meta_ig_account_id: igAccountId.trim() || null, meta_ig_page_id: pageId.trim() || null, meta_ig_token: token.trim() })
+                });
+                var d = await r.json().catch(function() { return {}; });
+                if (r.ok && (d.status === 'sucesso' || d.status === 'ok')) {
+                    alert('Instagram configurado com sucesso.');
+                    window.location.reload();
+                } else {
+                    alert('Erro: ' + (d.mensagem || d.erro || 'Não foi possível salvar.'));
+                }
+            } catch (err) {
+                alert('Erro de conexão.');
+            }
+            btn.disabled = false;
+            btn.textContent = orig;
+        });
+    })();
+
+    // Embed: snippet oficial (API = APP_BASE_URL; chave do cliente ou /api/embed/key)
+    (function() {
+        var apiBase = {{ APP_BASE_URL | tojson }};
+        var keyPref = {{ (cliente.get('website_chat_embed_key') or '') | tojson }};
+        function buildSnippet(key) {
+            var k = (key || '').trim();
+            if (!k) k = '(gerar chave: abra Conexões com canal Site ativo ou chame GET /api/embed/key no painel)';
+            return '<script src="' + apiBase + '/static/embed/chat-widget.js" data-key="' + k + '" data-api-base="' + apiBase + '"><\\/script>';
+        }
+        function setEl(snippet) {
+            var el = document.getElementById('embed-snippet');
+            if (el) el.textContent = snippet;
+            window.embedSnippetText = snippet;
+        }
+        if (keyPref) {
+            setEl(buildSnippet(keyPref));
+        } else {
+            setEl('Carregando chave…');
+            fetch('/api/embed/key', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var k = (d && d.key) ? d.key : '';
+                    setEl(buildSnippet(k));
+                })
+                .catch(function() {
+                    setEl(buildSnippet(''));
+                });
+        }
+    })();
+    function copiarEmbed() {
+        const t = window.embedSnippetText || document.getElementById('embed-snippet').textContent;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(() => alert('Código copiado!'));
+        } else {
+            const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert('Código copiado!');
+        }
+    }
+
+    (function() {
+        var btnConectar = document.getElementById('btn-waha-conectar');
+        var btnQr = document.getElementById('btn-waha-atualizar-qr');
+        var btnDesconectar = document.getElementById('btn-waha-desconectar');
+        var statusEl = document.getElementById('waha-status');
+        var qrWrap = document.getElementById('waha-qr-wrap');
+        var qrImg = document.getElementById('waha-qr-img');
+        if (!btnConectar || !btnQr || !btnDesconectar || !statusEl || !qrWrap || !qrImg) return;
+
+        var currentSession = '';
+
+        function setStatus(msg) { statusEl.textContent = msg; }
+
+        async function ensureSession() {
+            var r = await fetch('/api/waha/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            var d = await r.json().catch(function() { return {}; });
+            if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao criar sessão WAHA.');
+            currentSession = (d.session_name || (d.session && d.session.name) || '').trim();
+            if (!currentSession) throw new Error('Sessão WAHA não retornada.');
+            return d;
+        }
+
+        async function refreshStatus() {
+            var r = await fetch('/api/waha/sessions', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            var d = await r.json().catch(function() { return {}; });
+            if (!r.ok || !d.ok) return;
+            var sess = (d.sessions && d.sessions[0]) ? d.sessions[0] : null;
+            if (!sess) return;
+            currentSession = (sess.name || currentSession || '').trim();
+            var st = (sess.status || '').toUpperCase();
+            if (st === 'WORKING') setStatus('WhatsApp conectado.');
+            if (st === 'SCAN_QR_CODE') {
+                setStatus('Sessão aguardando QR. Atualizando QR...');
+                try { await loadQr(); } catch (_) {}
+            }
+        }
+
+        async function loadQr() {
+            if (!currentSession) await ensureSession();
+            var r = await fetch('/api/waha/sessions/' + encodeURIComponent(currentSession) + '/qr', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            var d = await r.json().catch(function() { return {}; });
+            if (!r.ok || !d.ok || !d.qr || !d.qr.data) throw new Error(d.erro || 'QR indisponível no momento.');
+            var mime = d.qr.mimetype || 'image/png';
+            qrImg.src = 'data:' + mime + ';base64,' + d.qr.data;
+            qrWrap.classList.remove('hidden');
+            setStatus('Escaneie o QR no WhatsApp. Se expirar, clique em Atualizar QR.');
+        }
+
+        btnConectar.addEventListener('click', async function() {
+            btnConectar.disabled = true;
+            setStatus('Criando/validando instância e gerando QR...');
+            try {
+                await ensureSession();
+                await loadQr();
+            } catch (err) {
+                setStatus('Erro: ' + (err && err.message ? err.message : 'falha ao conectar'));
+            }
+            btnConectar.disabled = false;
+        });
+
+        btnQr.addEventListener('click', async function() {
+            btnQr.disabled = true;
+            setStatus('Atualizando QR...');
+            try {
+                await loadQr();
+            } catch (err) {
+                setStatus('Erro: ' + (err && err.message ? err.message : 'falha ao atualizar QR'));
+            }
+            btnQr.disabled = false;
+        });
+
+        btnDesconectar.addEventListener('click', async function() {
+            if (!confirm('Desconectar o WhatsApp atual para conectar outro número na mesma instância?')) return;
+            btnDesconectar.disabled = true;
+            setStatus('Desconectando sessão...');
+            try {
+                if (!currentSession) await ensureSession();
+                var r = await fetch('/api/waha/sessions/' + encodeURIComponent(currentSession) + '/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                var d = await r.json().catch(function() { return {}; });
+                if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao desconectar sessão.');
+                setStatus('Sessão desconectada. Gere um novo QR para conectar outro número.');
+                qrWrap.classList.add('hidden');
+                qrImg.removeAttribute('src');
+            } catch (err) {
+                setStatus('Erro: ' + (err && err.message ? err.message : 'falha ao desconectar'));
+            }
+            btnDesconectar.disabled = false;
+        });
+
+        setInterval(function() {
+            refreshStatus().catch(function() {});
+        }, 15000);
+    })();
+</script>
+{% endblock %}

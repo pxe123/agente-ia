@@ -1,0 +1,1 @@
+{"sessionId": "6a61e7", "id": "log_api_flow_get_entry", "handler": "api_flow_get_entry", "message": "GET /api/flow", "data": {"cliente_id": "d1ddf96e-e667-48dc-9975-362a9c539fe2", "chatbot_id_arg": "0e29890c-eb8b-4f95-9332-4396b915d549", "channel_arg": null}, "hypothesisId": "A", "timestamp": 1774375836418}
