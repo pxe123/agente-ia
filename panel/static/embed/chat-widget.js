@@ -5,7 +5,7 @@
  *
  *   <script
  *     src="https://api.updigitalbrasil.com.br/static/embed/chat-widget.js"
- *     data-key="emb_SUA_CHAVE_GERADA_NO_PAINEL"
+ *     data-key="<chave gerada em Conexões ou GET /api/embed/key autenticado>"
  *     data-api-base="https://api.updigitalbrasil.com.br"
  *   ></script>
  *
@@ -45,10 +45,6 @@
       return;
     }
   }
-  if (baseUrl.indexOf("api.updigitalbrasil.com.br") !== -1 && key.indexOf("emb_Sk1sAX96f") === 0) {
-    key = "emb_gDyiR4pM3uFfJPYPwSxaK63r0Yc8W_ul";
-  }
-
   function uuid() {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/x/g, function () {
       return (Math.random() * 16 | 0).toString(16);
@@ -170,7 +166,7 @@
               appendMsg("Processando…", false, true);
               fetch(baseUrl + "/api/embed/message", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "X-Embed-Key": key },
                 body: JSON.stringify({ key: key, session_id: sessionId, text: label })
               })
                 .then(function (r) { return r.json(); })
@@ -205,7 +201,7 @@
       pollInterval = setInterval(function () {
         var url = baseUrl + "/api/embed/poll?key=" + encodeURIComponent(key) + "&session_id=" + encodeURIComponent(sessionId);
         if (lastMessageAt) url += "&last_at=" + encodeURIComponent(lastMessageAt);
-        fetch(url)
+        fetch(url, { headers: { "X-Embed-Key": key } })
           .then(function (r) { return r.json(); })
           .then(function (data) {
             if (data && data.mensagens && data.mensagens.length) {
@@ -300,6 +296,7 @@
 
         fetch(baseUrl + "/api/embed/media", {
           method: "POST",
+          headers: { "X-Embed-Key": key },
           body: form
         })
           .then(function (r) { return r.json(); })
@@ -326,7 +323,7 @@
       appendMsg("Processando…", false, true);
       fetch(baseUrl + "/api/embed/message", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Embed-Key": key },
         body: JSON.stringify({ key: key, session_id: sessionId, text: text })
       })
         .then(function (r) { return r.json(); })

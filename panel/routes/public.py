@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel
+from database.embed_key import gerar_embed_key
 from services.plans import list_active_plans, get_plan, plan_entitlements, plan_trial_ends_at
 
 
@@ -91,7 +92,7 @@ def cadastro_post():
         ClienteModel.ID: cliente_pk,
         ClienteModel.AUTH_ID: auth_user_id,
         ClienteModel.EMAIL: email,
-        
+        ClienteModel.EMBED_KEY: gerar_embed_key(),
         ClienteModel.PLANO: plan_key,  # mantém compat com UI atual
         ClienteModel.BILLING_PLAN_KEY: plan_key,
         ClienteModel.BILLING_STATUS: "trialing" if trial_ends_at else "inactive",

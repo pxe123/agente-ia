@@ -68,8 +68,34 @@
             </nav>
         </div>
     </footer>
+    <script>
+    // Mostrar/ocultar senha (delegado)
+    (function() {
+        function toggle(btn) {
+            var targetId = btn.getAttribute("data-target");
+            var input = targetId ? document.getElementById(targetId) : null;
+            if (!input) {
+                var wrap = btn.closest(".relative") || btn.parentElement;
+                if (wrap) input = wrap.querySelector('input[type="password"],input[type="text"]');
+            }
+            if (!input) return;
+            var isPassword = (input.getAttribute("type") || "password") === "password";
+            input.setAttribute("type", isPassword ? "text" : "password");
+            var icon = btn.querySelector("i");
+            if (icon) {
+                icon.classList.remove("fa-eye", "fa-eye-slash");
+                icon.classList.add(isPassword ? "fa-eye-slash" : "fa-eye");
+            }
+            btn.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
+        }
+        document.addEventListener("click", function(e) {
+            var btn = e.target && e.target.closest ? e.target.closest(".toggle-pass") : null;
+            if (!btn) return;
+            e.preventDefault();
+            toggle(btn);
+        });
+    })();
+    </script>
     {% block scripts %}{% endblock %}
-    {# Widget: JS na mesma origem da página (evita 404); API em APP_BASE_URL (CSRF isento em /api/embed/message|poll|media) #}
-    <script src="{{ url_for('static', filename='embed/chat-widget.js') }}" data-key="emb_gDyiR4pM3uFfJPYPwSxaK63r0Yc8W_ul" data-api-base="{{ APP_BASE_URL }}"></script>
 </body>
 </html>

@@ -77,8 +77,9 @@ class ClienteModel:
     # Facebook Messenger
     META_FB_PAGE_ID = "meta_fb_page_id"
     META_FB_TOKEN = "meta_fb_token"
-    # Chat para site (widget instalável)
-    WEBSITE_CHAT_EMBED_KEY = "website_chat_embed_key"
+    # Chat para site (widget instalável); coluna canónica embed_key (UNIQUE). WEBSITE_CHAT_EMBED_KEY aponta para a mesma coluna.
+    EMBED_KEY = "embed_key"
+    WEBSITE_CHAT_EMBED_KEY = "embed_key"
     # Controle de acesso (admin pode habilitar/desabilitar por canal)
     ACESSO_WHATSAPP = "acesso_whatsapp"
     ACESSO_INSTAGRAM = "acesso_instagram"

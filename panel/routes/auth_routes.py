@@ -8,7 +8,7 @@ import time
 from flask import Blueprint, request, jsonify, current_app, url_for
 from flask_login import login_user
 
-from database.supabase_sq import supabase
+from database.supabase_sq import supabase, supabase_public
 from database.models import Tables, ClienteModel
 from base.auth import _load_cliente_as_user_by_auth_id
 
@@ -135,10 +135,12 @@ def _ensure_cliente_auth_id(cliente_pk, email: str) -> str | None:
 
 
 def _sign_in_with_password(email: str, password: str):
-    if supabase is None:
+    # Para login público devemos usar a chave ANON (SUPABASE_ANON_KEY), não service_role.
+    client = supabase_public or supabase
+    if client is None:
         return None, "Supabase não configurado."
     try:
-        res = supabase.auth.sign_in_with_password({"email": email.strip(), "password": password})
+        res = client.auth.sign_in_with_password({"email": email.strip(), "password": password})
     except Exception as e:
         current_app.logger.warning("sign_in_with_password: %s", e)
         return None, "E-mail ou senha incorretos."

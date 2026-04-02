@@ -111,7 +111,12 @@
                             {% set _ig_page_id = cliente.get('meta_ig_page_id') or '' %}
                             <input type="text" id="meta_ig_page_id" value="{{ _ig_page_id if '@' not in _ig_page_id else '' }}" placeholder="Ex: 58675360142106141" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                             <label class="text-xs font-medium text-slate-600">Token da página (Page Access Token)</label>
-                            <input type="password" id="meta_ig_token" value="{{ cliente.get('meta_ig_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                            <div class="relative">
+                                <input type="password" id="meta_ig_token" value="{{ cliente.get('meta_ig_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm pr-12" autocomplete="off">
+                                <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar token" data-target="meta_ig_token">
+                                    <i class="fa-regular fa-eye"></i>
+                                </button>
+                            </div>
                         </div>
                         <button type="button" id="btn-salvar-instagram-manual" class="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white text-sm font-medium rounded-lg transition">Salvar</button>
                     </div>
@@ -173,7 +178,12 @@
                             {% set _page_id = cliente.get('meta_fb_page_id') or '' %}
                             <input type="text" id="meta_fb_page_id" value="{{ _page_id if '@' not in _page_id else '' }}" placeholder="Ex: 58675360142106141" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                             <label class="text-xs font-medium text-slate-600">Token da página (Page Access Token)</label>
-                            <input type="password" id="meta_fb_token" value="{{ cliente.get('meta_fb_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                            <div class="relative">
+                                <input type="password" id="meta_fb_token" value="{{ cliente.get('meta_fb_token') or '' }}" placeholder="Token da página" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm pr-12" autocomplete="off">
+                                <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar token" data-target="meta_fb_token">
+                                    <i class="fa-regular fa-eye"></i>
+                                </button>
+                            </div>
                         </div>
                         <button type="button" id="btn-salvar-messenger-manual" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">Salvar</button>
                     </div>
@@ -307,7 +317,7 @@
     // Embed: snippet oficial (API = APP_BASE_URL; chave do cliente ou /api/embed/key)
     (function() {
         var apiBase = {{ APP_BASE_URL | tojson }};
-        var keyPref = {{ (cliente.get('website_chat_embed_key') or '') | tojson }};
+        var keyPref = {{ (embed_key or '') | tojson }};
         function buildSnippet(key) {
             var k = (key || '').trim();
             if (!k) k = '(gerar chave: abra Conexões com canal Site ativo ou chame GET /api/embed/key no painel)';

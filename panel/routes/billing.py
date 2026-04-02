@@ -5,6 +5,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import login_required, current_user
 
 from base.auth import get_current_cliente_id
+from base.request_security import strip_untrusted_tenant_ids
 from base.config import settings
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel, BillingEventModel
@@ -68,7 +69,7 @@ def mp_checkout():
     if not cliente_id:
         return jsonify({"ok": False, "erro": "Cliente não identificado na sessão."}), 400
 
-    body = request.get_json(silent=True) or {}
+    body = strip_untrusted_tenant_ids(request.get_json(silent=True) or {})
     plan_key = (body.get("plan_key") or "default").strip()
     payer_email = (body.get("payer_email") or getattr(current_user, "email", "") or "").strip().lower()
     if not payer_email:
@@ -304,10 +305,49 @@ def process_mercadopago_event(resource_type: str, data_id: str, request_id: str,
 
     ok, pre = get_preapproval(data_id)
     if not ok:
+        try:
+            current_app.logger.warning(
+                "mercadopago_event: get_preapproval falhou data_id=%s resp=%s", data_id, pre
+            )
+        except Exception:
+            pass
         return
 
     cliente_id = (pre.get("external_reference") or "").strip()
     if not cliente_id:
+        try:
+            current_app.logger.warning(
+                "mercadopago_event: preapproval sem external_reference data_id=%s", data_id
+            )
+        except Exception:
+            pass
+        return
+
+    mp_field = getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id")
+    row = _cliente_row(cliente_id)
+    if row is None:
+        try:
+            current_app.logger.warning(
+                "mercadopago_event: external_reference não corresponde a cliente existente "
+                "(cliente_id=%s, data_id=%s)",
+                cliente_id,
+                data_id,
+            )
+        except Exception:
+            pass
+        return
+    existing_pid = (row.get(mp_field) or "").strip()
+    if existing_pid and existing_pid != str(data_id).strip():
+        try:
+            current_app.logger.warning(
+                "mercadopago_event: mp_preapproval_id no banco difere do evento "
+                "(cliente_id=%s, db=%s, webhook=%s)",
+                cliente_id,
+                existing_pid,
+                data_id,
+            )
+        except Exception:
+            pass
         return
 
     status = (pre.get("status") or "").strip().lower() or "pending"
@@ -347,7 +387,13 @@ def process_mercadopago_event(resource_type: str, data_id: str, request_id: str,
 
     try:
         supabase.table(Tables.CLIENTES).update(payload).eq(ClienteModel.ID, cliente_id).execute()
-    except Exception:
+    except Exception as e:
+        try:
+            current_app.logger.warning(
+                "mercadopago_event: falha ao atualizar cliente %s: %s", cliente_id, e
+            )
+        except Exception:
+            pass
         return
 
     # Marca evento como processado e associa ao cliente (best-effort)

@@ -10,9 +10,11 @@ import json
 import re
 import time
 import os
+import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from database.supabase_sq import supabase
+from database.embed_key import gerar_embed_key
 from database.models import (
     Tables,
     ClienteModel,
@@ -25,6 +27,7 @@ from database.models import (
     ChatbotModel,
 )
 from base.auth import is_admin
+from base.request_security import strip_untrusted_tenant_ids
 
 admin_bp = Blueprint("admin", __name__, template_folder="../templates")
 
@@ -239,6 +242,7 @@ def cadastro_post():
             ClienteModel.ID: cliente_pk,
             ClienteModel.AUTH_ID: auth_user_id,
             ClienteModel.EMAIL: email,
+            ClienteModel.EMBED_KEY: gerar_embed_key(),
             ClienteModel.PLANO: plano,
             ClienteModel.ACESSO_WHATSAPP: True,
             ClienteModel.ACESSO_INSTAGRAM: True,
@@ -521,7 +525,7 @@ def api_clientes():
 def toggle_acesso(user_id):
     if not _require_admin():
         return jsonify({"erro": "Não autorizado"}), 403
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     campo = data.get("campo")
     if campo not in (ClienteModel.ACESSO_WHATSAPP, ClienteModel.ACESSO_INSTAGRAM,
                     ClienteModel.ACESSO_MESSENGER, ClienteModel.ACESSO_SITE):
@@ -633,7 +637,7 @@ def _normalize_featured_plans(selected_plan_key: str):
 def api_plans_create():
     if not _require_admin():
         return jsonify({"erro": "Não autorizado"}), 403
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     plan_key = (data.get("plan_key") or "").strip()
     name = (data.get("name") or plan_key).strip()
     price = data.get("price")
@@ -671,7 +675,7 @@ def api_plans_create():
 def api_plans_update(plan_key):
     if not _require_admin():
         return jsonify({"erro": "Não autorizado"}), 403
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     payload = {}
     for k in ("name", "price", "currency", "trial_days", "active", "entitlements_json"):
         if k in data:
@@ -742,7 +746,7 @@ def api_plans_delete(plan_key):
 def api_set_plano_cliente(cliente_id):
     if not _require_admin():
         return jsonify({"erro": "Não autorizado"}), 403
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     plan_key = (data.get("plan_key") or "").strip()
     if not plan_key:
         return jsonify({"ok": False, "erro": "plan_key é obrigatório."}), 400
@@ -772,7 +776,7 @@ def api_set_plano_cliente(cliente_id):
 def api_set_billing_cliente(cliente_id):
     if not _require_admin():
         return jsonify({"erro": "Não autorizado"}), 403
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     billing_status = (data.get("billing_status") or "").strip().lower()
     mp_preapproval_id = (data.get("mp_preapproval_id") or "").strip() or None
     trial_ends_at = (data.get("trial_ends_at") or "").strip() or None
@@ -1124,7 +1128,7 @@ def api_canais_globais_patch():
         return jsonify({"ok": False, "erro": "Não autorizado"}), 403
     if supabase is None:
         return jsonify({"ok": False, "erro": "Supabase indisponível."}), 503
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     if (
         "instagram_enabled" not in data
         and "messenger_enabled" not in data

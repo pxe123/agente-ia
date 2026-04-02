@@ -206,7 +206,7 @@ function detailPanelHtml(c) {
             '<p class="text-slate-800 font-medium">' + esc(c._plan_display_name || '—') + '</p>' +
             '<p class="text-xs text-slate-500 mt-1">plan_key: <code class="bg-slate-100 px-1 rounded">' + esc(c.billing_plan_key || c.plano || '—') + '</code></p></div>' +
           '<div class="sm:col-span-2"><h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Token / chave do widget (site)</h4>' +
-            '<p class="text-sm font-mono text-slate-700">' + esc(maskEmbedKey(c.website_chat_embed_key)) + '</p>' +
+            '<p class="text-sm font-mono text-slate-700">' + esc(maskEmbedKey(c.embed_key || c.website_chat_embed_key)) + '</p>' +
             '<p class="text-[11px] text-slate-400 mt-1">Valor sensível; só máscara na UI. O cliente vê a chave completa no painel.</p></div>' +
         '</div>' +
       '</div>' +

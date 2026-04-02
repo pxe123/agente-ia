@@ -2,14 +2,15 @@
 """
 Rotas para o chat embed (widget instalável no site do cliente).
 - GET /api/embed/key: retorna ou gera a chave de embed do cliente logado.
+- POST /api/embed/rotate-key: substitui embed_key (autenticado; invalida snippet antigo no site).
 - POST /api/embed/send: envia mensagem do painel para um visitante (session_id).
-- POST /api/embed/message: widget envia mensagem (sem Socket.IO).
-- GET /api/embed/poll: widget busca respostas do bot em historico_mensagens (canal website, funcao=assistant).
+- POST /api/embed/message: widget envia mensagem (sem Socket.IO). Autenticação: header X-Embed-Key e/ou body.key.
+- GET /api/embed/poll: widget busca respostas. Autenticação: header X-Embed-Key e/ou query key.
+- POST /api/embed/media: multipart. Autenticação: header X-Embed-Key e/ou form key.
 
 Respostas do chatbot para o canal website são persistidas em historico_mensagens; o poll lê do banco
 em vez de fila em memória, garantindo entrega persistente.
 """
-import secrets
 import threading
 import json
 import os
@@ -21,9 +22,47 @@ from base.auth import get_current_cliente_id
 
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel, MensagemModel
+from database.embed_key import gerar_embed_key
 
 embed_bp = Blueprint("embed", __name__)
 _debug_log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "debug-1db042.log"))
+
+# Header suportado em CORS + widget (além de body/query `key` por compatibilidade).
+_EMBED_KEY_HEADER = "X-Embed-Key"
+
+
+def _embed_key_from_widget_request() -> str:
+    """Prioridade: header X-Embed-Key, depois JSON body key, form key, query key."""
+    h = (request.headers.get(_EMBED_KEY_HEADER) or "").strip()
+    if h:
+        return h
+    body = request.get_json(silent=True)
+    if isinstance(body, dict):
+        k = (body.get("key") or "").strip()
+        if k:
+            return k
+    fk = (request.form.get("key") or "").strip()
+    if fk:
+        return fk
+    return (request.args.get("key") or "").strip()
+
+
+def _cliente_id_from_embed_key(embed_key: str):
+    """
+    Valida embed_key na tabela clientes. Retorna id do cliente ou None se inválido.
+    """
+    if not embed_key or supabase is None:
+        return None
+    r = (
+        supabase.table(Tables.CLIENTES)
+        .select(ClienteModel.ID)
+        .eq(ClienteModel.EMBED_KEY, embed_key)
+        .limit(1)
+        .execute()
+    )
+    if not r.data:
+        return None
+    return r.data[0]["id"]
 
 
 @embed_bp.before_request
@@ -39,7 +78,7 @@ def _embed_cors_preflight():
     r = Response(status=204)
     r.headers["Access-Control-Allow-Origin"] = "*"
     r.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    r.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Embed-Key"
     r.headers["Access-Control-Max-Age"] = "86400"
     return r
 
@@ -68,11 +107,35 @@ def get_or_create_embed_key():
             return jsonify({"status": "erro", "mensagem": "Cliente não encontrado"}), 404
         key = (r.data[0] or {}).get(ClienteModel.WEBSITE_CHAT_EMBED_KEY)
         if not key:
-            key = "emb_" + secrets.token_urlsafe(24)
+            key = gerar_embed_key()
             supabase.table(Tables.CLIENTES).update({ClienteModel.WEBSITE_CHAT_EMBED_KEY: key}).eq("id", cid).execute()
         return jsonify({"status": "sucesso", "key": key})
     except Exception as e:
         current_app.logger.exception("embed get_or_create_embed_key")
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+
+@embed_bp.route("/api/embed/rotate-key", methods=["POST"])
+@login_required
+def rotate_embed_key():
+    """
+    Gera nova embed_key, grava em clientes e invalida a chave anterior (widgets com snippet antigo deixam de autenticar).
+    Exige sessão do painel + CSRF (mesmas regras das demais rotas /api/*).
+    """
+    if supabase is None:
+        return jsonify({"status": "erro", "mensagem": "Serviço indisponível."}), 503
+    if getattr(current_user, "acesso_site", True) is False:
+        return jsonify({"status": "erro", "mensagem": "Acesso ao chat para site não permitido."}), 403
+    cid = get_current_cliente_id(current_user)
+    if not cid:
+        return jsonify({"status": "erro", "mensagem": "Cliente não identificado."}), 401
+    new_key = gerar_embed_key()
+    try:
+        supabase.table(Tables.CLIENTES).update({ClienteModel.EMBED_KEY: new_key}).eq(ClienteModel.ID, cid).execute()
+        current_app.logger.info("embed rotate-key: cliente_id=%s", cid)
+        return jsonify({"status": "sucesso", "key": new_key}), 200
+    except Exception as e:
+        current_app.logger.exception("embed rotate_embed_key")
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
 
 
@@ -109,9 +172,9 @@ def send_to_visitor():
 
 @embed_bp.route("/api/embed/message", methods=["POST"])
 def widget_send_message():
-    """Widget do site envia mensagem (sem Socket.IO). Valida key e processa em background."""
-    data = request.get_json() or {}
-    key = (data.get("key") or "").strip()
+    """Widget do site envia mensagem (sem Socket.IO). Valida X-Embed-Key ou body key; processa em background."""
+    data = request.get_json(silent=True) or {}
+    embed_key = _embed_key_from_widget_request()
     session_id = (data.get("session_id") or "").strip()
     text = (data.get("text") or data.get("mensagem") or "").strip()
     #region agent log widget_send_message_enter
@@ -123,7 +186,7 @@ def widget_send_message():
             "location": "panel/routes/embed.py:widget_send_message",
             "message": "Widget endpoint reached (CSRF allowlist mismatch?)",
             "data": {
-                "key_len": len(key),
+                "key_len": len(embed_key),
                 "session_id_len": len(session_id),
                 "text_len": len(text),
             },
@@ -134,13 +197,12 @@ def widget_send_message():
     except Exception:
         pass
     #endregion
-    if not key or not session_id or not text:
-        return jsonify({"status": "erro", "mensagem": "key, session_id e text são obrigatórios"}), 400
+    if not embed_key or not session_id or not text:
+        return jsonify({"status": "erro", "mensagem": "key (header X-Embed-Key ou body), session_id e text são obrigatórios"}), 400
     try:
-        r = supabase.table(Tables.CLIENTES).select("id").eq(ClienteModel.WEBSITE_CHAT_EMBED_KEY, key).execute()
-        if not r.data or len(r.data) == 0:
+        cliente_id = _cliente_id_from_embed_key(embed_key)
+        if not cliente_id:
             return jsonify({"status": "erro", "mensagem": "Chave inválida"}), 403
-        cliente_id = r.data[0]["id"]
         socketio = current_app.extensions.get("socketio")
         def processar():
             try:
@@ -160,18 +222,17 @@ def widget_send_message():
 @embed_bp.route("/api/embed/media", methods=["POST"])
 def widget_send_media():
     """Widget do site envia mídia (imagem/arquivo) via multipart FormData."""
-    key = (request.form.get("key") or "").strip()
+    embed_key = _embed_key_from_widget_request()
     session_id = (request.form.get("session_id") or "").strip()
     file_storage = request.files.get("file")
 
-    if not key or not session_id or not file_storage:
-        return jsonify({"status": "erro", "mensagem": "key, session_id e file são obrigatórios"}), 400
+    if not embed_key or not session_id or not file_storage:
+        return jsonify({"status": "erro", "mensagem": "key (header X-Embed-Key ou form), session_id e file são obrigatórios"}), 400
 
     try:
-        r = supabase.table(Tables.CLIENTES).select("id").eq(ClienteModel.WEBSITE_CHAT_EMBED_KEY, key).execute()
-        if not r.data or len(r.data) == 0:
+        cliente_id = _cliente_id_from_embed_key(embed_key)
+        if not cliente_id:
             return jsonify({"status": "erro", "mensagem": "Chave inválida"}), 403
-        cliente_id = r.data[0]["id"]
         socketio = current_app.extensions.get("socketio")
 
         from services.anexo_service import save_uploaded_file
@@ -211,16 +272,15 @@ def widget_send_media():
 def widget_poll():
     """Widget busca respostas do bot em historico_mensagens. Retorna só mensagens novas (created_at > last_at).
     last_at: opcional, ISO do cliente; se não enviado, usa _embed_last_poll_at (fallback). 100% stateless se o cliente enviar last_at."""
-    key = (request.args.get("key") or "").strip()
+    embed_key = _embed_key_from_widget_request()
     session_id = (request.args.get("session_id") or "").strip()
     last_at_param = (request.args.get("last_at") or "").strip()
-    if not key or not session_id:
+    if not embed_key or not session_id:
         return jsonify({"status": "erro", "mensagens": []}), 400
     try:
-        r = supabase.table(Tables.CLIENTES).select("id").eq(ClienteModel.WEBSITE_CHAT_EMBED_KEY, key).execute()
-        if not r.data or len(r.data) == 0:
+        cliente_id = _cliente_id_from_embed_key(embed_key)
+        if not cliente_id:
             return jsonify({"status": "erro", "mensagens": []}), 403
-        cliente_id = r.data[0]["id"]
         room = f"website:{cliente_id}:{session_id}"
         last_at = last_at_param if last_at_param else _embed_last_poll_at.get(room)
         now_iso = datetime.now(timezone.utc).isoformat()

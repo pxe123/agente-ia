@@ -163,6 +163,40 @@ def inject_domain_urls():
     }
 
 @app.context_processor
+def inject_embed_key():
+    """Chave embed do tenant logado (painel cliente). Templates usam {{ embed_key }}; admin mestre não recebe chave."""
+    try:
+        from flask_login import current_user
+        from base.auth import get_current_cliente_id, is_admin
+        from database.supabase_sq import supabase
+        from database.models import Tables, ClienteModel
+
+        if (
+            supabase is None
+            or not current_user.is_authenticated
+            or is_admin(current_user)
+        ):
+            return {"embed_key": None}
+        if getattr(current_user, "acesso_site", True) is False:
+            return {"embed_key": None}
+        cid = get_current_cliente_id(current_user)
+        if not cid:
+            return {"embed_key": None}
+        r = (
+            supabase.table(Tables.CLIENTES)
+            .select(ClienteModel.EMBED_KEY)
+            .eq(ClienteModel.ID, cid)
+            .limit(1)
+            .execute()
+        )
+        row = (r.data or [{}])[0] if r.data else {}
+        key = (row.get(ClienteModel.EMBED_KEY) or "").strip() or None
+        return {"embed_key": key}
+    except Exception:
+        return {"embed_key": None}
+
+
+@app.context_processor
 def inject_features():
     """
     Helper para templates: esconder recursos que não existem no plano.
@@ -473,7 +507,7 @@ def inject_admin():
         return dict(is_admin=is_admin, current_cliente_id=current_cliente_id)
     except Exception:
         return dict(is_admin=is_admin, current_cliente_id=None)
-app.register_blueprint(embed_bp)                         # /api/embed/key, /api/embed/send
+app.register_blueprint(embed_bp)                         # /api/embed/key, rotate-key, send, message, poll, media
 app.register_blueprint(meta_bp, url_prefix='/webhook')   # GET/POST /webhook/meta (WhatsApp, Instagram, Messenger)
 app.register_blueprint(waha_webhook_bp, url_prefix='/webhook')  # POST /webhook/waha (eventos WAHA)
 app.register_blueprint(mercadopago_bp, url_prefix="/webhook")  # POST /webhook/mercadopago

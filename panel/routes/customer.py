@@ -12,6 +12,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel, FlowModel, ChatbotModel, FlowUserStateModel, LeadModel
 from base.auth import User, get_current_cliente_id, _USER_ID_PREFIX_CLIENTE, _USER_ID_PREFIX_OPERADOR, _CLIENTES_SELECT
+from base.template_helpers import with_embed_template_kwargs
+from base.request_security import strip_untrusted_tenant_ids
 from base.config import settings
 from services.entitlements import can_access_feature, can_use_channel
 from services.plans import list_active_plans
@@ -318,7 +320,7 @@ def chat():
 # Chaves que a página Conexões pode receber — nunca passar email, senha, mail ou outras colunas sensíveis
 _CONEXOES_KEYS = (
     "meta_wa_phone_number_id", "meta_wa_token", "meta_ig_account_id", "meta_ig_page_id", "meta_ig_token",
-    "meta_fb_page_id", "meta_fb_token", "website_chat_embed_key",
+    "meta_fb_page_id", "meta_fb_token", "embed_key",
 )
 
 
@@ -371,12 +373,14 @@ def conexoes():
     )
     waha_configured = bool(getattr(settings, "WAHA_URL", None) and getattr(settings, "WAHA_API_KEY", None))
     return render_template(
-        'conexoes.html',
-        cliente=cliente,
-        meta_connected=meta_connected,
-        meta_error=meta_error,
-        meta_oauth_available=meta_oauth_available,
-        waha_configured=waha_configured,
+        "conexoes.html",
+        **with_embed_template_kwargs(
+            cliente=cliente,
+            meta_connected=meta_connected,
+            meta_error=meta_error,
+            meta_oauth_available=meta_oauth_available,
+            waha_configured=waha_configured,
+        ),
     )
 
 
@@ -779,7 +783,7 @@ def api_waha_chats_overview():
 def api_salvar_whatsapp():
     """Salva meta_wa_phone_number_id e meta_wa_token do cliente logado. Token vazio = não alterar."""
     from database.models import ClienteModel
-    data = request.json or request.form or {}
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
     phone_id = (data.get('meta_wa_phone_number_id') or data.get('phone_number_id') or '').strip()
     token = (data.get('meta_wa_token') or data.get('token') or '').strip()
     payload = {}
@@ -802,7 +806,7 @@ def api_salvar_instagram():
     cid = str(get_current_cliente_id(current_user) or "")
     if cid and not can_use_channel(cid, "instagram"):
         return jsonify({"status": "erro", "mensagem": "Instagram não está disponível no momento."}), 400
-    data = request.json or request.form or {}
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
     ig_account_id = (data.get('meta_ig_account_id') or '').strip() or None
     page_id = (data.get('meta_ig_page_id') or '').strip() or None
     token = _sanitize_meta_token(data.get('meta_ig_token') or '')
@@ -828,7 +832,7 @@ def api_salvar_facebook():
     cid = str(get_current_cliente_id(current_user) or "")
     if cid and not can_use_channel(cid, "facebook"):
         return jsonify({"status": "erro", "mensagem": "Messenger não está disponível no momento."}), 400
-    data = request.json or request.form or {}
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
     page_id = (data.get('meta_fb_page_id') or '').strip()
     if page_id and "@" in page_id:
         return jsonify({"status": "erro", "mensagem": "Use o ID numérico da página (Page ID), não o e-mail. Obtenha no Graph API Explorer ou na Meta Business Suite."}), 400
@@ -941,11 +945,27 @@ def perfil():
         perfil_data = _load_perfil_sublogin()
         if not perfil_data:
             perfil_data = {"nome": getattr(current_user, "nome", "") or "", "email": getattr(current_user, "email", ""), "conta_desde": "—"}
-        return render_template("perfil.html", is_perfil_sublogin=True, perfil=perfil_data, cliente=perfil_data, conta_desde=perfil_data.get("conta_desde", "—"))
+        return render_template(
+            "perfil.html",
+            **with_embed_template_kwargs(
+                is_perfil_sublogin=True,
+                perfil=perfil_data,
+                cliente=perfil_data,
+                conta_desde=perfil_data.get("conta_desde", "—"),
+            ),
+        )
     cliente, conta_desde = _load_perfil_data()
     if not cliente:
         cliente = {"email": getattr(current_user, "email", "")}
-    return render_template("perfil.html", is_perfil_sublogin=False, perfil=None, cliente=cliente, conta_desde=conta_desde)
+    return render_template(
+        "perfil.html",
+        **with_embed_template_kwargs(
+            is_perfil_sublogin=False,
+            perfil=None,
+            cliente=cliente,
+            conta_desde=conta_desde,
+        ),
+    )
 
 
 @customer_bp.route('/perfil', methods=['POST'])
@@ -961,9 +981,29 @@ def perfil_post():
             perfil_data["nome"] = nome
         if nova_senha:
             if len(nova_senha) < 6:
-                return render_template("perfil.html", is_perfil_sublogin=True, perfil=perfil_data, cliente=perfil_data, conta_desde=perfil_data.get("conta_desde", "—"), mensagem="Nova senha deve ter no mínimo 6 caracteres.", erro=True)
+                return render_template(
+                    "perfil.html",
+                    **with_embed_template_kwargs(
+                        is_perfil_sublogin=True,
+                        perfil=perfil_data,
+                        cliente=perfil_data,
+                        conta_desde=perfil_data.get("conta_desde", "—"),
+                        mensagem="Nova senha deve ter no mínimo 6 caracteres.",
+                        erro=True,
+                    ),
+                )
             if nova_senha != nova_senha2:
-                return render_template("perfil.html", is_perfil_sublogin=True, perfil=perfil_data, cliente=perfil_data, conta_desde=perfil_data.get("conta_desde", "—"), mensagem="As senhas não coincidem.", erro=True)
+                return render_template(
+                    "perfil.html",
+                    **with_embed_template_kwargs(
+                        is_perfil_sublogin=True,
+                        perfil=perfil_data,
+                        cliente=perfil_data,
+                        conta_desde=perfil_data.get("conta_desde", "—"),
+                        mensagem="As senhas não coincidem.",
+                        erro=True,
+                    ),
+                )
         from database.models import Tables, UsuarioInternoModel
         payload = {UsuarioInternoModel.UPDATED_AT: datetime.now(timezone.utc).isoformat()}
         if nome is not None:
@@ -975,7 +1015,17 @@ def perfil_post():
                 supabase.table(Tables.USUARIOS_INTERNOS).update(payload).eq(UsuarioInternoModel.ID, current_user.operador_id).execute()
                 flash("Perfil atualizado com sucesso.", "success")
             except Exception as e:
-                return render_template("perfil.html", is_perfil_sublogin=True, perfil=perfil_data, cliente=perfil_data, conta_desde=perfil_data.get("conta_desde", "—"), mensagem="Erro ao atualizar: " + str(e), erro=True)
+                return render_template(
+                    "perfil.html",
+                    **with_embed_template_kwargs(
+                        is_perfil_sublogin=True,
+                        perfil=perfil_data,
+                        cliente=perfil_data,
+                        conta_desde=perfil_data.get("conta_desde", "—"),
+                        mensagem="Erro ao atualizar: " + str(e),
+                        erro=True,
+                    ),
+                )
         return redirect(url_for("customer.perfil"))
 
     from database.models import ClienteModel
@@ -984,9 +1034,29 @@ def perfil_post():
         cliente["nome"] = nome
     if nova_senha:
         if len(nova_senha) < 6:
-            return render_template("perfil.html", is_perfil_sublogin=False, perfil=None, cliente=cliente, conta_desde=conta_desde, mensagem="Nova senha deve ter no mínimo 6 caracteres.", erro=True)
+            return render_template(
+                "perfil.html",
+                **with_embed_template_kwargs(
+                    is_perfil_sublogin=False,
+                    perfil=None,
+                    cliente=cliente,
+                    conta_desde=conta_desde,
+                    mensagem="Nova senha deve ter no mínimo 6 caracteres.",
+                    erro=True,
+                ),
+            )
         if nova_senha != nova_senha2:
-            return render_template("perfil.html", is_perfil_sublogin=False, perfil=None, cliente=cliente, conta_desde=conta_desde, mensagem="As senhas não coincidem.", erro=True)
+            return render_template(
+                "perfil.html",
+                **with_embed_template_kwargs(
+                    is_perfil_sublogin=False,
+                    perfil=None,
+                    cliente=cliente,
+                    conta_desde=conta_desde,
+                    mensagem="As senhas não coincidem.",
+                    erro=True,
+                ),
+            )
     payload = {}
     if nome is not None:
         payload[ClienteModel.NOME] = nome
@@ -1003,9 +1073,29 @@ def perfil_post():
                     supabase.table("clientes").update(payload).eq("id", get_current_cliente_id(current_user)).execute()
                     flash("Perfil atualizado (nome não salvo: coluna não existe no banco).", "success")
                 except Exception as e2:
-                    return render_template("perfil.html", is_perfil_sublogin=False, perfil=None, cliente=cliente, conta_desde=conta_desde, mensagem="Erro ao atualizar: " + str(e2), erro=True)
+                    return render_template(
+                        "perfil.html",
+                        **with_embed_template_kwargs(
+                            is_perfil_sublogin=False,
+                            perfil=None,
+                            cliente=cliente,
+                            conta_desde=conta_desde,
+                            mensagem="Erro ao atualizar: " + str(e2),
+                            erro=True,
+                        ),
+                    )
             else:
-                return render_template("perfil.html", is_perfil_sublogin=False, perfil=None, cliente=cliente, conta_desde=conta_desde, mensagem="Erro ao atualizar: " + str(e), erro=True)
+                return render_template(
+                    "perfil.html",
+                    **with_embed_template_kwargs(
+                        is_perfil_sublogin=False,
+                        perfil=None,
+                        cliente=cliente,
+                        conta_desde=conta_desde,
+                        mensagem="Erro ao atualizar: " + str(e),
+                        erro=True,
+                    ),
+                )
     return redirect(url_for("customer.perfil"))
 
 
@@ -1087,7 +1177,7 @@ def api_setores_create():
     resp, code = _require_can_manage_usuarios_setores()
     if resp is not None:
         return resp, code
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     nome = (data.get("nome") or "").strip()
     if not nome:
         return jsonify({"erro": "Nome do setor é obrigatório."}), 400
@@ -1116,7 +1206,7 @@ def api_setores_patch(setor_id):
     resp, code = _require_can_manage_usuarios_setores()
     if resp is not None:
         return resp, code
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     try:
         from database.models import Tables, SetorModel
         cliente_id = get_current_cliente_id(current_user)
@@ -1195,7 +1285,7 @@ def api_usuarios_internos_create():
         str(cliente_id), "max_usuarios_internos", n_ops
     ):
         return jsonify({"erro": "Limite de operadores atingido"}), 403
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     nome = (data.get("nome") or "").strip()
     email_login = (data.get("email_login") or data.get("email") or "").strip().lower()
     senha = data.get("senha") or ""
@@ -1253,7 +1343,7 @@ def api_usuarios_internos_patch(usuario_id):
     resp, code = _require_can_manage_usuarios_setores()
     if resp is not None:
         return resp, code
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     try:
         from database.models import Tables, UsuarioInternoModel, UsuarioInternoSetorModel
         cliente_id = get_current_cliente_id(current_user)
@@ -1319,7 +1409,7 @@ def api_leads_patch(lead_id):
     """Atualiza o status de um lead (qualificado / desqualificado / pendente). Apenas leads do cliente logado."""
     if supabase is None:
         return jsonify({"erro": "Serviço indisponível."}), 503
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     status = (data.get("status") or "").strip().lower()
     if status not in ("qualificado", "desqualificado", "pendente"):
         return jsonify({"erro": "Status inválido. Use qualificado, desqualificado ou pendente."}), 400
@@ -1511,7 +1601,7 @@ def api_flow_get():
 def api_flow_post():
     """Salva o fluxo. Marreta: DELETE + INSERT por (cliente_id, channel) evita 23505. Suporte a chatbot_id (Meus Chatbots)."""
     try:
-        data = request.get_json(silent=True) or {}
+        data = strip_untrusted_tenant_ids(request.get_json(silent=True) or {})
     except Exception as parse_err:
         current_app.logger.error("api_flow_post: request.get_json falhou: %s", parse_err)
         data = {}
@@ -1624,7 +1714,7 @@ def api_chatbots_patch(chatbot_id):
     """Atualiza chatbot (canais onde o chatbot roda). Body: { channels?: string[] }."""
     if supabase is None:
         return jsonify({"erro": "Serviço indisponível."}), 503
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     channels = data.get("channels")
     if channels is not None and not isinstance(channels, list):
         channels = [c for c in (channels,) if isinstance(c, str)]
@@ -1648,7 +1738,7 @@ def api_chatbots_patch(chatbot_id):
 @login_required
 def api_chatbots_create():
     """Cria chatbot e seu fluxo vazio. Body: { nome, descricao? }."""
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     nome = (data.get("nome") or "").strip()
     if not nome:
         return jsonify({"erro": "Nome do chatbot é obrigatório."}), 400
@@ -1696,7 +1786,10 @@ def api_chatbots_delete(chatbot_id):
     """Remove chatbot e seu fluxo (apaga fluxo antes se não houver CASCADE)."""
     if supabase is None:
         return jsonify({"erro": "Serviço indisponível."}), 503
-    cliente_id = str(getattr(current_user, "id", "") or "")
+    cid = get_current_cliente_id(current_user)
+    if not cid:
+        return jsonify({"erro": "Cliente não identificado na sessão."}), 401
+    cliente_id = str(cid)
     try:
         supabase.table(Tables.FLOWS).delete().eq(FlowModel.CLIENTE_ID, cliente_id).eq(FlowModel.CHATBOT_ID, chatbot_id).execute()
     except Exception:
@@ -1715,7 +1808,7 @@ def api_chatbots_delete(chatbot_id):
 @login_required
 def api_enviar():
     """Envio de mensagens do painel. WhatsApp apenas via API oficial Meta."""
-    data = request.json or {}
+    data = strip_untrusted_tenant_ids(request.json or {})
     remote_id = str(data.get('remote_id', '')).strip()
     texto = data.get('texto')
     canal = data.get('canal') or 'whatsapp'
@@ -2024,7 +2117,7 @@ def api_operador_login():
     """Login apenas para usuarios_internos (senha local). Separado do fluxo Supabase dos clientes."""
     if current_user.is_authenticated:
         return jsonify({"ok": True, "redirect": url_for("customer.dashboard")}), 200
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     email = (data.get("email") or data.get("username") or "").strip()
     senha = data.get("password") or ""
     if not email or not senha:
@@ -2210,7 +2303,7 @@ def marcar_conversacao_lida():
     if supabase is None:
         return jsonify({"status": "ok"}), 200
     try:
-        data = request.get_json() or {}
+        data = strip_untrusted_tenant_ids(request.get_json() or {})
         canal = (data.get("canal") or "").strip().lower()
         remote_id = _normalizar_remote_id(data.get("remote_id") or "")
         if not canal or not remote_id:
@@ -2260,7 +2353,7 @@ def push_subscribe():
     """Registra a inscrição Web Push do navegador para este cliente."""
     if not getattr(settings, "VAPID_PUBLIC_KEY", None) or not settings.VAPID_PUBLIC_KEY.strip():
         return jsonify({"status": "ok"}), 200
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     sub = data.get("subscription")
     if not sub or not sub.get("endpoint"):
         return jsonify({"erro": "subscription com endpoint obrigatório"}), 400
@@ -2350,7 +2443,7 @@ def _normalizar_remote_id(remote_id):
 @login_required
 def api_conversas_atribuir():
     """Atribui conversa a um setor e/ou responsável (assumir conversa). Operador só pode em setores que tem acesso."""
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     canal = (data.get("canal") or "whatsapp").strip().lower()
     remote_id = (data.get("remote_id") or "").strip() or None
     setor_id = data.get("setor_id")  # uuid do setor de negócio (opcional)
@@ -2456,7 +2549,7 @@ def api_get_conversacao_setor():
 @customer_bp.route('/api/conversacao-setor', methods=['POST', 'PUT', 'PATCH'])
 @login_required
 def api_atualizar_conversacao_setor():
-    data = request.get_json() or {}
+    data = strip_untrusted_tenant_ids(request.get_json() or {})
     setor_recebido = (data.get("setor") or "atendimento_humano").strip().lower()
     remote_id = (data.get("remote_id") or "").strip() or None
     canal = (data.get("canal") or "whatsapp").strip().lower()
