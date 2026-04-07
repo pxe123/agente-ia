@@ -102,7 +102,11 @@ customer_bp = Blueprint(
 def index():
     """Página inicial pública (landing). Usuário logado é redirecionado ao painel."""
     if current_user.is_authenticated:
-        return redirect(url_for('customer.dashboard'))
+        from base.domain_redirects import app_base_url, host_is_public, use_split_public_app_routing
+
+        if use_split_public_app_routing() and host_is_public(request):
+            return redirect(f"{app_base_url()}{url_for('customer.dashboard')}", code=302)
+        return redirect(url_for("customer.dashboard"))
     # Landing principal é Jinja (mantém layout base e header). A landing React fica opcional em /landing-preview.
     plans = list_active_plans()
     return render_template('inicio.html', plans=plans)
@@ -112,7 +116,11 @@ def index():
 def landing_preview():
     """Preview opcional da landing React (não substitui a home)."""
     if current_user.is_authenticated:
-        return redirect(url_for('customer.dashboard'))
+        from base.domain_redirects import app_base_url, host_is_public, use_split_public_app_routing
+
+        if use_split_public_app_routing() and host_is_public(request):
+            return redirect(f"{app_base_url()}{url_for('customer.dashboard')}", code=302)
+        return redirect(url_for("customer.dashboard"))
     try:
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         landing_dir = os.path.join(base_dir, "panel", "static", "landing")
@@ -162,7 +170,9 @@ def dashboard():
         if cliente_id and not is_admin(current_user):
             ent = can_use_product(str(cliente_id))
             if not ent.allowed and ent.reason in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso"):
-                return redirect(url_for("public.assinatura"))
+                # Não redireciona para páginas públicas (evita loop e “novo trial”).
+                # O paywall é tratado no layout do painel (modal com seleção de plano + checkout).
+                pass
     except Exception:
         pass
 
@@ -312,7 +322,8 @@ def chat():
         if cid and not any(
             can_use_channel(str(cid), k) for k in ("whatsapp", "instagram", "messenger", "website")
         ):
-            return redirect(url_for("public.precos"))
+            flash("Seu plano não inclui canais de atendimento. Ative uma assinatura para liberar o acesso.", "error")
+            return redirect(url_for("customer.dashboard"))
     except Exception:
         pass
     return render_template('chat.html')
@@ -336,7 +347,8 @@ def conexoes():
         if cid and not any(
             can_use_channel(str(cid), k) for k in ("whatsapp", "instagram", "messenger", "website")
         ):
-            return redirect(url_for("public.precos"))
+            flash("Seu plano não inclui conexões de canais. Ative uma assinatura para liberar o acesso.", "error")
+            return redirect(url_for("customer.dashboard"))
     except Exception:
         pass
     cliente = {}
@@ -470,7 +482,8 @@ def chatbots_list():
         from base.auth import get_current_cliente_id
         cid = get_current_cliente_id(current_user)
         if cid and not can_access_feature(str(cid), "chatbots"):
-            return redirect(url_for("public.precos"))
+            flash("Seu plano não inclui Chatbots. Faça upgrade para liberar.", "error")
+            return redirect(url_for("customer.dashboard"))
     except Exception:
         pass
     return render_template('chatbots.html')
@@ -2033,12 +2046,26 @@ def _login_template_ctx():
 # --- AUTENTICAÇÃO ---
 @customer_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    from base.domain_redirects import app_base_url, host_is_public, use_split_public_app_routing
+
     if current_user.is_authenticated:
-        return redirect(url_for('customer.dashboard'))
+        if use_split_public_app_routing() and host_is_public(request):
+            return redirect(f"{app_base_url()}{url_for('customer.dashboard')}", code=302)
+        return redirect(url_for("customer.dashboard"))
 
     if request.method == 'GET':
         session["login_csrf"] = secrets.token_hex(32)
-        return render_template("login.html", **{**_login_template_ctx(), "login_csrf": session["login_csrf"]})
+        confirmed = (request.args.get("confirmed") or "").strip()
+        signup = (request.args.get("signup") or "").strip()
+        return render_template(
+            "login.html",
+            **{
+                **_login_template_ctx(),
+                "login_csrf": session["login_csrf"],
+                "confirmed": confirmed,
+                "signup": signup,
+            },
+        )
 
     # POST: validar CSRF
     if request.form.get("csrf_token") != session.pop("login_csrf", None):
@@ -2189,8 +2216,10 @@ def nova_senha():
 @customer_bp.route('/logout')
 @login_required
 def logout():
+    from base.domain_redirects import redirect_to_app_login
+
     logout_user()
-    return redirect(url_for('customer.login'))
+    return redirect_to_app_login()
 
 @customer_bp.route('/api/mensagens/<canal>')
 @login_required

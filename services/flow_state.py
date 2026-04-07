@@ -114,16 +114,26 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
     return None, None
 
 
-def get_state(cliente_id: str, canal: str, remote_id: str) -> tuple[str | None, str | None, dict]:
+def get_state(
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    contact_id: str | None = None,
+) -> tuple[str | None, str | None, dict]:
     """Retorna (current_node_id, flow_id, collected_data). (None, flow_id, {}) = ainda não iniciado."""
     if not supabase or not cliente_id or not canal or not remote_id:
         return None, None, {}
     try:
-        r = supabase.table(Tables.FLOW_USER_STATE).select(
+        q = supabase.table(Tables.FLOW_USER_STATE).select(
             FlowUserStateModel.CURRENT_NODE_ID,
             FlowUserStateModel.FLOW_ID,
             FlowUserStateModel.COLLECTED_DATA,
-        ).eq(FlowUserStateModel.CLIENTE_ID, cliente_id).eq(FlowUserStateModel.CANAL, canal).eq(FlowUserStateModel.REMOTE_ID, remote_id).limit(1).execute()
+        ).eq(FlowUserStateModel.CLIENTE_ID, cliente_id).eq(FlowUserStateModel.CANAL, canal)
+        if contact_id:
+            q = q.eq(FlowUserStateModel.CONTACT_ID, contact_id)
+        else:
+            q = q.eq(FlowUserStateModel.REMOTE_ID, remote_id)
+        r = q.limit(1).execute()
         if r.data and len(r.data) > 0:
             row = r.data[0]
             return (
@@ -143,6 +153,7 @@ def set_state(
     flow_id: str,
     current_node_id: str | None,
     collected_data: dict | None = None,
+    contact_id: str | None = None,
 ) -> None:
     if not supabase or not cliente_id or not flow_id:
         return
@@ -152,22 +163,36 @@ def set_state(
             FlowUserStateModel.CLIENTE_ID: cliente_id,
             FlowUserStateModel.CANAL: canal,
             FlowUserStateModel.REMOTE_ID: remote_id,
+            FlowUserStateModel.CONTACT_ID: contact_id,
             FlowUserStateModel.FLOW_ID: flow_id,
             FlowUserStateModel.CURRENT_NODE_ID: current_node_id,
             FlowUserStateModel.UPDATED_AT: now,
         }
         if collected_data is not None and isinstance(collected_data, dict):
             payload[FlowUserStateModel.COLLECTED_DATA] = collected_data
-        supabase.table(Tables.FLOW_USER_STATE).upsert(payload, on_conflict="cliente_id,canal,remote_id").execute()
+        if contact_id:
+            supabase.table(Tables.FLOW_USER_STATE).upsert(payload, on_conflict="cliente_id,canal,contact_id").execute()
+        else:
+            supabase.table(Tables.FLOW_USER_STATE).upsert(payload, on_conflict="cliente_id,canal,remote_id").execute()
     except Exception as e:
         print(f"[FlowState] set_state erro: {e}", flush=True)
 
 
-def clear_state(cliente_id: str, canal: str, remote_id: str) -> None:
+def clear_state(cliente_id: str, canal: str, remote_id: str, contact_id: str | None = None) -> None:
     """Remove o estado do fluxo para esta sessão (reiniciar atendimento)."""
     if not supabase or not cliente_id or not canal or not remote_id:
         return
     try:
-        supabase.table(Tables.FLOW_USER_STATE).delete().eq(FlowUserStateModel.CLIENTE_ID, cliente_id).eq(FlowUserStateModel.CANAL, canal).eq(FlowUserStateModel.REMOTE_ID, remote_id).execute()
+        q = (
+            supabase.table(Tables.FLOW_USER_STATE)
+            .delete()
+            .eq(FlowUserStateModel.CLIENTE_ID, cliente_id)
+            .eq(FlowUserStateModel.CANAL, canal)
+        )
+        if contact_id:
+            q = q.eq(FlowUserStateModel.CONTACT_ID, contact_id)
+        else:
+            q = q.eq(FlowUserStateModel.REMOTE_ID, remote_id)
+        q.execute()
     except Exception as e:
         print(f"[FlowState] clear_state erro: {e}", flush=True)

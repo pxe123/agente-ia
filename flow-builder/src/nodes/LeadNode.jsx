@@ -6,6 +6,11 @@ const DEFAULT_FIELDS = ['nome', 'email', 'telefone'];
 export function LeadNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const fields = Array.isArray(data?.fields) ? data.fields : DEFAULT_FIELDS;
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const onFieldsChange = useCallback(
     (e) => {
@@ -15,8 +20,9 @@ export function LeadNode({ data, id, selected }) {
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
       updateNodeData(id, { ...data, fields: list.length ? list : DEFAULT_FIELDS });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   const fieldsStr = fields.join(', ');

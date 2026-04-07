@@ -1,18 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 
-// #region agent log helpers
-const DEBUG_LOG_INGEST = 'http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc';
-const DEBUG_SESSION_ID = '1db042';
-function agentDebugLog(payload) {
-  return fetch(DEBUG_LOG_INGEST, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': DEBUG_SESSION_ID },
-    body: JSON.stringify({ ...payload, sessionId: DEBUG_SESSION_ID, timestamp: payload.timestamp ?? Date.now() }),
-  }).catch(() => {});
-}
-// #endregion
-
 const ACTION_TYPES = [
   { value: 'transfer_human', label: 'Transferir para humano' },
   { value: 'transfer_to_sector', label: 'Transferir para setor' },
@@ -23,11 +11,18 @@ const ACTION_TYPES = [
 export function ActionNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const actionType = (data?.actionType || data?.action_type || '').trim() || '';
-  const message = (data?.message || data?.messageBeforeTransfer || '').trim();
-  const url = (data?.url || '').trim();
-  const linkText = (data?.linkText || data?.link_text || '').trim();
+  // Não usar trim aqui: trim no onChange impede digitar espaço naturalmente.
+  const message = (data?.message || data?.messageBeforeTransfer || '');
+  const url = (data?.url || '');
+  const linkText = (data?.linkText || data?.link_text || '');
   const setorId = (data?.setor_id ?? data?.setorId ?? '').trim();
   const qualifyStatus = (data?.qualifyStatus || data?.status || 'qualificado').trim() || 'qualificado';
+
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const [setores, setSetores] = useState([]);
   useEffect(() => {
@@ -42,60 +37,85 @@ export function ActionNode({ data, id, selected }) {
     (e) => {
       const value = (e.target.value || '').trim();
       updateNodeData(id, { ...data, setor_id: value || null, setorId: value || null });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   const onActionTypeChange = useCallback(
     (e) => {
       const value = (e.target.value || '').trim();
-      updateNodeData(id, { ...data, actionType: value, action_type: value });
+      const next = { ...data, actionType: value, action_type: value };
+      // Se o usuário seleciona Qualificar lead mas não mexe no dropdown de status,
+      // ainda assim precisamos persistir um status padrão para o backend.
+      if (value === 'qualificar_lead') {
+        const current = ((data?.qualifyStatus || data?.status) ?? '').toString().trim().toLowerCase();
+        const normalized = current === 'desqualificado' ? 'desqualificado' : 'qualificado';
+        next.qualifyStatus = normalized;
+        next.status = normalized;
+      }
+      updateNodeData(id, next);
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
   const onMessageChange = useCallback(
     (e) => {
-      const raw = (e.target.value || '');
-      const trimmed = raw.trim();
-      // #region agent log action_message_change_trim
-      agentDebugLog({
-        runId: 'pre-debug',
-        hypothesisId: 'H1_trim_removes_trailing_space_on_each_keystroke',
-        location: 'flow-builder/src/nodes/ActionNode.jsx:onMessageChange',
-        message: 'action message input change',
-        data: {
-          actionType,
-          raw_len: raw.length,
-          trimmed_len: trimmed.length,
-          raw_ends_with_space: raw.endsWith(' '),
-          trimmed_ends_with_space: trimmed.endsWith(' '),
-          raw_last_char: raw ? raw.slice(-1) : '',
-        },
-      });
-      // #endregion
-      const value = trimmed;
-      updateNodeData(id, { ...data, message: value, messageBeforeTransfer: value });
+      const raw = (e.target.value ?? '');
+      updateNodeData(id, { ...data, message: raw, messageBeforeTransfer: raw });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
+  );
+  const onMessageBlur = useCallback(
+    (e) => {
+      const raw = (e.target.value ?? '');
+      const trimmed = raw.toString().trim();
+      if (trimmed !== raw) updateNodeData(id, { ...data, message: trimmed, messageBeforeTransfer: trimmed });
+      scheduleSave();
+    },
+    [id, data, updateNodeData, scheduleSave]
   );
   const onUrlChange = useCallback(
     (e) => {
-      updateNodeData(id, { ...data, url: (e.target.value || '').trim() });
+      updateNodeData(id, { ...data, url: (e.target.value ?? '') });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
+  );
+  const onUrlBlur = useCallback(
+    (e) => {
+      const raw = (e.target.value ?? '');
+      const trimmed = raw.toString().trim();
+      if (trimmed !== raw) updateNodeData(id, { ...data, url: trimmed });
+      scheduleSave();
+    },
+    [id, data, updateNodeData, scheduleSave]
   );
   const onLinkTextChange = useCallback(
     (e) => {
-      updateNodeData(id, { ...data, linkText: (e.target.value || '').trim(), link_text: (e.target.value || '').trim() });
+      const raw = (e.target.value ?? '');
+      updateNodeData(id, { ...data, linkText: raw, link_text: raw });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
+  );
+  const onLinkTextBlur = useCallback(
+    (e) => {
+      const raw = (e.target.value ?? '');
+      const trimmed = raw.toString().trim();
+      if (trimmed !== raw) updateNodeData(id, { ...data, linkText: trimmed, link_text: trimmed });
+      scheduleSave();
+    },
+    [id, data, updateNodeData, scheduleSave]
   );
   const onQualifyStatusChange = useCallback(
     (e) => {
       const value = (e.target.value || '').trim();
       updateNodeData(id, { ...data, qualifyStatus: value, status: value });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   return (
@@ -151,22 +171,7 @@ export function ActionNode({ data, id, selected }) {
             type="text"
             value={message}
             onChange={onMessageChange}
-            onKeyDown={(e) => {
-              if (e.key !== ' ') return;
-              // #region agent log action_message_keydown_space
-              agentDebugLog({
-                runId: 'pre-debug',
-                hypothesisId: 'H1_trim_removes_trailing_space_on_each_keystroke',
-                location: 'flow-builder/src/nodes/ActionNode.jsx:onKeyDown',
-                message: 'space keydown on action message',
-                data: {
-                  actionType,
-                  current_value_ends_with_space: String(e.currentTarget.value || '').endsWith(' '),
-                  current_value: String(e.currentTarget.value || ''),
-                },
-              });
-              // #endregion
-            }}
+            onBlur={onMessageBlur}
             placeholder="Ex.: Um atendente vai te atender."
             style={{
               width: '100%',
@@ -215,6 +220,7 @@ export function ActionNode({ data, id, selected }) {
             type="text"
             value={message}
             onChange={onMessageChange}
+            onBlur={onMessageBlur}
             placeholder="Ex.: Encaminhando para o setor de vendas."
             style={{
               width: '100%',
@@ -263,6 +269,7 @@ export function ActionNode({ data, id, selected }) {
             type="text"
             value={url}
             onChange={onUrlChange}
+            onBlur={onUrlBlur}
             placeholder="https://..."
             style={{
               width: '100%',
@@ -282,6 +289,7 @@ export function ActionNode({ data, id, selected }) {
             type="text"
             value={linkText}
             onChange={onLinkTextChange}
+            onBlur={onLinkTextBlur}
             placeholder="Clique aqui"
             style={{
               width: '100%',

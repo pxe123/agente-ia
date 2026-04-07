@@ -4,12 +4,18 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 export function EndNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const text = data?.text ?? '';
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const onTextChange = useCallback(
     (e) => {
       updateNodeData(id, { ...data, text: e.target.value });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   return (

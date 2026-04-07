@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from database.supabase_sq import supabase
-from database.models import Tables, PlanModel
+from database.models import Tables, PlanModel, ClienteModel
 
 
 def get_plan(plan_key: str) -> Optional[Dict[str, Any]]:
@@ -74,4 +74,18 @@ def plan_entitlements(plan_key: str) -> Dict[str, Any]:
         return {}
     ent = plan.get(PlanModel.ENTITLEMENTS_JSON) or {}
     return ent if isinstance(ent, dict) else {}
+
+
+def cliente_acesso_flags_for_plan(plan_key: str) -> Dict[str, Any]:
+    """
+    Mapeia entitlements_json do plano para colunas acesso_* em clientes.
+    Mesma regra do cadastro público (public.py), centralizada aqui para billing/webhook.
+    """
+    ent = plan_entitlements(plan_key)
+    return {
+        ClienteModel.ACESSO_WHATSAPP: bool(ent.get("whatsapp", True)),
+        ClienteModel.ACESSO_INSTAGRAM: bool(ent.get("instagram", True)),
+        ClienteModel.ACESSO_MESSENGER: bool(ent.get("messenger", True)),
+        ClienteModel.ACESSO_SITE: bool(ent.get("site", True)),
+    }
 

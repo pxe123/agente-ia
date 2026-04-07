@@ -1,25 +1,15 @@
 from datetime import datetime, timezone
+import os
 import uuid
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from database.supabase_sq import supabase
+from database.supabase_sq import supabase, supabase_public
 from database.models import Tables, ClienteModel
 from database.embed_key import gerar_embed_key
-from services.plans import list_active_plans, get_plan, plan_entitlements, plan_trial_ends_at
+from services.plans import list_active_plans, get_plan, plan_trial_ends_at, cliente_acesso_flags_for_plan
 
 
 public_bp = Blueprint("public", __name__)
-
-
-def _apply_entitlements_to_cliente_payload(plan_key: str) -> dict:
-    ent = plan_entitlements(plan_key)
-    # cache simples nos campos já existentes
-    return {
-        ClienteModel.ACESSO_WHATSAPP: bool(ent.get("whatsapp", True)),
-        ClienteModel.ACESSO_INSTAGRAM: bool(ent.get("instagram", True)),
-        ClienteModel.ACESSO_MESSENGER: bool(ent.get("messenger", True)),
-        ClienteModel.ACESSO_SITE: bool(ent.get("site", True)),
-    }
 
 
 @public_bp.route("/precos", methods=["GET"])
@@ -39,6 +29,12 @@ def cadastro_get():
 def cadastro_post():
     if supabase is None:
         return render_template("cadastro_publico.html", mensagem="Supabase não configurado no servidor.", erro=True)
+    if supabase_public is None:
+        return render_template(
+            "cadastro_publico.html",
+            mensagem="Autenticação pública do Supabase não configurada (ANON_KEY ausente).",
+            erro=True,
+        )
 
     nome = (request.form.get("nome") or "").strip()
     email = (request.form.get("email") or "").strip().lower()
@@ -68,21 +64,28 @@ def cadastro_post():
     # cria no Supabase Auth (para login via JWT e consistência)
     auth_user_id = None
     try:
-        resp = supabase.auth.admin.create_user(
+        from base.domain_redirects import public_base_url
+
+        email_redirect_to = f"{public_base_url()}/login?confirmed=1"
+        resp = supabase_public.auth.sign_up(
             {
                 "email": email,
                 "password": senha,
-                "email_confirm": True,
-                "user_metadata": {"full_name": nome or email},
+                "options": {
+                    "data": {"full_name": nome or email},
+                    "email_redirect_to": email_redirect_to,
+                },
             }
         )
-        # compat extração (mesma lógica do admin.py)
-        if hasattr(resp, "user") and resp.user is not None and hasattr(resp.user, "id"):
-            auth_user_id = str(resp.user.id)
-        elif isinstance(resp, dict):
+
+        # compat extração do user.id (supabase-py varia estrutura)
+        u = getattr(resp, "user", None)
+        if u is None and isinstance(resp, dict):
             u = resp.get("user") or resp.get("data", {}).get("user")
-            if isinstance(u, dict) and u.get("id"):
-                auth_user_id = str(u["id"])
+        if u is not None:
+            uid = getattr(u, "id", None) if not isinstance(u, dict) else u.get("id")
+            if uid:
+                auth_user_id = str(uid)
     except Exception as e:
         return render_template("cadastro_publico.html", mensagem="Erro ao criar login: " + str(e), erro=True, plan=plan, plan_key=plan_key, email=email, nome=nome)
 
@@ -100,15 +103,15 @@ def cadastro_post():
     }
     if nome:
         payload[ClienteModel.NOME] = nome
-    payload.update(_apply_entitlements_to_cliente_payload(plan_key))
+    payload.update(cliente_acesso_flags_for_plan(plan_key))
 
     try:
         supabase.table(Tables.CLIENTES).insert(payload).execute()
     except Exception as e:
         return render_template("cadastro_publico.html", mensagem="Erro ao criar conta: " + str(e), erro=True, plan=plan, plan_key=plan_key, email=email, nome=nome)
 
-    flash("Conta criada! Faça login para acessar o painel.", "success")
-    return redirect(url_for("customer.login"))
+    flash("Conta criada! Enviamos um e-mail para confirmar seu cadastro. Após confirmar, faça login.", "success")
+    return redirect(url_for("customer.login", signup="1"))
 
 
 @public_bp.route("/assinatura", methods=["GET"])

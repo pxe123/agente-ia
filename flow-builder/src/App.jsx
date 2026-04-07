@@ -61,6 +61,7 @@ function FlowBuilderInner() {
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const reactFlowInstanceRef = useRef(null);
+  const canvasInnerRef = useRef(null);
   useEffect(() => {
     nodesRef.current = nodes;
     edgesRef.current = edges;
@@ -239,6 +240,15 @@ function FlowBuilderInner() {
     }, DEBOUNCE_SAVE_MS);
   }, [saveFlow]);
 
+  // Alguns updates de formulário (updateNodeData dentro dos nós) não passam por onNodesChange.
+  // Escutamos um evento simples para disparar o autosave sempre que o usuário editar dados.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = () => scheduleSave();
+    window.addEventListener('flowbuilder:scheduleSave', handler);
+    return () => window.removeEventListener('flowbuilder:scheduleSave', handler);
+  }, [scheduleSave]);
+
   const onConnect = useCallback((params) => {
     setEdges((eds) => addEdge(params, eds));
     scheduleSave();
@@ -327,16 +337,39 @@ function FlowBuilderInner() {
       const defaults = {
         message: { text: '', buttons: [] },
         condition: { label: 'Condição', rule: '', value: '' },
-        action: { label: 'Ação', actionType: '', message: '', url: '', linkText: '' },
+        action: { label: 'Ação', actionType: '', message: '', url: '', linkText: '', qualifyStatus: 'qualificado', status: 'qualificado' },
         start: {},
         end: { text: '' },
         questionnaire: { intro: '', questions: [] },
         lead: { fields: ['nome', 'email', 'telefone'] },
       };
+
+      const instance = reactFlowInstanceRef.current;
+      const canvasEl = canvasInnerRef.current;
+      let pos = null;
+      try {
+        if (instance && canvasEl && typeof canvasEl.getBoundingClientRect === 'function') {
+          const r = canvasEl.getBoundingClientRect();
+          const screen = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          if (typeof instance.screenToFlowPosition === 'function') {
+            pos = instance.screenToFlowPosition(screen);
+          } else if (typeof instance.project === 'function') {
+            pos = instance.project(screen);
+          }
+        }
+      } catch (_) {
+        pos = null;
+      }
+
       setNodes((nds) => {
         const count = nds.length;
-        const x = 100 + (count % 2) * 300;
-        const y = 100 + Math.floor(count / 2) * 160;
+        const fallbackX = 100 + (count % 2) * 300;
+        const fallbackY = 100 + Math.floor(count / 2) * 160;
+        const baseX = (pos && typeof pos.x === 'number') ? pos.x : fallbackX;
+        const baseY = (pos && typeof pos.y === 'number') ? pos.y : fallbackY;
+        // Leve offset para não “nascer em cima” do nó anterior quando o usuário adiciona vários seguidos.
+        const x = baseX + (count % 3) * 24;
+        const y = baseY + (count % 3) * 24;
         const newNode = {
           id,
           type,
@@ -346,7 +379,14 @@ function FlowBuilderInner() {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             try {
-              reactFlowInstanceRef.current?.fitView?.({ padding: 0.3, duration: 200 });
+              // Garante que o novo nó apareça dentro da visualização do usuário.
+              const rf = reactFlowInstanceRef.current;
+              if (rf && typeof rf.setCenter === 'function') {
+                const z = typeof rf.getZoom === 'function' ? rf.getZoom() : undefined;
+                rf.setCenter(x, y, { zoom: z, duration: 200 });
+              } else {
+                rf?.fitView?.({ padding: 0.3, duration: 200 });
+              }
             } catch (_) {}
           });
         });
@@ -447,6 +487,7 @@ function FlowBuilderInner() {
         <div className="flow-canvas-wrap" role="region" aria-label="Área do diagrama">
           <div
             className="flow-canvas-inner"
+            ref={canvasInnerRef}
             style={
               isChatbotMode
                 ? { width: '100%', height: '100%', minHeight: 280 }

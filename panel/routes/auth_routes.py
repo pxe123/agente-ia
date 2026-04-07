@@ -11,6 +11,7 @@ from flask_login import login_user
 from database.supabase_sq import supabase, supabase_public
 from database.models import Tables, ClienteModel
 from base.auth import _load_cliente_as_user_by_auth_id
+from base.domain_redirects import app_base_url, public_base_url, use_split_public_app_routing
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -28,13 +29,6 @@ def _rate_limited(ip: str) -> bool:
         return True
     _AUTH_ATTEMPTS[ip].append(now)
     return False
-
-
-def _app_base_url() -> str:
-    u = (os.getenv("APP_BASE_URL") or "").strip().rstrip("/")
-    if u:
-        return u
-    return request.host_url.rstrip("/")
 
 
 def _auth_user_id_from_create(resp):
@@ -143,6 +137,9 @@ def _sign_in_with_password(email: str, password: str):
         res = client.auth.sign_in_with_password({"email": email.strip(), "password": password})
     except Exception as e:
         current_app.logger.warning("sign_in_with_password: %s", e)
+        msg = str(e).lower()
+        if "email not confirmed" in msg or "not confirmed" in msg or "email_not_confirmed" in msg:
+            return {"unconfirmed": True}, "Confirme seu e-mail antes de entrar. Se não recebeu, reenvie a confirmação."
         return None, "E-mail ou senha incorretos."
     u = getattr(res, "user", None)
     if u is None and hasattr(res, "session") and res.session is not None:
@@ -152,7 +149,50 @@ def _sign_in_with_password(email: str, password: str):
     uid = getattr(u, "id", None) if not isinstance(u, dict) else u.get("id")
     if not uid:
         return None, "E-mail ou senha incorretos."
-    return {"id": str(uid)}, None
+
+    # confirmação de e-mail (campos variam por versão)
+    email_confirmed_at = None
+    for key in ("email_confirmed_at", "confirmed_at"):
+        try:
+            email_confirmed_at = getattr(u, key, None) if not isinstance(u, dict) else u.get(key)
+        except Exception:
+            email_confirmed_at = None
+        if email_confirmed_at:
+            break
+    is_confirmed = bool(email_confirmed_at)
+    return {"id": str(uid), "is_confirmed": is_confirmed}, None
+
+
+@auth_bp.route("/resend-confirmation", methods=["POST"])
+def resend_confirmation():
+    """
+    Reenvia e-mail de confirmação de cadastro (signup).
+    Resposta sempre genérica (evita enumeração de e-mails).
+    """
+    client = supabase_public or supabase
+    if client is None:
+        return jsonify({"success": False, "message": "Serviço indisponível."}), 503
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    ip = request.remote_addr or "unknown"
+    generic = {"success": True, "message": "Se o e-mail estiver cadastrado, você receberá a confirmação."}
+    if _rate_limited(ip):
+        return jsonify(generic), 200
+    if not email or "@" not in email:
+        return jsonify(generic), 200
+
+    redirect_to = f"{public_base_url()}/login?confirmed=1"
+    try:
+        # supabase-py: tenta assinaturas possíveis (variam por versão)
+        try:
+            client.auth.resend({"type": "signup", "email": email, "options": {"email_redirect_to": redirect_to}})
+        except Exception:
+            client.auth.resend(email=email, type="signup", options={"email_redirect_to": redirect_to})
+    except Exception as e:
+        current_app.logger.warning("resend_confirmation: %s", e)
+        return jsonify(generic), 200
+
+    return jsonify(generic), 200
 
 
 @auth_bp.route("/update-access", methods=["POST"])
@@ -187,7 +227,7 @@ def update_access():
     if not auth_id:
         return jsonify(generic), 200
 
-    redirect_to = f"{_app_base_url()}/nova-senha"
+    redirect_to = f"{app_base_url() or public_base_url()}/nova-senha"
     try:
         supabase.auth.reset_password_for_email(email, {"redirect_to": redirect_to})
     except Exception as e:
@@ -218,6 +258,9 @@ def login_auth():
     if err or not uauth:
         return jsonify({"ok": False, "erro": err or _LOGIN_ERRO_GENERICO}), 401
 
+    if uauth.get("unconfirmed") is True or uauth.get("is_confirmed") is False:
+        return jsonify({"ok": False, "erro": "Confirme seu e-mail antes de entrar. Se não recebeu, reenvie a confirmação.", "code": "email_unconfirmed"}), 403
+
     auth_id = uauth["id"]
     user = _load_cliente_as_user_by_auth_id(auth_id)
     if not user:
@@ -234,4 +277,9 @@ def login_auth():
         supabase.auth.sign_out()
     except Exception:
         pass
-    return jsonify({"ok": True, "redirect": url_for("customer.dashboard")}), 200
+    dash = url_for("customer.dashboard")
+    if use_split_public_app_routing():
+        redir = f"{app_base_url()}{dash}"
+    else:
+        redir = dash
+    return jsonify({"ok": True, "redirect": redir}), 200

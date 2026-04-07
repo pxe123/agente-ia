@@ -11,4 +11,4 @@ if [ -d "venv" ]; then
 fi
 
 # Gunicorn com worker que suporta WebSocket (evita "Invalid websocket upgrade")
-exec python3 -m gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:5000 app:app
+exec python3 -m gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --timeout 120 --bind 0.0.0.0:5000 app:app

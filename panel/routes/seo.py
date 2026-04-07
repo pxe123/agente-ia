@@ -18,7 +18,9 @@ seo_bp = Blueprint("seo", __name__)
 
 
 def _public_base_url() -> str:
-    return (os.getenv("PUBLIC_BASE_URL") or "https://zapaction.com.br").strip().rstrip("/")
+    from base.domain_redirects import public_base_url
+
+    return public_base_url()
 
 
 # Apenas paths públicos canônicos (alinha com redirect api → público em app.py)

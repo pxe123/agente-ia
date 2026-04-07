@@ -60,27 +60,78 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # reduz risco de CSRF
 _production = os.getenv("FLASK_ENV") == "production" or os.getenv("PRODUCTION", "").lower() in ("1", "true", "yes")
 app.config['SESSION_COOKIE_SECURE'] = _production
 
-# Configuração de CORS:
-# Se CORS_ORIGINS estiver definido no .env, restringimos às origens indicadas.
-# Caso contrário, mantemos comportamento permissivo (equivalente a "*").
+# Login no ZapAction + sessão na API: cookie precisa SameSite=None (com Secure) para XHR entre domínios.
+from base.domain_redirects import use_split_public_app_routing as _split_hosts_for_cookie
+
+if _production and _split_hosts_for_cookie():
+    app.config["SESSION_COOKIE_SAMESITE"] = "None"
+
+
+def _socketio_cors_allowed_origins():
+    """União de CORS_ORIGINS + URLs canónicas público/app (defaults ZapAction + API)."""
+    from base.domain_redirects import app_base_url, public_base_url
+
+    seen = set()
+    out = []
+    for o in settings.CORS_ORIGINS:
+        o = (o or "").strip().rstrip("/")
+        if o and o not in seen:
+            seen.add(o)
+            out.append(o)
+    for u in (public_base_url(), app_base_url()):
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    if out:
+        return out
+    if not _production:
+        return "*"
+    return "*"
+
+
+# Configuração de CORS (login no ZapAction → POST na API: origens públicas têm de estar permitidas).
+from base.domain_redirects import auth_cors_allowed_origins as _auth_cors_origins
+
+_auth_o = _auth_cors_origins()
+
 if settings.CORS_ORIGINS:
-    CORS(app, resources={r"/*": {"origins": settings.CORS_ORIGINS}})
+    _merged = list(dict.fromkeys([*settings.CORS_ORIGINS, *_auth_o]))
+    CORS(
+        app,
+        resources={
+            r"/*": {
+                "origins": _merged,
+                "supports_credentials": True,
+                "allow_headers": ["Content-Type", "Accept", "X-CSRF-Token"],
+            }
+        },
+    )
 else:
-    # Em produção, preferimos sem CORS (same-origin) para reduzir risco com cookies.
     if not _production:
         CORS(app)
+    elif _auth_o:
+        CORS(
+            app,
+            resources={
+                r"/auth/*": {
+                    "origins": _auth_o,
+                    "supports_credentials": True,
+                    "allow_headers": ["Content-Type", "Accept"],
+                }
+            },
+        )
 
 # Configuração SocketIO: usa gevent se disponível (servidor Linux/Gunicorn), senão threading (ex.: Windows local)
 try:
     socketio = SocketIO(
         app,
-        cors_allowed_origins=(settings.CORS_ORIGINS if settings.CORS_ORIGINS else ([] if _production else "*")),
+        cors_allowed_origins=_socketio_cors_allowed_origins(),
         async_mode="gevent",
     )
 except ValueError:
     socketio = SocketIO(
         app,
-        cors_allowed_origins=(settings.CORS_ORIGINS if settings.CORS_ORIGINS else ([] if _production else "*")),
+        cors_allowed_origins=_socketio_cors_allowed_origins(),
         async_mode="threading",
     )
 
@@ -97,10 +148,12 @@ def load_user(user_id):
 @login_manager.unauthorized_handler
 def unauthorized():
     """Quando sessão expira: API recebe 401 JSON (evita 'Unexpected token <' no chat)."""
-    from flask import request, redirect, url_for, jsonify
+    from flask import request, jsonify
+    from base.domain_redirects import redirect_to_app_login
+
     if request.path.startswith("/api/"):
         return jsonify({"erro": "Sessão expirada", "redirect": "/"}), 401
-    return redirect(url_for("customer.login"))
+    return redirect_to_app_login()
 
 
 # 3. Registro de Blueprints (Importamos aqui para evitar erros de importação circular)
@@ -151,15 +204,18 @@ def inject_csrf():
 @app.context_processor
 def inject_domain_urls():
     """
-    URLs canônicas de domínio para separar público e app.
-    - Público: zapaction.com.br
-    - App/API: api.updigitalbrasil.com.br
+    Em produção: PUBLIC_BASE_URL = propaganda (default zapaction.com.br); APP_BASE_URL = app (default API).
+    Em localhost: ambos = origem do pedido (links relativos ao dev server).
     """
-    public_base = (os.getenv("PUBLIC_BASE_URL") or "https://zapaction.com.br").strip().rstrip("/")
-    app_base = (os.getenv("APP_BASE_URL") or "https://api.updigitalbrasil.com.br").strip().rstrip("/")
+    from flask import request
+    from base.domain_redirects import app_base_url, is_local_request, public_base_url
+
+    if is_local_request(request):
+        root = request.url_root.rstrip("/")
+        return {"PUBLIC_BASE_URL": root, "APP_BASE_URL": root}
     return {
-        "PUBLIC_BASE_URL": public_base,
-        "APP_BASE_URL": app_base,
+        "PUBLIC_BASE_URL": public_base_url(),
+        "APP_BASE_URL": app_base_url(),
     }
 
 @app.context_processor
@@ -303,40 +359,97 @@ def inject_features():
         }
 
 
+@app.context_processor
+def inject_billing_paywall():
+    """
+    Paywall dentro do painel.
+    Motivo: evitar redirecionar para páginas públicas (que podem levar a novo cadastro/trial)
+    e permitir que o cliente escolha um plano e vá direto ao checkout.
+    """
+    try:
+        from flask_login import current_user
+        from base.auth import is_admin, get_current_cliente_id
+        from services.entitlements import can_use_product, get_billing_state
+        from services.plans import list_active_plans
+
+        if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
+            return {"billing_paywall": None}
+        if is_admin(current_user):
+            return {"billing_paywall": None}
+
+        cid = get_current_cliente_id(current_user)
+        if not cid:
+            return {"billing_paywall": None}
+
+        ent = can_use_product(str(cid))
+        if ent.allowed:
+            return {"billing_paywall": None}
+        if ent.reason not in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso"):
+            return {"billing_paywall": None}
+
+        status, period_end, trial_end, plan_key = get_billing_state(str(cid))
+        plans = list_active_plans()
+        return {
+            "billing_paywall": {
+                "required": True,
+                "reason": ent.reason,
+                "status": status,
+                "trial_end": trial_end.isoformat() if trial_end else None,
+                "period_end": period_end.isoformat() if period_end else None,
+                "current_plan_key": plan_key,
+                "plans": plans,
+                "email": (getattr(current_user, "email", "") or "").strip().lower(),
+            }
+        }
+    except Exception:
+        return {"billing_paywall": None}
+
+
 @app.before_request
 def request_context():
+    from base.domain_redirects import (
+        PATHS_CANONICAL_ON_PUBLIC_HOST,
+        app_base_url,
+        app_hosts,
+        path_allowed_on_public_host,
+        public_base_url,
+        public_marketing_hosts,
+        use_split_public_app_routing,
+    )
+
     host = (request.host or "").split(":", 1)[0].lower()
     path = request.path or "/"
-    public_base = (os.getenv("PUBLIC_BASE_URL") or "https://zapaction.com.br").strip().rstrip("/")
-    app_base = (os.getenv("APP_BASE_URL") or "https://api.updigitalbrasil.com.br").strip().rstrip("/")
-    public_host = ""
-    app_host = ""
-    try:
-        from urllib.parse import urlparse
-        public_host = (urlparse(public_base).hostname or "").lower()
-        app_host = (urlparse(app_base).hostname or "").lower()
-    except Exception:
-        public_host = "zapaction.com.br"
-        app_host = "api.updigitalbrasil.com.br"
+    public_base = public_base_url()
+    app_base = app_base_url()
+    pub_hosts = public_marketing_hosts()
+    application_hosts = app_hosts()
     is_local = host in ("127.0.0.1", "localhost") or host.startswith("192.168.") or host.startswith("10.") or host.endswith(".local")
+    split_hosts = use_split_public_app_routing()
 
-    # Fallback no Flask: páginas públicas não devem responder no host do app/API.
-    # Preferimos 301 para preservar SEO e evitar quebra de links antigos.
-    public_paths = {
-        "/",
-        "/precos",
-        "/cadastro",
-        "/assinatura",
-        "/politica",
-        "/termos",
-        "/exclusao-de-dados",
-        "/whatsapp-atendimento",
-    }
+    # Dois domínios: host de propaganda só marketing; resto → APP_BASE_URL.
     if (
-        not is_local
-        and app_host
-        and host == app_host
-        and path in public_paths
+        split_hosts
+        and not is_local
+        and pub_hosts
+        and app_base
+        and host in pub_hosts
+        and not path_allowed_on_public_host(path)
+        and not path.startswith("/webhook/")
+    ):
+        qs = request.query_string.decode("utf-8") if request.query_string else ""
+        target = f"{app_base}{path}"
+        if qs:
+            target = f"{target}?{qs}"
+        code = 308 if request.method != "GET" else 301
+        return redirect(target, code=code)
+
+    # Dois domínios: marketing canónico no domínio de propaganda (SEO).
+    if (
+        split_hosts
+        and not is_local
+        and application_hosts
+        and host in application_hosts
+        and path in PATHS_CANONICAL_ON_PUBLIC_HOST
     ):
         qs = request.query_string.decode("utf-8") if request.query_string else ""
         target = f"{public_base}{path}"
@@ -438,6 +551,7 @@ def request_context():
                 pass
             # Sempre permitir billing/status/auth/páginas legais
             allow_prefixes = (
+                # Billing precisa funcionar mesmo sem assinatura (para pagar e reativar)
                 "/api/billing/",
                 "/api/auth/",
                 "/api/csrf-token",
@@ -451,6 +565,8 @@ def request_context():
                 "/whatsapp-atendimento",
                 "/login",
                 "/logout",
+                # Páginas do painel devem carregar para exibir o modal paywall
+                "/painel",
                 "/static/",
                 "/panel/static/",
                 "/favicon.ico",
@@ -484,7 +600,12 @@ def request_context():
                                     "reason": ent.reason,
                                 }
                             ), 402
-                        return redirect(url_for("public.precos"))
+                        # Não redirecionar para páginas públicas. Mantém o usuário no painel:
+                        # o paywall é exibido via modal no `panel/templates/layout.html`.
+                        # Evita loop: se já estamos no dashboard, permite renderizar.
+                        if p in ("/painel", "/painel/"):
+                            return None
+                        return redirect(url_for("customer.dashboard"))
 
                     # Enforcement por feature (plano): exports e flow builder
                     if p.startswith("/painel/export/") and not can_access_feature(str(cliente_id), "exports"):
@@ -554,13 +675,16 @@ def flow_builder_index():
     from flask import send_from_directory, redirect, url_for, flash, request
     from flask_login import current_user
     if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
-        return redirect(url_for("customer.login"))
+        from base.domain_redirects import redirect_to_app_login
+
+        return redirect_to_app_login()
     try:
         from base.auth import get_current_cliente_id
         from services.entitlements import can_access_feature
         cliente_id = get_current_cliente_id(current_user)
         if cliente_id and not can_access_feature(str(cliente_id), "flow_builder"):
-            return redirect(url_for("public.precos"))
+            flash("Seu plano não inclui o Flow Builder.", "error")
+            return redirect(url_for("customer.dashboard"))
     except Exception:
         pass
     # Meus Chatbots: ?chatbot_id= só se o bot existir e for deste cliente (evita abrir o builder sem registo válido)

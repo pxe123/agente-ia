@@ -15,12 +15,18 @@ export function QuestionnaireNode({ data, id, selected }) {
   const questions = Array.isArray(data?.questions) ? data.questions : [];
   const questionKeys = Array.isArray(data?.questionKeys) ? data.questionKeys : [];
   const keys = questions.map((_, i) => questionKeys[i] ?? (questions[i] ? 'campo_' + (i + 1) : ''));
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const onIntroChange = useCallback(
     (e) => {
       updateNodeData(id, { ...data, intro: e.target.value });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   const onQuestionChange = useCallback(
@@ -28,8 +34,9 @@ export function QuestionnaireNode({ data, id, selected }) {
       const next = [...questions];
       next[index] = value;
       updateNodeData(id, { ...data, questions: next });
+      scheduleSave();
     },
-    [id, data, questions, updateNodeData]
+    [id, data, questions, updateNodeData, scheduleSave]
   );
 
   const onKeyChange = useCallback(
@@ -38,8 +45,9 @@ export function QuestionnaireNode({ data, id, selected }) {
       while (next.length <= index) next.push('');
       next[index] = (value || '').trim().toLowerCase();
       updateNodeData(id, { ...data, questionKeys: next });
+      scheduleSave();
     },
-    [id, data, questionKeys, updateNodeData]
+    [id, data, questionKeys, updateNodeData, scheduleSave]
   );
 
   const addQuestion = useCallback(() => {
@@ -47,15 +55,17 @@ export function QuestionnaireNode({ data, id, selected }) {
     while (nextKeys.length < questions.length + 1) nextKeys.push('');
     nextKeys[questions.length] = nextKeys[questions.length] || 'campo_' + (questions.length + 1);
     updateNodeData(id, { ...data, questions: [...questions, ''], questionKeys: nextKeys });
-  }, [id, data, questions, questionKeys, updateNodeData]);
+    scheduleSave();
+  }, [id, data, questions, questionKeys, updateNodeData, scheduleSave]);
 
   const removeQuestion = useCallback(
     (index) => {
       const nextQ = questions.filter((_, i) => i !== index);
       const nextK = questionKeys.filter((_, i) => i !== index);
       updateNodeData(id, { ...data, questions: nextQ, questionKeys: nextK });
+      scheduleSave();
     },
-    [id, data, questions, questionKeys, updateNodeData]
+    [id, data, questions, questionKeys, updateNodeData, scheduleSave]
   );
 
   return (

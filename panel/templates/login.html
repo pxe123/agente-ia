@@ -20,10 +20,25 @@
     </div>
     <div class="flex-1 flex flex-col justify-center items-center p-6">
         <div class="w-full max-w-md space-y-6">
+            {% if confirmed %}
+            <div class="p-3 rounded-2xl text-sm bg-emerald-50 text-emerald-800 border border-emerald-200">
+                E-mail confirmado com sucesso. Agora você já pode fazer login.
+            </div>
+            {% endif %}
+            {% if signup %}
+            <div class="p-3 rounded-2xl text-sm bg-amber-50 text-amber-900 border border-amber-200">
+                Enviamos um e-mail de confirmação. Abra sua caixa de entrada (e spam) e confirme para liberar o acesso.
+            </div>
+            {% endif %}
             <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
                 <h2 class="text-xl font-bold text-slate-800">Login</h2>
                 <p class="text-slate-500 text-sm mt-1">Login com e-mail e senha (Supabase Auth).</p>
                 <div id="msg-cliente" class="hidden mt-3 p-3 rounded-xl text-sm"></div>
+                <div id="resend-wrap" class="hidden mt-3">
+                    <button type="button" id="btn-resend" class="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold transition">
+                        Reenviar confirmação de e-mail
+                    </button>
+                </div>
                 <div class="mt-4 space-y-3">
                     <input type="email" id="cli-email" class="w-full px-4 py-3 border border-slate-200 rounded-xl" placeholder="seu@email.com" autocomplete="email">
                     <div class="relative">
@@ -47,6 +62,7 @@
     </div>
     <script>
     (function() {
+        var AUTH_API_BASE = "{{ APP_BASE_URL }}".replace(/\/$/, "");
         function show(el, text, ok) {
             var err = ["bg-red-50", "text-red-700", "border", "border-red-200"];
             var good = ["bg-emerald-50", "text-emerald-800", "border", "border-emerald-200"];
@@ -56,24 +72,52 @@
             (ok ? good : err).forEach(function(c) { el.classList.add(c); });
             el.classList.remove("hidden");
         }
+        function showResend(showIt) {
+            var wrap = document.getElementById("resend-wrap");
+            if (!wrap) return;
+            if (showIt) wrap.classList.remove("hidden"); else wrap.classList.add("hidden");
+        }
         document.getElementById("btn-cli-login").addEventListener("click", function() {
             var email = (document.getElementById("cli-email") || {}).value || "";
             var password = (document.getElementById("cli-pass") || {}).value || "";
             var msg = document.getElementById("msg-cliente");
             if (!email || !password) { show(msg, "Preencha e-mail e senha.", false); return; }
-            fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, password: password }) })
+            showResend(false);
+            fetch(AUTH_API_BASE + "/auth/login", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, password: password }) })
                 .then(function(r) { return r.json().then(function(d) { return { r: r, d: d }; }); })
                 .then(function(o) {
                     if (o.d && o.d.ok && o.d.redirect) { window.location.href = o.d.redirect; return; }
-                    show(msg, (o.d && o.d.erro) || "Não foi possível entrar.", false);
+                    var err = (o.d && o.d.erro) || "Não foi possível entrar.";
+                    show(msg, err, false);
+                    if ((o.d && o.d.code) === "email_unconfirmed" || String(err || "").toLowerCase().indexOf("confirme") !== -1) {
+                        showResend(true);
+                    }
                 })
                 .catch(function() { show(msg, "Erro de rede.", false); });
+        });
+        var resendBtn = document.getElementById("btn-resend");
+        if (resendBtn) resendBtn.addEventListener("click", function() {
+            var email = (document.getElementById("cli-email") || {}).value || "";
+            var msg = document.getElementById("msg-cliente");
+            if (!email) { show(msg, "Informe seu e-mail para reenviar a confirmação.", false); return; }
+            resendBtn.disabled = true;
+            resendBtn.textContent = "Enviando...";
+            fetch(AUTH_API_BASE + "/auth/resend-confirmation", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
+                .then(function(r) { return r.json().catch(function() { return null; }).then(function(d) { return { r: r, d: d }; }); })
+                .then(function(o) {
+                    show(msg, (o.d && o.d.message) || "Se o e-mail estiver cadastrado, você receberá a confirmação.", true);
+                })
+                .catch(function() { show(msg, "Erro de rede.", false); })
+                .finally(function() {
+                    resendBtn.disabled = false;
+                    resendBtn.textContent = "Reenviar confirmação de e-mail";
+                });
         });
         document.getElementById("btn-forgot").addEventListener("click", function() {
             var email = (document.getElementById("cli-email") || {}).value || "";
             var msg = document.getElementById("msg-cliente");
             if (!email) { show(msg, "Informe o e-mail para receber o link de redefinição.", false); return; }
-            fetch("/auth/update-access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
+            fetch(AUTH_API_BASE + "/auth/update-access", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     show(msg, "Enviamos um e-mail com um link para redefinir sua senha. Verifique sua caixa de entrada e spam.", true);

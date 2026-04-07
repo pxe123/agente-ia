@@ -152,3 +152,70 @@ def cancel_preapproval(preapproval_id: str) -> Tuple[bool, Dict[str, Any]]:
         return True, data
     return False, data
 
+
+def create_preference(
+    *,
+    title: str,
+    payer_email: str,
+    cliente_id: str,
+    amount: float,
+    currency_id: str = "BRL",
+    back_url: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Cria um checkout avulso (preference) no Mercado Pago.
+    Usado para cobranças pró-rata (upgrade).
+    """
+    url = f"{MP_API_BASE}/checkout/preferences"
+    headers = mp_headers()
+    if not headers:
+        return False, {"erro": "MERCADOPAGO_ACCESS_TOKEN não configurado."}
+    back_url = back_url or settings.MERCADOPAGO_BACK_URL
+    if not back_url:
+        return False, {"erro": "MERCADOPAGO_BACK_URL não configurado."}
+    body: Dict[str, Any] = {
+        "external_reference": str(cliente_id),
+        "payer": {"email": payer_email},
+        "items": [
+            {
+                "title": title,
+                "quantity": 1,
+                "currency_id": currency_id,
+                "unit_price": float(amount),
+            }
+        ],
+        "back_urls": {"success": back_url, "pending": back_url, "failure": back_url},
+        "auto_return": "approved",
+        "metadata": metadata or {},
+    }
+    r = requests.post(url, json=body, headers=headers, timeout=20)
+    try:
+        data = r.json()
+    except Exception:
+        data = {"erro": "Resposta inválida do Mercado Pago.", "status_code": r.status_code, "text": r.text[:2000]}
+    if 200 <= r.status_code < 300:
+        return True, data
+    return False, data
+
+
+def get_payment(payment_id: str) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Busca detalhes de um pagamento (payment) no Mercado Pago.
+    """
+    pid = (payment_id or "").strip()
+    if not pid:
+        return False, {"erro": "payment_id vazio."}
+    url = f"{MP_API_BASE}/v1/payments/{pid}"
+    headers = mp_headers()
+    if not headers:
+        return False, {"erro": "MERCADOPAGO_ACCESS_TOKEN não configurado."}
+    r = requests.get(url, headers=headers, timeout=20)
+    try:
+        data = r.json()
+    except Exception:
+        data = {"erro": "Resposta inválida do Mercado Pago.", "status_code": r.status_code, "text": r.text[:2000]}
+    if 200 <= r.status_code < 300:
+        return True, data
+    return False, data
+

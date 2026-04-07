@@ -11,19 +11,26 @@ export function ConditionNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const rule = (data?.rule || data?.ruleType || '').trim() || '';
   const value = (data?.value || data?.ruleValue || '').trim();
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const onRuleChange = useCallback(
     (e) => {
       const v = (e.target.value || '').trim();
       updateNodeData(id, { ...data, rule: v, ruleType: v });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
   const onValueChange = useCallback(
     (e) => {
       updateNodeData(id, { ...data, value: (e.target.value || '').trim(), ruleValue: (e.target.value || '').trim() });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   return (

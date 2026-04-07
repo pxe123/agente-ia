@@ -8,12 +8,18 @@ export function MessageNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const text = data?.text ?? '';
   const buttons = Array.isArray(data?.buttons) ? data.buttons : [];
+  const scheduleSave = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
+    } catch (_) {}
+  }, []);
 
   const onTextChange = useCallback(
     (e) => {
       updateNodeData(id, { ...data, text: e.target.value });
+      scheduleSave();
     },
-    [id, data, updateNodeData]
+    [id, data, updateNodeData, scheduleSave]
   );
 
   const onButtonTitleChange = useCallback(
@@ -22,8 +28,9 @@ export function MessageNode({ data, id, selected }) {
       if (!next[index]) next[index] = { id: BUTTON_HANDLE_IDS[index], title: '' };
       next[index] = { ...next[index], id: BUTTON_HANDLE_IDS[index], title: value };
       updateNodeData(id, { ...data, buttons: next });
+      scheduleSave();
     },
-    [id, data, buttons, updateNodeData]
+    [id, data, buttons, updateNodeData, scheduleSave]
   );
 
   const addButton = useCallback(() => {
@@ -31,7 +38,8 @@ export function MessageNode({ data, id, selected }) {
     const i = buttons.length;
     const next = [...buttons, { id: BUTTON_HANDLE_IDS[i], title: `Opção ${i + 1}` }];
     updateNodeData(id, { ...data, buttons: next });
-  }, [id, data, buttons, updateNodeData]);
+    scheduleSave();
+  }, [id, data, buttons, updateNodeData, scheduleSave]);
 
   const removeButton = useCallback(
     (index) => {
@@ -39,8 +47,9 @@ export function MessageNode({ data, id, selected }) {
         .filter((_, i) => i !== index)
         .map((b, i) => ({ ...b, id: BUTTON_HANDLE_IDS[i], title: b.title || `Opção ${i + 1}` }));
       updateNodeData(id, { ...data, buttons: next });
+      scheduleSave();
     },
-    [id, data, buttons, updateNodeData]
+    [id, data, buttons, updateNodeData, scheduleSave]
   );
 
   return (

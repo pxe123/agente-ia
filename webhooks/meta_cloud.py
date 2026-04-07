@@ -205,9 +205,22 @@ def _process_whatsapp_entry(entry: dict) -> None:
             def _run_wa():
                 with app_obj.app_context():
                     socketio_ref = app_obj.extensions.get("socketio")
+                    # Resolver identidade estável (contact_id) e enriquecer metadados.
+                    message_meta = None
+                    try:
+                        from services.contact_resolver import resolve_contact_id
+
+                        ctid, phone_norm = resolve_contact_id(cliente_id, "whatsapp", remote_id)
+                        if ctid:
+                            message_meta = {"contact_id": ctid}
+                            if phone_norm:
+                                message_meta["phone_normalized"] = phone_norm
+                    except Exception:
+                        message_meta = None
                     MessageService.processar_mensagem_entrada(
                         "whatsapp", remote_id, texto, cliente_id, None, socketio_ref,
-                        push_name=push_name
+                        push_name=push_name,
+                        message_meta=message_meta,
                     )
             threading.Thread(target=_run_wa, daemon=True).start()
 

@@ -90,11 +90,16 @@ def _send_node_message(
         text = format_questionnaire_message(data)
         buttons = []
     else:
-        text = (data.get("text") or data.get("content") or "").strip() or " "
+        text = (data.get("text") or data.get("content") or "").strip()
         buttons = data.get("buttons") or []
     if not isinstance(buttons, list):
         buttons = []
     buttons = [b for b in buttons[:3] if isinstance(b, dict) and (b.get("id") or b.get("title") or b.get("label"))]
+
+    # Evita enviar "mensagem vazia" (um espaço) que pode travar/atrapalhar o fluxo no WhatsApp.
+    # Se não há texto nem botões, não há nada útil para entregar — consideramos sucesso.
+    if not (text or "").strip() and not buttons:
+        return (True, None)
 
     if canal == "website":
         if buttons:
@@ -132,12 +137,16 @@ def _save_lead(
     cliente_id: str,
     canal: str,
     remote_id: str,
+    contact_id: str | None,
     flow_id: str,
     collected_data: dict,
     lead_node_data: dict,
 ) -> None:
     """Salva um lead na tabela leads a partir dos dados coletados no fluxo."""
-    print(f"[LEAD] _save_lead chamado canal={canal} remote_id={remote_id!r} collected_data keys={list((collected_data or {}).keys())}", flush=True)
+    print(
+        f"[LEAD] _save_lead chamado canal={canal} remote_id={remote_id!r} contact_id={contact_id!r} collected_data keys={list((collected_data or {}).keys())}",
+        flush=True,
+    )
     if not supabase or not cliente_id:
         print(f"[LEAD] _save_lead abortado: supabase ou cliente_id ausente", flush=True)
         return
@@ -162,16 +171,25 @@ def _save_lead(
         if not nome and not email and not telefone:
             print(f"[LEAD] _save_lead abortado: nome, email e telefone vazios", flush=True)
             return
+
+        # Se o fluxo marcou uma qualificação antes de salvar o lead, aplicamos aqui.
+        forced_status = (collected_data or {}).get("__lead_force_status")
+        forced_status = (forced_status or "").strip().lower()
+        if forced_status not in ("qualificado", "desqualificado"):
+            forced_status = ""
+        status_to_save = forced_status or "pendente"
+
         payload = {
             LeadModel.CLIENTE_ID: cliente_id,
             LeadModel.CANAL: canal,
             LeadModel.REMOTE_ID: remote_id,
+            LeadModel.CONTACT_ID: contact_id,
             LeadModel.FLOW_ID: flow_id,
             LeadModel.NOME: nome or None,
             LeadModel.EMAIL: email or None,
             LeadModel.TELEFONE: telefone or None,
             LeadModel.DADOS: dados,
-            LeadModel.STATUS: "pendente",
+            LeadModel.STATUS: status_to_save,
         }
 
         # Evita criar uma pilha de leads pendentes para o mesmo contato.
@@ -182,7 +200,13 @@ def _save_lead(
                 .select(LeadModel.ID, LeadModel.STATUS)
                 .eq(LeadModel.CLIENTE_ID, cliente_id)
                 .eq(LeadModel.CANAL, canal)
-                .eq(LeadModel.REMOTE_ID, remote_id)
+            )
+            if contact_id:
+                existing_pending = existing_pending.eq(LeadModel.CONTACT_ID, contact_id)
+            else:
+                existing_pending = existing_pending.eq(LeadModel.REMOTE_ID, remote_id)
+            existing_pending = (
+                existing_pending
                 .or_(f"{LeadModel.STATUS}.is.null,{LeadModel.STATUS}.eq.pendente")
                 .order(LeadModel.CREATED_AT, desc=True)
                 .limit(1)
@@ -193,11 +217,12 @@ def _save_lead(
                 if lead_id:
                     supabase.table(Tables.LEADS).update({
                         LeadModel.FLOW_ID: flow_id,
+                        LeadModel.CONTACT_ID: contact_id,
                         LeadModel.NOME: nome or None,
                         LeadModel.EMAIL: email or None,
                         LeadModel.TELEFONE: telefone or None,
                         LeadModel.DADOS: dados,
-                        LeadModel.STATUS: "pendente",
+                        LeadModel.STATUS: status_to_save,
                     }).eq(LeadModel.ID, lead_id).execute()
                     print(f"[LEAD] update pendente OK id={lead_id!r} nome={nome!r} email={email!r} telefone={telefone!r}", flush=True)
                     return
@@ -210,7 +235,12 @@ def _save_lead(
         print(f"[LEAD] _save_lead ERRO: {e}", flush=True)
 
 
-def get_existing_lead_with_data(cliente_id: str, canal: str, remote_id: str) -> dict | None:
+def get_existing_lead_with_data(
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    contact_id: str | None = None,
+) -> dict | None:
     """
     Retorna o lead mais recente para (cliente_id, canal, remote_id) que tenha
     nome, email e telefone preenchidos. Não exige status qualificado.
@@ -219,16 +249,17 @@ def get_existing_lead_with_data(cliente_id: str, canal: str, remote_id: str) -> 
     if not supabase or not cliente_id:
         return None
     try:
-        res = (
+        q = (
             supabase.table(Tables.LEADS)
             .select("*")
             .eq(LeadModel.CLIENTE_ID, cliente_id)
             .eq(LeadModel.CANAL, canal)
-            .eq(LeadModel.REMOTE_ID, remote_id)
-            .order(LeadModel.CREATED_AT, desc=True)
-            .limit(1)
-            .execute()
         )
+        if contact_id:
+            q = q.eq(LeadModel.CONTACT_ID, contact_id)
+        else:
+            q = q.eq(LeadModel.REMOTE_ID, remote_id)
+        res = q.order(LeadModel.CREATED_AT, desc=True).limit(1).execute()
         row = (res.data or [{}])[0] if res.data else None
         if not row or not isinstance(row, dict):
             return None
@@ -247,6 +278,7 @@ def _execute_action(
     cliente_id: str,
     canal: str,
     remote_id: str,
+    contact_id: str | None,
     node_data: dict,
     instancia: str | None,
     socketio=None,
@@ -283,7 +315,7 @@ def _execute_action(
             ).execute()
         except Exception as e:
             print(f"[FlowExecutor] _execute_action {action_type} upsert: {e}", flush=True)
-        clear_state(cliente_id, canal, remote_id)
+        clear_state(cliente_id, canal, remote_id, contact_id=contact_id)
         msg = (data.get("message") or data.get("messageBeforeTransfer") or "Um atendente vai te atender.").strip() or "Um atendente vai te atender."
         if canal == "website":
             try:
@@ -306,9 +338,57 @@ def _execute_action(
         return (True, None)
 
     if action_type == "send_link":
-        url = (data.get("url") or "").strip()
-        link_text = (data.get("linkText") or data.get("link_text") or url or "Clique aqui").strip()
-        text = (data.get("message") or data.get("text") or f"{link_text} {url}").strip() or f"{link_text} {url}"
+        # Compatibilidade: ao longo do tempo o builder pode ter persistido chaves diferentes.
+        url = (
+            data.get("url")
+            or data.get("link")
+            or data.get("href")
+            or data.get("linkUrl")
+            or data.get("link_url")
+            or ""
+        )
+        url = (str(url) if url is not None else "").strip()
+        # WhatsApp só transforma em link clicável de forma confiável quando há esquema.
+        if url and not (url.lower().startswith("http://") or url.lower().startswith("https://")):
+            url = "https://" + url.lstrip("/")
+
+        link_text = (data.get("linkText") or data.get("link_text") or "").strip()
+        if not link_text:
+            link_text = url or "Clique aqui"
+
+        raw_message = (data.get("message") or data.get("text") or "").strip()
+        if not url:
+            # Se o fluxo chegou aqui sem URL, preferimos sinalizar claramente (evita parecer "bugado").
+            missing_msg = "Link não configurado. Edite o bloco Ação → Enviar link e preencha a URL."
+            if canal == "website":
+                try:
+                    MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, missing_msg, socketio)
+                except Exception:
+                    pass
+                if website_room and embed_reply_store is not None:
+                    if website_room not in embed_reply_store:
+                        embed_reply_store[website_room] = []
+                    embed_reply_store[website_room].append({"conteudo": missing_msg})
+            else:
+                RoutingService.enviar_resposta(canal, instancia or "default", remote_id, missing_msg, cliente_id)
+                if socketio:
+                    try:
+                        MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, missing_msg, socketio)
+                    except Exception:
+                        pass
+            return (True, None)
+        if raw_message:
+            # Se o usuário configurou mensagem, garantimos que a URL esteja presente.
+            text = raw_message
+            if url and (url not in text):
+                # Colocar em nova linha ajuda o WhatsApp a detectar e "pré-visualizar" o link.
+                text = f"{text}\n{url}".strip()
+        else:
+            # Sem mensagem customizada, enviamos "TextoDoLink URL".
+            if url:
+                text = f"{link_text}\n{url}".strip()
+            else:
+                text = (link_text or "Clique aqui").strip() or "Clique aqui"
         if canal == "website":
             try:
                 MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text, socketio)
@@ -361,19 +441,22 @@ def _execute_action(
 
     if action_type == "qualificar_lead":
         status_val = (data.get("qualifyStatus") or data.get("status") or "").strip().lower()
+        # Fallback defensivo: se o builder não persistiu o status, assumimos "qualificado"
+        # (não travar o fluxo por configuração incompleta).
         if not status_val:
-            return (False, "Status inválido. Informe um status para qualificar lead.")
+            status_val = "qualificado"
         try:
             res = (
                 supabase.table(Tables.LEADS)
                 .select(LeadModel.ID, LeadModel.STATUS)
                 .eq(LeadModel.CLIENTE_ID, cliente_id)
                 .eq(LeadModel.CANAL, canal)
-                .eq(LeadModel.REMOTE_ID, remote_id)
-                .order(LeadModel.CREATED_AT, desc=True)
-                .limit(20)
-                .execute()
             )
+            if contact_id:
+                res = res.eq(LeadModel.CONTACT_ID, contact_id)
+            else:
+                res = res.eq(LeadModel.REMOTE_ID, remote_id)
+            res = res.order(LeadModel.CREATED_AT, desc=True).limit(20).execute()
             if res.data and len(res.data) > 0:
                 # Prioriza qualificar o pendente mais recente para evitar "qualificar o registro errado".
                 target_id = None
@@ -388,10 +471,27 @@ def _execute_action(
                 if target_id:
                     supabase.table(Tables.LEADS).update({LeadModel.STATUS: status_val}).eq(LeadModel.ID, target_id).execute()
                     print(f"[LEAD] qualificar_lead update OK id={target_id!r} status={status_val!r}", flush=True)
+                return (True, None)
+
+            # Nenhum lead encontrado ainda (fluxo pode qualificar antes de "Salvar lead").
+            # Não criamos registro “mínimo” (pode falhar por constraints). Em vez disso,
+            # gravamos a intenção no state para aplicar quando o lead for salvo.
+            try:
+                current_node_id, state_flow_id, collected = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
+                if state_flow_id:
+                    updated = dict(collected or {})
+                    updated["__lead_force_status"] = status_val
+                    set_state(cliente_id, canal, remote_id, state_flow_id, current_node_id, updated, contact_id=contact_id)
+                    print(f"[LEAD] qualificar_lead marcou __lead_force_status={status_val!r} (sem lead ainda)", flush=True)
+                else:
+                    print(f"[LEAD] qualificar_lead sem lead e sem state_flow_id; mantendo apenas log", flush=True)
+            except Exception as mark_e:
+                print(f"[FlowExecutor] qualificar_lead marcar state falhou: {mark_e}", flush=True)
             return (True, None)
         except Exception as e:
             print(f"[FlowExecutor] _execute_action qualificar_lead: {e}", flush=True)
-            return (False, str(e))
+            # Não bloquear fluxo por falha de qualificação; apenas logar.
+            return (True, None)
 
     return (True, None)
 
@@ -437,6 +537,14 @@ class FlowExecutor:
         embed_reply_store: dict | None = None,
         message_meta: dict | None = None,
     ) -> bool:
+        contact_id = None
+        try:
+            if isinstance(message_meta, dict):
+                contact_id = message_meta.get("contact_id")
+                if contact_id is not None:
+                    contact_id = str(contact_id).strip() or None
+        except Exception:
+            contact_id = None
         flow_json, flow_id = get_flow(cliente_id, canal)
         if not flow_json or not flow_id:
             return False
@@ -445,7 +553,7 @@ class FlowExecutor:
             return False
 
         if is_reiniciar_comando(texto or ""):
-            clear_state(cliente_id, canal, remote_id)
+            clear_state(cliente_id, canal, remote_id, contact_id=contact_id)
             try:
                 MessageService.registrar_mensagem_saida(
                     cliente_id, remote_id, canal,
@@ -456,7 +564,7 @@ class FlowExecutor:
                 print(f"[FlowExecutor] reiniciar mensagem: {e}", flush=True)
             return True
 
-        current_node_id, state_flow_id, collected_data = get_state(cliente_id, canal, remote_id)
+        current_node_id, state_flow_id, collected_data = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
         if state_flow_id != flow_id:
             current_node_id = None
         print(f"[LEAD] process canal={canal} remote_id={remote_id!r} texto_len={len(texto or '')} current_node_id={current_node_id!r} state_flow_id={state_flow_id!r} flow_id={flow_id!r}", flush=True)
@@ -527,27 +635,28 @@ class FlowExecutor:
                             clean_data.pop(k, None)
 
                         # Atualiza estado para que qualquer lead a seguir use collected_data sem os marcadores.
-                        set_state(cliente_id, canal, remote_id, flow_id, current_node_id, clean_data)
+                        set_state(cliente_id, canal, remote_id, flow_id, current_node_id, clean_data, contact_id=contact_id)
 
                         if not next_after_id:
-                            set_state(cliente_id, canal, remote_id, flow_id, None)
+                            set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                             return True
 
                         # Dispara o próximo nó como faria no fluxo normal.
                         next_id = next_after_id
                         next_node = node_by_id(nodes, next_id)
                         if not next_node:
-                            set_state(cliente_id, canal, remote_id, flow_id, None)
+                            set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                             return True
 
                         saved_lead_once = False
                         while next_node and next_node.get("type") == "lead":
-                            _, _, _lead_collected = get_state(cliente_id, canal, remote_id)
+                            _, _, _lead_collected = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
                             if not saved_lead_once:
                                 _save_lead(
                                     cliente_id,
                                     canal,
                                     remote_id,
+                                    contact_id,
                                     flow_id,
                                     _lead_collected,
                                     next_node.get("data") or {},
@@ -557,7 +666,7 @@ class FlowExecutor:
                             next_node = node_by_id(nodes, next_id) if next_id else None
 
                         if not next_node:
-                            set_state(cliente_id, canal, remote_id, flow_id, None)
+                            set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                             return True
 
                         if next_node.get("type") == "action":
@@ -567,6 +676,7 @@ class FlowExecutor:
                                 cliente_id,
                                 canal,
                                 remote_id,
+                                contact_id,
                                 data,
                                 instancia,
                                 socketio,
@@ -578,7 +688,7 @@ class FlowExecutor:
                             if next_action_type in ("transfer_human", "transfer_to_sector"):
                                 return True
                             next_after_id2 = next_node_after(next_id, edges)
-                            set_state(cliente_id, canal, remote_id, flow_id, next_after_id2)
+                            set_state(cliente_id, canal, remote_id, flow_id, next_after_id2, contact_id=contact_id)
                             return True
 
                         if next_node.get("type") == "end":
@@ -596,7 +706,7 @@ class FlowExecutor:
                                             MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                         except Exception:
                                             pass
-                            set_state(cliente_id, canal, remote_id, flow_id, None)
+                            set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                             return True
 
                         # Mensagem/questionário
@@ -614,9 +724,9 @@ class FlowExecutor:
                             if next_node.get("type") == "questionnaire":
                                 keys = questionnaire_collect_keys(next_node.get("data") or {})
                                 collect_state = {PENDING_COLLECT_KEYS: keys} if keys else {}
-                                set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state)
+                                set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state, contact_id=contact_id)
                             else:
-                                set_state(cliente_id, canal, remote_id, flow_id, next_id)
+                                set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
                         else:
                             print(f"[FlowExecutor] Falha ao enviar nó {next_id}: {err}", flush=True)
                         return True
@@ -628,6 +738,7 @@ class FlowExecutor:
                             cliente_id,
                             canal,
                             remote_id,
+                            contact_id,
                             {"actionType": "transfer_human", "message": "Um atendente vai te atender."},
                             instancia,
                             socketio,
@@ -673,7 +784,90 @@ class FlowExecutor:
 
                     updated_data = dict(collected_data or {})
                     updated_data["__awaiting_send_link_tries"] = tries
-                    set_state(cliente_id, canal, remote_id, flow_id, current_node_id, updated_data)
+                    set_state(cliente_id, canal, remote_id, flow_id, current_node_id, updated_data, contact_id=contact_id)
+                    return True
+
+        # --- Se o estado ficou preso em um nó de ação (ex.: qualificar_lead), avançar automaticamente ---
+        # Isso evita o sintoma: usuário responde "1" e find_next_node_id retorna vazio porque action não é nó de entrada.
+        if current_node_id:
+            stuck_node = node_by_id(nodes, current_node_id)
+            if stuck_node and (stuck_node.get("type") or "").strip().lower() == "action":
+                stuck_data = stuck_node.get("data") or {}
+                stuck_action_type = (
+                    (stuck_data.get("actionType") or stuck_data.get("action_type") or "")
+                    .strip()
+                    .lower()
+                    .replace(" ", "_")
+                )
+                # send_link é especial e já é tratado acima via __awaiting_send_link_click.
+                if stuck_action_type and stuck_action_type != "send_link":
+                    next_after_id = next_node_after(current_node_id, edges)
+                    set_state(cliente_id, canal, remote_id, flow_id, next_after_id, contact_id=contact_id)
+
+                    if not next_after_id:
+                        return True
+
+                    next_node = node_by_id(nodes, next_after_id)
+                    if not next_node:
+                        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                        return True
+
+                    # Reaproveita a lógica existente: lead->action->end->message.
+                    saved_lead_once = False
+                    next_id = next_after_id
+                    while next_node and next_node.get("type") == "lead":
+                        _, _, cdata = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
+                        if not saved_lead_once:
+                            _save_lead(cliente_id, canal, remote_id, contact_id, flow_id, cdata, next_node.get("data") or {})
+                            saved_lead_once = True
+                        next_id = next_node_after(next_id, edges)
+                        next_node = node_by_id(nodes, next_id) if next_id else None
+
+                    if not next_node:
+                        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                        return True
+
+                    if next_node.get("type") == "action":
+                        data = next_node.get("data") or {}
+                        action_type2 = (data.get("actionType") or data.get("action_type") or "").strip().lower().replace(" ", "_")
+                        ok, err = _execute_action(cliente_id, canal, remote_id, contact_id, data, instancia, socketio, website_room, embed_reply_store)
+                        if not ok:
+                            print(f"[FlowExecutor] _execute_action (unstick) falhou: {err}", flush=True)
+                        if action_type2 in ("transfer_human", "transfer_to_sector"):
+                            return True
+                        next_after_id2 = next_node_after(next_id, edges)
+                        set_state(cliente_id, canal, remote_id, flow_id, next_after_id2, contact_id=contact_id)
+                        return True
+
+                    if next_node.get("type") == "end":
+                        text = (next_node.get("data") or {}).get("text") or ""
+                        if (text or "").strip():
+                            if canal == "website":
+                                try:
+                                    MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
+                                except Exception as e:
+                                    print(f"[FlowExecutor] website end (unstick): {e}", flush=True)
+                            else:
+                                RoutingService.enviar_resposta(canal, instancia or "default", remote_id, text.strip(), cliente_id)
+                                if socketio:
+                                    try:
+                                        MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
+                                    except Exception:
+                                        pass
+                        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                        return True
+
+                    # message/questionnaire
+                    ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
+                    if ok:
+                        if next_node.get("type") == "questionnaire":
+                            keys = questionnaire_collect_keys(next_node.get("data") or {})
+                            collect_state = {PENDING_COLLECT_KEYS: keys} if keys else {}
+                            set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state, contact_id=contact_id)
+                        else:
+                            set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
+                    else:
+                        print(f"[FlowExecutor] Falha ao enviar nó (unstick) {next_id}: {err}", flush=True)
                     return True
 
         pending_keys = (collected_data or {}).get(PENDING_COLLECT_KEYS)
@@ -717,10 +911,10 @@ class FlowExecutor:
                     if not next_node or next_node.get("type") != "lead":
                         break
                     if not saved_lead:
-                        _save_lead(cliente_id, canal, remote_id, flow_id, new_data, next_node.get("data") or {})
+                        _save_lead(cliente_id, canal, remote_id, contact_id, flow_id, new_data, next_node.get("data") or {})
                         saved_lead = True
                     next_id = next_node_after(next_id, edges)
-                set_state(cliente_id, canal, remote_id, flow_id, next_id, new_data)
+                set_state(cliente_id, canal, remote_id, flow_id, next_id, new_data, contact_id=contact_id)
                 if next_id:
                     next_node = node_by_id(nodes, next_id)
                     if next_node:
@@ -744,7 +938,7 @@ class FlowExecutor:
                             if not ok:
                                 print(f"[FlowExecutor] send após coleta: {err}", flush=True)
                 return True
-            set_state(cliente_id, canal, remote_id, flow_id, current_node_id, new_data)
+            set_state(cliente_id, canal, remote_id, flow_id, current_node_id, new_data, contact_id=contact_id)
             return True
 
         current_node = node_by_id(nodes, current_node_id) if current_node_id else None
@@ -773,10 +967,10 @@ class FlowExecutor:
                 if not next_node or next_node.get("type") != "lead":
                     break
                 if not saved_lead:
-                    _save_lead(cliente_id, canal, remote_id, flow_id, new_data, next_node.get("data") or {})
+                    _save_lead(cliente_id, canal, remote_id, contact_id, flow_id, new_data, next_node.get("data") or {})
                     saved_lead = True
                 next_id = next_node_after(next_id, edges)
-            set_state(cliente_id, canal, remote_id, flow_id, next_id, new_data)
+            set_state(cliente_id, canal, remote_id, flow_id, next_id, new_data, contact_id=contact_id)
             if next_id:
                 next_node = node_by_id(nodes, next_id)
                 if next_node and next_node.get("type") == "end":
@@ -794,7 +988,7 @@ class FlowExecutor:
                                     MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                 except Exception:
                                     pass
-                    set_state(cliente_id, canal, remote_id, flow_id, None)
+                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                 elif next_node:
                     _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
             return True
@@ -827,10 +1021,10 @@ class FlowExecutor:
                                     print(f"[FlowExecutor] website end node: {e}", flush=True)
                             else:
                                 RoutingService.enviar_resposta(canal, instancia or "default", remote_id, text.strip(), cliente_id)
-                        set_state(cliente_id, canal, remote_id, flow_id, None)
+                        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                     elif next_node and next_node.get("type") == "questionnaire":
                         print(f"[LEAD] primeiro no e questionario, verificando lead existente...", flush=True)
-                        existing_lead = get_existing_lead_with_data(cliente_id, canal, remote_id)
+                        existing_lead = get_existing_lead_with_data(cliente_id, canal, remote_id, contact_id=contact_id)
                         if existing_lead:
                             print(f"[LEAD] lead existente com dados encontrado, pulando questionario", flush=True)
                             # Fluxos antigos podem ter múltiplos questionários em sequência (nome -> email -> telefone).
@@ -861,8 +1055,8 @@ class FlowExecutor:
                             if lead_ids:
                                 ln = node_by_id(nodes, lead_ids[0])
                                 if ln:
-                                    _save_lead(cliente_id, canal, remote_id, flow_id, collected_data, ln.get("data") or {})
-                            set_state(cliente_id, canal, remote_id, flow_id, next_after_leads, collected_data)
+                                    _save_lead(cliente_id, canal, remote_id, contact_id, flow_id, collected_data, ln.get("data") or {})
+                            set_state(cliente_id, canal, remote_id, flow_id, next_after_leads, collected_data, contact_id=contact_id)
                             if next_after_leads:
                                 next_node_after_lead = node_by_id(nodes, next_after_leads)
                                 if next_node_after_lead and next_node_after_lead.get("type") == "end":
@@ -880,29 +1074,29 @@ class FlowExecutor:
                                                     MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                                 except Exception:
                                                     pass
-                                    set_state(cliente_id, canal, remote_id, flow_id, None)
+                                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                                 elif next_node_after_lead:
                                     _send_node_message(cliente_id, canal, remote_id, instancia, next_node_after_lead, socketio, website_room, embed_reply_store)
                         else:
                             print(f"[LEAD] sem lead existente, enviando questionario e set_state next_id={next_id!r}", flush=True)
                             ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
                             if ok:
-                                set_state(cliente_id, canal, remote_id, flow_id, next_id)
+                                set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
                             else:
                                 print(f"[FlowExecutor] Falha ao enviar após start: {err}", flush=True)
                     else:
                         ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
                         if ok:
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id)
+                            set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
                         else:
                             print(f"[FlowExecutor] Falha ao enviar após start: {err}", flush=True)
                 else:
-                    set_state(cliente_id, canal, remote_id, flow_id, entry_id)
+                    set_state(cliente_id, canal, remote_id, flow_id, entry_id, contact_id=contact_id)
             else:
                 ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, entry_node, socketio, website_room, embed_reply_store)
                 if not ok:
                     print(f"[FlowExecutor] Falha ao enviar nó entrada: {err}", flush=True)
-                set_state(cliente_id, canal, remote_id, flow_id, entry_id)
+                set_state(cliente_id, canal, remote_id, flow_id, entry_id, contact_id=contact_id)
             return True
 
         next_id = find_next_node_id(nodes, edges, current_node_id, texto or "")
@@ -940,10 +1134,10 @@ class FlowExecutor:
             if next_node:
                 saved_lead_once = False
                 while next_node and next_node.get("type") == "lead":
-                    _, _, collected_data = get_state(cliente_id, canal, remote_id)
+                    _, _, collected_data = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
                     if not saved_lead_once:
                         _save_lead(
-                            cliente_id, canal, remote_id, flow_id,
+                            cliente_id, canal, remote_id, contact_id, flow_id,
                             collected_data,
                             next_node.get("data") or {},
                         )
@@ -952,14 +1146,14 @@ class FlowExecutor:
                     next_node = node_by_id(nodes, next_id) if next_id else None
 
                 if not next_node:
-                    set_state(cliente_id, canal, remote_id, flow_id, None)
+                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                     return True
 
                 if next_node.get("type") == "action":
                     data = next_node.get("data") or {}
                     action_type = (data.get("actionType") or data.get("action_type") or "").strip().lower().replace(" ", "_")
                     ok, err = _execute_action(
-                        cliente_id, canal, remote_id, data, instancia,
+                        cliente_id, canal, remote_id, contact_id, data, instancia,
                         socketio, website_room, embed_reply_store,
                     )
                     if not ok:
@@ -983,18 +1177,67 @@ class FlowExecutor:
                         updated_collected["__awaiting_send_link_confirm_id"] = confirm_id
                         updated_collected["__awaiting_send_link_confirm_choice"] = "1"
 
-                        set_state(cliente_id, canal, remote_id, flow_id, next_id, updated_collected)
+                        set_state(cliente_id, canal, remote_id, flow_id, next_id, updated_collected, contact_id=contact_id)
                         return True
 
                     next_after_id = next_node_after(next_id, edges)
-                    set_state(cliente_id, canal, remote_id, flow_id, next_after_id)
+                    set_state(cliente_id, canal, remote_id, flow_id, next_after_id, contact_id=contact_id)
 
                     # Para ações imediatas (ex.: qualificar_lead), avançar automaticamente para o próximo nó.
                     if next_after_id:
                         after_node = node_by_id(nodes, next_after_id)
                         if after_node:
-                            if after_node.get("type") == "end":
-                                text = (after_node.get("data") or {}).get("text") or ""
+                            # Se a ação leva para nós de lead, precisamos processá-los imediatamente;
+                            # caso contrário, o fluxo "parece travado" (fica em lead/action sem enviar nada).
+                            saved_lead_once2 = False
+                            scan_id2 = next_after_id
+                            scan_node2 = after_node
+                            while scan_node2 and scan_node2.get("type") == "lead":
+                                _, _, cdata2 = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
+                                if not saved_lead_once2:
+                                    _save_lead(
+                                        cliente_id,
+                                        canal,
+                                        remote_id,
+                                        contact_id,
+                                        flow_id,
+                                        cdata2,
+                                        scan_node2.get("data") or {},
+                                    )
+                                    saved_lead_once2 = True
+                                scan_id2 = next_node_after(scan_id2, edges)
+                                scan_node2 = node_by_id(nodes, scan_id2) if scan_id2 else None
+
+                            # Se acabaram os nós, encerra estado.
+                            if not scan_node2:
+                                set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                                return True
+
+                            # Se o próximo também for ação imediata, executa e avança 1 passo.
+                            if scan_node2.get("type") == "action":
+                                data2 = scan_node2.get("data") or {}
+                                action_type2 = (data2.get("actionType") or data2.get("action_type") or "").strip().lower().replace(" ", "_")
+                                ok_a, err_a = _execute_action(
+                                    cliente_id,
+                                    canal,
+                                    remote_id,
+                                    contact_id,
+                                    data2,
+                                    instancia,
+                                    socketio,
+                                    website_room,
+                                    embed_reply_store,
+                                )
+                                if not ok_a:
+                                    print(f"[FlowExecutor] _execute_action (after action) falhou: {err_a}", flush=True)
+                                if action_type2 in ("transfer_human", "transfer_to_sector"):
+                                    return True
+                                next_after_id3 = next_node_after(scan_id2, edges)
+                                set_state(cliente_id, canal, remote_id, flow_id, next_after_id3, contact_id=contact_id)
+                                return True
+
+                            if scan_node2.get("type") == "end":
+                                text = (scan_node2.get("data") or {}).get("text") or ""
                                 if (text or "").strip():
                                     if canal == "website":
                                         try:
@@ -1008,27 +1251,28 @@ class FlowExecutor:
                                                 MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                             except Exception:
                                                 pass
-                                set_state(cliente_id, canal, remote_id, flow_id, None)
-                            else:
-                                ok2, err2 = _send_node_message(
-                                    cliente_id,
-                                    canal,
-                                    remote_id,
-                                    instancia,
-                                    after_node,
-                                    socketio,
-                                    website_room,
-                                    embed_reply_store,
-                                )
-                                if ok2:
-                                    if after_node.get("type") == "questionnaire":
-                                        keys2 = questionnaire_collect_keys(after_node.get("data") or {})
-                                        collect_state2 = {PENDING_COLLECT_KEYS: keys2} if keys2 else {}
-                                        set_state(cliente_id, canal, remote_id, flow_id, next_after_id, collect_state2)
-                                    else:
-                                        set_state(cliente_id, canal, remote_id, flow_id, next_after_id)
+                                set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                                return True
+
+                            ok2, err2 = _send_node_message(
+                                cliente_id,
+                                canal,
+                                remote_id,
+                                instancia,
+                                scan_node2,
+                                socketio,
+                                website_room,
+                                embed_reply_store,
+                            )
+                            if ok2:
+                                if scan_node2.get("type") == "questionnaire":
+                                    keys2 = questionnaire_collect_keys(scan_node2.get("data") or {})
+                                    collect_state2 = {PENDING_COLLECT_KEYS: keys2} if keys2 else {}
+                                    set_state(cliente_id, canal, remote_id, flow_id, scan_id2, collect_state2, contact_id=contact_id)
                                 else:
-                                    print(f"[FlowExecutor] Falha ao auto-avançar após ação {next_id}: {err2}", flush=True)
+                                    set_state(cliente_id, canal, remote_id, flow_id, scan_id2, contact_id=contact_id)
+                            else:
+                                print(f"[FlowExecutor] Falha ao auto-avançar após ação {next_id}: {err2}", flush=True)
                     return True
 
                 if next_node.get("type") == "end":
@@ -1046,16 +1290,16 @@ class FlowExecutor:
                                     MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                 except Exception:
                                     pass
-                    set_state(cliente_id, canal, remote_id, flow_id, None)
+                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                 else:
                     ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
                     if ok:
                         if next_node.get("type") == "questionnaire":
                             keys = questionnaire_collect_keys(next_node.get("data") or {})
                             collect_state = {PENDING_COLLECT_KEYS: keys} if keys else {}
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state)
+                            set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state, contact_id=contact_id)
                         else:
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id)
+                            set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
                     else:
                         print(f"[FlowExecutor] Falha ao enviar nó {next_id}: {err}", flush=True)
                 return True

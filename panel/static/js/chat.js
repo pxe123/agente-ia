@@ -8,19 +8,6 @@ const _AGENTEIA_SOCKET_OPTS = {
 };
 const socket = window.appSocket || io(_AGENTEIA_SOCKET_OPTS);
 if (!window.appSocket) window.appSocket = socket;
-// #region agent log socket_init_chatjs
-try {
-    fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H2_socket_path_or_origin_mismatch',location:'panel/static/js/chat.js:12',message:'chatjs_socket_initialized',data:{reusedGlobalSocket:!!window.appSocket,opts:_AGENTEIA_SOCKET_OPTS,pathname:window.location.pathname,origin:window.location.origin},timestamp:Date.now()})}).catch(()=>{});
-} catch (_) {}
-try {
-    socket.on("connect", () => {
-        fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H4_websocket_fallback_polling',location:'panel/static/js/chat.js:16',message:'chatjs_socket_connect',data:{transport:(socket.io && socket.io.engine && socket.io.engine.transport && socket.io.engine.transport.name) || null},timestamp:Date.now()})}).catch(()=>{});
-    });
-    socket.on("connect_error", (err) => {
-        fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e276fc'},body:JSON.stringify({sessionId:'e276fc',runId:'baseline',hypothesisId:'H1_infra_ws_upgrade_failure',location:'panel/static/js/chat.js:20',message:'chatjs_socket_connect_error',data:{msg:(err && err.message) || String(err || ''),description:(err && err.description) || null},timestamp:Date.now()})}).catch(()=>{});
-    });
-} catch (_) {}
-// #endregion
 let mensagensGlobais = [];
 let idRemotoAtivo = null;
 let canalAtivo = typeof PRIMEIRO_CANAL !== "undefined" ? PRIMEIRO_CANAL : "whatsapp";
@@ -944,15 +931,6 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
     const ehEntrada = msg.funcao === "user";
     let conteudo = msg.conteudo || "";
     let atendenteNome = msg.atendente_nome_snapshot || null;
-    // #region agent log render_atendente_label
-    try {
-        const snapPresent = !!atendenteNome;
-        const snapLen = snapPresent ? String(atendenteNome).length : 0;
-        const startsBracket = snapPresent ? String(conteudo).startsWith("[" + String(atendenteNome) + "]: ") : false;
-        const startsColon = snapPresent ? String(conteudo).startsWith(String(atendenteNome) + ": ") : false;
-        fetch('http://127.0.0.1:7868/ingest/c5c23a0e-51b5-4bd5-bcc2-994f3e027bbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1db042'},body:JSON.stringify({sessionId:'1db042',location:'panel/static/js/chat.js:adicionarBalaoChat',message:'render_atendente_label',data:{ehEntrada:!!ehEntrada,snapPresent:snapPresent,snapLen:snapLen,startsBracket:startsBracket,startsColon:startsColon,funcao:msg.funcao||null},timestamp:Date.now(),runId:'pre-debug',hypothesisId:'H9_render_snapshot_or_parse'} )}).catch(()=>{});
-    } catch (_) {}
-    // #endregion
     // Não interpretar "Nome: texto" em payloads JSON (ex.: fluxo website com botões).
     // O primeiro ": " em {"text": "...", "buttons": [...]} quebrava o JSON e o painel mostrava o texto cru.
     if (!ehEntrada && typeof conteudo === "string") {

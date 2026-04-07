@@ -67,7 +67,7 @@ def _cliente_id_from_embed_key(embed_key: str):
 
 @embed_bp.before_request
 def _embed_cors_preflight():
-    """CORS preflight para widget em domínio público (ex.: zapaction.com.br) chamando API em outro host."""
+    """CORS preflight para widget no site do cliente chamando a API (host pode ser o da app)."""
     if request.method != "OPTIONS":
         return None
     p = request.path or ""

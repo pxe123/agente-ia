@@ -33,6 +33,9 @@ def mercadopago_webhook():
         body_json = {}
     if not resource_type:
         resource_type = (body_json.get("type") or "").strip()
+    # Compat: MP às vezes envia "payments" (plural)
+    if resource_type == "payments":
+        resource_type = "payment"
     if not data_id:
         # padrão do MP: data: { id: "..." }
         data = body_json.get("data") or {}

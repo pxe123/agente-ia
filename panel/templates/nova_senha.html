@@ -35,7 +35,7 @@
             </div>
             <button type="submit" id="btn" class="w-full py-3 bg-emerald-600 text-white font-semibold rounded-xl">Salvar</button>
         </form>
-        <p class="mt-4 text-center"><a href="/login" class="text-emerald-700 text-sm">Voltar ao login</a></p>
+        <p class="mt-4 text-center"><a href="{{ PUBLIC_BASE_URL }}/login" class="text-emerald-700 text-sm">Voltar ao login</a></p>
     </div>
     <script>
     (function() {
@@ -69,7 +69,7 @@
                 if (res.error) throw res.error;
                 document.getElementById("ok").textContent = "Senha atualizada. Redirecionando…";
                 document.getElementById("ok").classList.remove("hidden");
-                setTimeout(function() { window.location.href = "/login"; }, 1500);
+                setTimeout(function() { window.location.href = "{{ PUBLIC_BASE_URL }}/login"; }, 1500);
             }).catch(function(err) {
                 document.getElementById("err").textContent = (err && err.message) ? err.message : "Não foi possível salvar.";
                 document.getElementById("err").classList.remove("hidden");

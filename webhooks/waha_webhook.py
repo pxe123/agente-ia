@@ -496,6 +496,26 @@ def webhook_entrada():
     def _processar_com_contexto():
         try:
             with app_obj.app_context():
+                # Resolver identidade estável (contact_id) para reduzir instabilidade de remote_id.
+                # Não altera comportamento ainda; apenas enriquece message_meta e garante mapping no banco.
+                try:
+                    from services.contact_resolver import resolve_contact_id
+
+                    ctid, phone_norm = resolve_contact_id(cliente_id, "whatsapp", remote_id)
+                    if ctid:
+                        if message_meta is None:
+                            _mm = {}
+                        else:
+                            _mm = dict(message_meta)
+                        _mm["contact_id"] = ctid
+                        if phone_norm:
+                            _mm["phone_normalized"] = phone_norm
+                        message_meta_local = _mm
+                    else:
+                        message_meta_local = message_meta
+                except Exception:
+                    message_meta_local = message_meta
+
                 _dbg("waha_webhook_call_message_service", "H5", {"remoteLast4": remote_last4, "textoLen": len(texto or "")})
                 MessageService.processar_mensagem_entrada(
                     "whatsapp", remote_id, texto or "[mídia]", cliente_id, session_name, socketio_instancia,
@@ -503,7 +523,7 @@ def webhook_entrada():
                     anexo_url=anexo_url,
                     anexo_nome=anexo_nome,
                     anexo_tipo=anexo_tipo,
-                    message_meta=message_meta,
+                    message_meta=message_meta_local,
                 )
         except Exception as e:
             import traceback
