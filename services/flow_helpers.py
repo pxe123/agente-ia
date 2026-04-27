@@ -205,18 +205,25 @@ def questionnaire_collect_keys(data: dict) -> list:
 
 
 def format_questionnaire_message(data: dict) -> str:
-    """Formata intro + perguntas do nó questionário em uma única mensagem."""
-    intro = (data.get("intro") or "").strip()
+    """
+    Formata o nó questionário para envio.
+
+    Observação: o **intro** deve ser enviado em mensagem separada (ver FlowExecutor).
+    Aqui retornamos apenas a lista de perguntas (uma por linha).
+    """
     questions = data.get("questions") or []
     if not isinstance(questions, list):
         questions = []
     lines = []
-    if intro:
-        lines.append(intro)
     for i, q in enumerate(questions):
         if isinstance(q, str) and q.strip():
             lines.append(f"{i + 1}. {q.strip()}")
     return "\n\n".join(lines) if lines else " "
+
+
+def questionnaire_intro_text(data: dict) -> str:
+    """Texto introdutório do nó questionário (enviado em mensagem separada)."""
+    return (data.get("intro") or "").strip()
 
 
 def collected_data_for_lead(collected_data: dict, pending_key: str = PENDING_COLLECT_KEYS) -> dict:

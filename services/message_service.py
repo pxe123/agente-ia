@@ -9,6 +9,23 @@ from services.message_helpers import get_conversacao_setor, parece_base64_imagem
 
 class MessageService:
     @staticmethod
+    def _norm_text(v: str | None) -> str:
+        return " ".join(str(v or "").strip().lower().split())
+
+    @staticmethod
+    def _iso_to_ts(iso: str | None) -> float:
+        s = (iso or "").strip()
+        if not s:
+            return 0.0
+        try:
+            # Supabase geralmente devolve ISO com Z; fromisoformat não aceita "Z"
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            return datetime.fromisoformat(s).timestamp()
+        except Exception:
+            return 0.0
+
+    @staticmethod
     def processar_mensagem_entrada(
         canal,
         remote_id,
@@ -141,6 +158,37 @@ class MessageService:
                     pass
                 # #endregion
                 return
+
+            # Proteção defensiva contra loop/eco: se o webhook entregar nossa própria mensagem como "entrada"
+            # (ex.: payload inconsistente sem fromMe), não devemos disparar o fluxo novamente.
+            try:
+                incoming_norm = MessageService._norm_text(texto or "")
+                if incoming_norm:
+                    r_last = (
+                        supabase.table(Tables.MENSAGENS)
+                        .select(MensagemModel.CONTEUDO, MensagemModel.CRIADO_EM)
+                        .eq(MensagemModel.CLIENTE_ID, cliente_id)
+                        .eq(MensagemModel.REMOTE_ID, remote_id)
+                        .eq(MensagemModel.CANAL, canal)
+                        .eq(MensagemModel.FUNCAO, "assistant")
+                        .order(MensagemModel.CRIADO_EM, desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+                    if r_last.data and len(r_last.data) > 0:
+                        row = r_last.data[0] or {}
+                        last_text_norm = MessageService._norm_text(row.get(MensagemModel.CONTEUDO) or "")
+                        last_ts = MessageService._iso_to_ts(row.get(MensagemModel.CRIADO_EM))
+                        now_ts = datetime.now(timezone.utc).timestamp()
+                        if last_text_norm and last_text_norm == incoming_norm and last_ts and (now_ts - last_ts) <= 10:
+                            print(
+                                f"[MessageService] Loop guard: ignorando entrada que parece eco do assistant (canal={canal} remote_id={remote_id})",
+                                flush=True,
+                            )
+                            return
+            except Exception:
+                # Best-effort: nunca quebrar o fluxo por causa desta checagem
+                pass
 
             # Flow Builder: executar máquina de estados. Repasse explícito de website_room e embed_reply_store
             # para o canal website (entrega via embed_pending_replies e SocketIO).

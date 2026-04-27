@@ -8,6 +8,7 @@ from services.meta_send import (
     send_messenger,
 )
 from services.sent_message_cache import registrar_envio
+from services.anti_loop_guard import AntiLoopGuard
 from services.entitlements import can_use_channel
 from services.app_settings import get_global_settings
 from base.config import settings
@@ -22,6 +23,13 @@ class RoutingService:
         Retorna (True, None) em sucesso ou (False, mensagem_erro) em falha.
         """
         try:
+            blocked, remaining = AntiLoopGuard.is_blocked(cliente_id, canal, remote_id)
+            if blocked:
+                return (
+                    False,
+                    f"Anti-loop: envio bloqueado temporariamente para esta conversa (aguarde {int(remaining)}s).",
+                )
+
             cid = str(cliente_id).strip() if cliente_id else ""
             if cid:
                 if canal == "whatsapp" and not can_use_channel(cid, "whatsapp"):
@@ -61,6 +69,8 @@ class RoutingService:
                         ok, err = enviar_audio(remote_id, anexo_base64, mimetype=mimetype, filename=filename, caption=caption, session=session_name, convert=True)
                     else:
                         ok, err = enviar_documento(remote_id, anexo_base64, mimetype=mimetype, filename=filename, caption=caption, session=session_name)
+                    if ok:
+                        AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                     return (ok, err)
                 from integrations.whatsapp.waha_client import enviar_texto as waha_enviar_texto
                 ok, err = waha_enviar_texto(remote_id, texto or "", session=session_name)
@@ -92,6 +102,8 @@ class RoutingService:
                         registrar_envio(cliente_id, remote_id, texto or "")
                     except Exception:
                         pass
+                if ok:
+                    AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                 return (ok, err)
 
             if canal == "instagram" and cliente and cliente.get(ClienteModel.META_IG_TOKEN) and cliente.get(ClienteModel.META_IG_PAGE_ID):
@@ -101,6 +113,8 @@ class RoutingService:
                     remote_id,
                     texto,
                 )
+                if ok:
+                    AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                 return (ok, None) if ok else (False, err or "Falha ao enviar pelo Instagram.")
 
             if canal == "facebook" and cliente and cliente.get(ClienteModel.META_FB_TOKEN) and cliente.get(ClienteModel.META_FB_PAGE_ID):
@@ -115,6 +129,8 @@ class RoutingService:
                     remote_id,
                     texto,
                 )
+                if ok:
+                    AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                 return (ok, None) if ok else (False, "Falha ao enviar pelo Messenger.")
 
             if canal == "instagram":
@@ -140,6 +156,13 @@ class RoutingService:
         Retorna (True, None) ou (False, mensagem_erro).
         """
         try:
+            blocked, remaining = AntiLoopGuard.is_blocked(cliente_id, canal, remote_id)
+            if blocked:
+                return (
+                    False,
+                    f"Anti-loop: envio bloqueado temporariamente para esta conversa (aguarde {int(remaining)}s).",
+                )
+
             cid = str(cliente_id).strip() if cliente_id else ""
             if cid:
                 if canal == "whatsapp" and not can_use_channel(cid, "whatsapp"):
@@ -180,6 +203,8 @@ class RoutingService:
                         body_text or " ",
                         buttons or [],
                     )
+                    if ok:
+                        AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                     return (ok, err)
                 # WAHA: tenta botões nativos (POST /api/sendButtons, motor NOWEB); se falhar, fallback texto
                 if getattr(settings, "WAHA_URL", None) and getattr(settings, "WAHA_API_KEY", None):
@@ -197,6 +222,7 @@ class RoutingService:
                                     registrar_envio(cliente_id, remote_id, body_text or " ")
                                 except Exception:
                                     pass
+                            AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                             return (True, None)
                     from integrations.whatsapp.waha_client import enviar_texto as waha_enviar_texto
                     # Fallback em texto com layout amigável:
@@ -228,6 +254,8 @@ class RoutingService:
                             registrar_envio(cliente_id, remote_id, texto_fallback)
                         except Exception:
                             pass
+                    if ok:
+                        AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                     return (ok, err)
                 return (False, "WhatsApp não configurado.")
 
@@ -243,6 +271,8 @@ class RoutingService:
                         remote_id,
                         text.strip() or " ",
                     )
+                    if ok:
+                        AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                     return (ok, None) if ok else (False, err or "Falha Instagram.")
                 if canal == "facebook" and cliente.get(ClienteModel.META_FB_TOKEN) and cliente.get(ClienteModel.META_FB_PAGE_ID):
                     text = body_text or ""
@@ -254,6 +284,8 @@ class RoutingService:
                         remote_id,
                         text.strip() or " ",
                     )
+                    if ok:
+                        AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                     return (ok, None) if ok else (False, "Falha Messenger.")
             return (False, f"Canal {canal} sem credenciais para envio interativo.")
         except Exception as e:

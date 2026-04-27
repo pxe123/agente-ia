@@ -42,6 +42,53 @@ const unreadByChannel = { whatsapp: {}, facebook: {}, instagram: {}, website: {}
 const CANAL_LABELS = { whatsapp: "WhatsApp", facebook: "Messenger", instagram: "Instagram", website: "Site" };
 
 /**
+ * Converte texto em nós com links clicáveis (sem usar innerHTML).
+ * - Mantém o texto seguro (evita XSS)
+ * - Linkifica http(s):// e www.*
+ */
+function appendLinkifiedText(parentEl, rawText, linkClass) {
+    if (!parentEl) return;
+    const text = String(rawText || "");
+    // Limpa conteúdo anterior
+    while (parentEl.firstChild) parentEl.removeChild(parentEl.firstChild);
+    if (!text) return;
+
+    const urlRe = /((https?:\/\/|www\.)[^\s<]+)/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = urlRe.exec(text)) !== null) {
+        const start = match.index;
+        const end = urlRe.lastIndex;
+        if (start > lastIndex) {
+            parentEl.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+        }
+        let urlText = text.slice(start, end);
+
+        // Remove pontuação final comum que não faz parte do link
+        const mPunct = urlText.match(/[)\].,!?;:]+$/);
+        let trailing = "";
+        if (mPunct) {
+            trailing = mPunct[0];
+            urlText = urlText.slice(0, -trailing.length);
+        }
+
+        const href = urlText.toLowerCase().startsWith("http") ? urlText : "https://" + urlText;
+        const a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = linkClass || "text-blue-600 hover:text-blue-700";
+        a.textContent = urlText;
+        parentEl.appendChild(a);
+        if (trailing) parentEl.appendChild(document.createTextNode(trailing));
+        lastIndex = end;
+    }
+    if (lastIndex < text.length) {
+        parentEl.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+}
+
+/**
  * Aviso visível no painel (não depende só de alert(), que alguns browsers ou modos bloqueiam).
  * kind: "error" | "warn"
  */
@@ -76,6 +123,16 @@ function showPainelToast(text, kind) {
 /** Normaliza remote_id para comparação (ex.: 5511999999999 e 5511999999999@s.whatsapp.net viram iguais). */
 function normalizarRemoteId(rid) {
     return String(rid || "").replace(/@.*$/, "").trim();
+}
+
+const LIMITE_HISTORICO_INICIAL = 100;
+const LIMITE_PAGINA_ANTIGA = 50;
+
+/** Ordem estável: cronologia + desempate por `id` (alinhado à paginação do servidor). */
+function compararMensagemHistorico(a, b) {
+    const ta = new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    if (ta !== 0) return ta;
+    return String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 function normalizarTextoBusca(texto) {
@@ -779,7 +836,7 @@ async function carregarHistoricoInicialConversa(remote_id) {
     const rid = normalizarRemoteId(remote_id);
     const wrap = document.getElementById("chat-load-more");
     try {
-        const params = new URLSearchParams({ remote_id: String(remote_id), limit: "100" });
+        const params = new URLSearchParams({ remote_id: String(remote_id), limit: String(LIMITE_HISTORICO_INICIAL) });
         const res = await fetch(`/api/mensagens/${canalAtivo}?${params}`);
         const text = await res.text();
         if (typeof text === "string" && text.trim().startsWith("<")) {
@@ -802,15 +859,13 @@ async function carregarHistoricoInicialConversa(remote_id) {
         const data = Array.isArray(parsed) ? parsed : [];
         const ordenadas = data
             .map((m) => ({ ...m, canal: m.canal || canalAtivo }))
-            .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+            .sort(compararMensagemHistorico);
 
         if (normalizarRemoteId(idRemotoAtivo) !== rid) return;
 
         const outras = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) !== rid);
-        mensagensGlobais = [...outras, ...ordenadas].sort(
-            (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
-        );
-        semMaisAntigasPorRemote[rid] = ordenadas.length < 100;
+        mensagensGlobais = [...outras, ...ordenadas].sort(compararMensagemHistorico);
+        semMaisAntigasPorRemote[rid] = ordenadas.length < LIMITE_HISTORICO_INICIAL;
         redesenharBaloesConversaAberta(remote_id);
     } catch (e) {
         console.error("[Chat] carregarHistoricoInicialConversa:", e);
@@ -953,15 +1008,15 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
     const displayConteudo = conteudo;
     const anim = semAnimacao ? "" : " animate-fade-in";
     const div = document.createElement("div");
-    div.className = `msg-balao flex ${ehEntrada ? "justify-start" : "justify-end"} mb-4${anim}`;
+    div.className = `msg-balao flex w-full min-w-0 ${ehEntrada ? "justify-start" : "justify-end"} mb-4${anim}`;
     const wrapperCol = document.createElement("div");
-    wrapperCol.className = "flex flex-col items-end max-w-[75%]";
+    wrapperCol.className = "flex flex-col items-end min-w-0 max-w-[min(100%,32rem)] sm:max-w-[85%]";
     if (ehEntrada) wrapperCol.classList.add("items-start");
     const estilo = ehEntrada
         ? "bg-white border border-slate-200 text-slate-700 rounded-2xl rounded-tl-none shadow-sm"
         : "bg-slate-800 text-white shadow-md rounded-2xl rounded-tr-none";
     const bubble = document.createElement("div");
-    bubble.className = `p-3 px-4 text-sm ${estilo}`;
+    bubble.className = `p-3 px-4 text-sm break-words max-w-full min-w-0 ${estilo}`;
     if (!ehEntrada && atendenteNome) {
         const nomeLine = document.createElement("div");
         nomeLine.className = "font-semibold text-slate-200 text-xs mb-1";
@@ -1017,7 +1072,7 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
         if (displayConteudo && displayConteudo !== "[imagem enviada]" && displayConteudo !== "[arquivo enviado]" && displayConteudo !== "[áudio enviado]") {
             const p = document.createElement("p");
             p.className = "mt-2 mb-0 msg-text";
-            p.textContent = displayConteudo;
+            appendLinkifiedText(p, displayConteudo, ehEntrada ? "text-blue-700 hover:text-blue-800" : "text-emerald-200 hover:text-white");
             bubble.appendChild(p);
         }
     } else if (pareceBase64Imagem(displayConteudo)) {
@@ -1041,7 +1096,7 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
         if (parsed && typeof parsed.text !== "undefined" && Array.isArray(parsed.buttons) && parsed.buttons.length) {
             const p = document.createElement("p");
             p.className = "mb-2 msg-text";
-            p.textContent = parsed.text || "";
+            appendLinkifiedText(p, parsed.text || "", ehEntrada ? "text-blue-700 hover:text-blue-800" : "text-emerald-200 hover:text-white");
             bubble.appendChild(p);
             const btnWrap = document.createElement("div");
             btnWrap.className = "flex flex-wrap gap-2";
@@ -1057,7 +1112,7 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
         } else {
             const span = document.createElement("span");
             span.className = "msg-text";
-            span.textContent = String(displayConteudo || "");
+            appendLinkifiedText(span, String(displayConteudo || ""), ehEntrada ? "text-blue-700 hover:text-blue-800" : "text-emerald-200 hover:text-white");
             bubble.appendChild(span);
         }
     }
@@ -1129,7 +1184,7 @@ async function carregarMensagensAntigas(remote_id) {
     if (loadingMaisAntigas || semMaisAntigasPorRemote[rid]) return;
     const mensagensDesteChat = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === rid);
     if (mensagensDesteChat.length === 0) return;
-    const ordenadas = [...mensagensDesteChat].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const ordenadas = [...mensagensDesteChat].sort(compararMensagemHistorico);
     const maisAntiga = ordenadas[0];
     const before = maisAntiga.created_at;
     if (!before) return;
@@ -1141,21 +1196,56 @@ async function carregarMensagensAntigas(remote_id) {
     }
     loadingMaisAntigas = true;
     try {
-        const params = new URLSearchParams({ before, remote_id: maisAntiga.remote_id || remote_id, limit: 50 });
+        const params = new URLSearchParams({
+            before: String(before),
+            remote_id: String(maisAntiga.remote_id || remote_id),
+            limit: String(LIMITE_PAGINA_ANTIGA)
+        });
+        if (maisAntiga.id != null && String(maisAntiga.id).length) {
+            params.set("before_id", String(maisAntiga.id));
+        }
         const res = await fetch(`/api/mensagens/${canalAtivo}?${params}`);
         const raw = await res.text();
-        if (raw.trim().startsWith("<")) return;
-        let data = [];
+        if (raw.trim().startsWith("<")) {
+            window.location.href = "/?sessao=expirada";
+            return;
+        }
+        let parsed;
         try {
-            const parsed = JSON.parse(raw);
-            data = Array.isArray(parsed) ? parsed : [];
-        } catch (_) { }
-        if (data.length < 50) semMaisAntigasPorRemote[rid] = true;
+            parsed = JSON.parse(raw);
+        } catch (_) {
+            parsed = null;
+        }
+        if (!res.ok) {
+            const errMsg =
+                parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                    ? parsed.erro || parsed.mensagem || parsed.message
+                    : null;
+            if (errMsg) showPainelToast(String(errMsg), "error");
+            return;
+        }
+        if (!Array.isArray(parsed)) {
+            showPainelToast("Resposta inválida ao carregar o histórico.", "error");
+            return;
+        }
+        const data = parsed;
+        if (data.length < LIMITE_PAGINA_ANTIGA) {
+            semMaisAntigasPorRemote[rid] = true;
+        }
 
+        const existentes = new Set(
+            mensagensDesteChat.map((m) => (m.id != null && String(m.id).length ? String(m.id) : null)).filter(Boolean)
+        );
+        const dataSemDuplicar = data.filter((m) => {
+            if (m.id == null || !String(m.id).length) return true;
+            return !existentes.has(String(m.id));
+        });
+        const novasAntigas = dataSemDuplicar
+            .map((m) => ({ ...m, canal: m.canal || canalAtivo }))
+            .sort(compararMensagemHistorico);
         const outras = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) !== rid);
-        const novasAntigas = data.map((m) => ({ ...m, canal: m.canal || canalAtivo })).sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
         const todasDesteChat = [...novasAntigas, ...mensagensDesteChat];
-        mensagensGlobais = [...outras, ...todasDesteChat].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+        mensagensGlobais = [...outras, ...todasDesteChat].sort(compararMensagemHistorico);
 
         const container = document.getElementById("chat-container");
         if (!container || normalizarRemoteId(idRemotoAtivo) !== rid) return;
@@ -1186,10 +1276,15 @@ async function carregarMensagensAntigas(remote_id) {
                 }
             });
         });
+    } catch (e) {
+        console.error("[Chat] carregarMensagensAntigas:", e);
+        showPainelToast("Não foi possível carregar mensagens antigas.", "error");
     } finally {
         loadingMaisAntigas = false;
+        if (normalizarRemoteId(idRemotoAtivo) === rid) {
+            atualizarBotaoCarregarMais(remote_id);
+        }
     }
-    atualizarBotaoCarregarMais(remote_id);
 }
 
 async function enviarAnexo() {

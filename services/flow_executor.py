@@ -25,6 +25,7 @@ from services.flow_helpers import (
     find_next_node_id,
     questionnaire_collect_keys,
     format_questionnaire_message,
+    questionnaire_intro_text,
     collected_data_for_lead,
     next_node_after,
     get_questionnaire_lead_sequence,
@@ -68,6 +69,20 @@ def _norm_choice_value(v: str | None) -> str:
     return s
 
 
+def _payload_mensagem_com_botoes(text: str, buttons: list) -> dict:
+    """Msm estrutura do canal website: texto + opções exibíveis no painel."""
+    return {
+        "text": text,
+        "buttons": [
+            {
+                "id": b.get("id"),
+                "title": (b.get("title") or b.get("label") or "").strip() or str(i + 1),
+            }
+            for i, b in enumerate(buttons)
+        ],
+    }
+
+
 def _send_node_message(
     cliente_id: str,
     canal: str,
@@ -87,7 +102,27 @@ def _send_node_message(
     data = node.get("data") or {}
 
     if node_type == "questionnaire":
-        text = format_questionnaire_message(data)
+        intro = questionnaire_intro_text(data)
+        questions_text = format_questionnaire_message(data)
+        # Enviar intro como mensagem separada (se existir)
+        if intro:
+            if canal == "website":
+                try:
+                    MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, intro, socketio)
+                except Exception as e:
+                    print(f"[FlowExecutor] website questionnaire intro: {e}", flush=True)
+            else:
+                ok_i, err_i = RoutingService.enviar_resposta(
+                    canal, instancia or "default", remote_id, intro, cliente_id
+                )
+                if not ok_i:
+                    return (False, err_i)
+                if socketio:
+                    try:
+                        MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, intro, socketio)
+                    except Exception:
+                        pass
+        text = questions_text
         buttons = []
     else:
         text = (data.get("text") or data.get("content") or "").strip()
@@ -103,11 +138,7 @@ def _send_node_message(
 
     if canal == "website":
         if buttons:
-            payload = {
-                "text": text,
-                "buttons": [{"id": b.get("id"), "title": (b.get("title") or b.get("label") or "").strip() or str(i + 1)} for i, b in enumerate(buttons)]
-            }
-            conteudo = json.dumps(payload, ensure_ascii=False)
+            conteudo = json.dumps(_payload_mensagem_com_botoes(text, buttons), ensure_ascii=False)
         else:
             conteudo = text
         try:
@@ -125,8 +156,12 @@ def _send_node_message(
         )
     if ok and socketio:
         try:
+            if buttons:
+                conteudo = json.dumps(_payload_mensagem_com_botoes(text, buttons), ensure_ascii=False)
+            else:
+                conteudo = text
             MessageService.registrar_mensagem_saida(
-                cliente_id, remote_id, canal, text, socketio
+                cliente_id, remote_id, canal, conteudo, socketio
             )
         except Exception:
             pass
@@ -1306,17 +1341,44 @@ class FlowExecutor:
 
         current_node = node_by_id(nodes, current_node_id)
         if current_node and ((current_node.get("data") or {}).get("buttons")):
+            # Fallback idempotente: evita repetir a mesma mensagem em rajada quando o webhook duplica eventos.
             fallback = "Por favor, use um dos botões acima para continuar."
-            if canal == "website":
+            try:
+                incoming_norm = _norm_free_text(texto or "")
+                last_in = _norm_free_text((collected_data or {}).get("__buttons_fallback_last_incoming") or "")
+                last_at = (collected_data or {}).get("__buttons_fallback_last_at") or 0
                 try:
-                    MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, fallback, socketio)
-                except Exception as e:
-                    print(f"[FlowExecutor] website fallback: {e}", flush=True)
-            else:
-                RoutingService.enviar_resposta(canal, instancia or "default", remote_id, fallback, cliente_id)
-                if socketio:
+                    last_at = float(last_at)
+                except Exception:
+                    last_at = 0.0
+                now_ts = datetime.now(timezone.utc).timestamp()
+                recently_sent_same = bool(incoming_norm and last_in and incoming_norm == last_in and (now_ts - last_at) <= 10)
+            except Exception:
+                incoming_norm = ""
+                last_in = ""
+                last_at = 0.0
+                recently_sent_same = False
+
+            if not recently_sent_same:
+                if canal == "website":
                     try:
                         MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, fallback, socketio)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[FlowExecutor] website fallback: {e}", flush=True)
+                else:
+                    RoutingService.enviar_resposta(canal, instancia or "default", remote_id, fallback, cliente_id)
+                    if socketio:
+                        try:
+                            MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, fallback, socketio)
+                        except Exception:
+                            pass
+
+                # Persistir marcador no state para não repetir no próximo evento duplicado.
+                try:
+                    updated = dict(collected_data or {})
+                    updated["__buttons_fallback_last_incoming"] = (texto or "").strip()
+                    updated["__buttons_fallback_last_at"] = datetime.now(timezone.utc).timestamp()
+                    set_state(cliente_id, canal, remote_id, flow_id, current_node_id, updated, contact_id=contact_id)
+                except Exception:
+                    pass
         return True

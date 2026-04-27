@@ -110,8 +110,20 @@ def cadastro_post():
     except Exception as e:
         return render_template("cadastro_publico.html", mensagem="Erro ao criar conta: " + str(e), erro=True, plan=plan, plan_key=plan_key, email=email, nome=nome)
 
-    flash("Conta criada! Enviamos um e-mail para confirmar seu cadastro. Após confirmar, faça login.", "success")
-    return redirect(url_for("customer.login", signup="1"))
+    # Garantir que a página de sucesso abra no domínio público (zapaction),
+    # mesmo quando o POST do cadastro acontece em outro host.
+    from base.domain_redirects import public_base_url
+
+    success_url = f"{public_base_url()}{url_for('public.cadastro_sucesso', email=email, plano=plan_key)}"
+    return redirect(success_url)
+
+
+@public_bp.route("/cadastro/sucesso", methods=["GET"])
+def cadastro_sucesso():
+    email = (request.args.get("email") or "").strip().lower()
+    plan_key = (request.args.get("plano") or "").strip() or None
+    plan = get_plan(plan_key) if plan_key else None
+    return render_template("cadastro_sucesso.html", email=email, plan=plan, plan_key=plan_key)
 
 
 @public_bp.route("/assinatura", methods=["GET"])

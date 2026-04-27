@@ -35,8 +35,8 @@ Refatorar o sistema de forma incremental, sem quebrar comportamento em producao,
 ### Status Atual
 - Etapa atual: `ETAPA_0`
 - Status atual: `PENDENTE`
-- Ultima atualizacao: `____/____/______ ____:____`
-- Responsavel: `________________`
+- Ultima atualizacao: `26/03/2026 15:27`
+- Responsavel: `Ricardo`
 - Branch atual: `________________`
 
 ### Proxima Acao
@@ -47,16 +47,16 @@ Refatorar o sistema de forma incremental, sem quebrar comportamento em producao,
 ## Baseline Global (antes de iniciar ETAPA 1)
 
 ### Ambiente
-- URL base: `________________`
-- Navegador: `________________`
-- Data/hora medicao: `____/____/______ ____:____`
+- URL base: `chat`
+- Navegador: `crome________________`
+- Data/hora medicao: `26/03/2026 15:30`
 
 ### Metricas iniciais (global)
-- Tempo ate abrir `/chat`: `__________`
-- Numero de requests no primeiro load do `/chat`: `__________`
-- Erros JS em console no primeiro load: `__________`
-- Tempo de envio de mensagem (media de 3 testes): `__________`
-- Falhas de envio (3 testes): `__________`
+- Tempo ate abrir `/chat`: `3,7`
+- Numero de requests no primeiro load do `/chat`: `147`
+- Erros JS em console no primeiro load: `0`
+- Tempo de envio de mensagem (media de 3 testes): `0,8`
+- Falhas de envio (3 testes): `0`
 
 ### Resultado baseline
 - Observacoes: `________________________________________________________`
@@ -73,12 +73,12 @@ Use este bloco em todas as etapas:
 - O que NAO pode ser alterado:
 
 ### Definicao de Pronto (DoD)
-- [ ] Comportamento funcional preservado
-- [ ] Sem erro novo no console
-- [ ] Checklist de teste da etapa 100% executado
-- [ ] Metricas antes/depois registradas
-- [ ] Diff revisado e dentro do escopo da etapa
-- [ ] Commit realizado com mensagem da etapa
+- [x] Comportamento funcional preservado
+- [x] Sem erro novo no console
+- [x] Checklist de teste da etapa 100% executado
+- [x] Metricas antes/depois registradas
+- [x] Diff revisado e dentro do escopo da etapa
+- [x] Commit realizado com mensagem da etapa
 
 ### Rollback da etapa
 - Comando/acao de rollback:
@@ -104,7 +104,7 @@ Use este bloco em todas as etapas:
 
 ## ETAPA 0 - Preparacao
 
-Status: `PENDENTE`
+Status: `conluido`
 
 ### Escopo da etapa
 - Objetivo: preparar metodo, baseline, branch e checklist para execucao segura.
@@ -112,11 +112,11 @@ Status: `PENDENTE`
 - O que NAO pode ser alterado: codigo funcional do sistema.
 
 ### Definicao de Pronto (DoD)
-- [ ] Baseline global preenchido
-- [ ] Checklist de testes definido
-- [ ] Branch de trabalho criada
-- [ ] Estrutura deste arquivo validada
-- [ ] Critrios de rollback definidos para etapas 1-9
+- [x] Baseline global preenchido
+- [x] Checklist de testes definido
+- [x] Branch de trabalho criada
+- [x] Estrutura deste arquivo validada
+- [x] Critrios de rollback definidos para etapas 1-9
 
 ### Rollback da etapa
 - Comando/acao de rollback: descartar apenas ajustes de documentacao desta etapa.

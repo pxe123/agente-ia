@@ -212,10 +212,13 @@ def inject_domain_urls():
 
     if is_local_request(request):
         root = request.url_root.rstrip("/")
-        return {"PUBLIC_BASE_URL": root, "APP_BASE_URL": root}
+        public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
+        return {"PUBLIC_BASE_URL": root, "APP_BASE_URL": root, "PUBLIC_CHAT_EMBED_KEY": public_chat_key}
+    public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
     return {
         "PUBLIC_BASE_URL": public_base_url(),
         "APP_BASE_URL": app_base_url(),
+        "PUBLIC_CHAT_EMBED_KEY": public_chat_key,
     }
 
 @app.context_processor

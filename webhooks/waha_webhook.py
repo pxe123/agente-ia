@@ -215,6 +215,34 @@ def _extrair_texto(payload: dict) -> str:
     return str(text).strip() if text else ""
 
 
+def _event_fingerprint(event: str, payload: dict, message_id: str | None = None) -> str:
+    """
+    Fingerprint best-effort para dedup quando `message_id` não existe/é instável.
+    Não usa o texto (já está na key principal). Aqui focamos em metadados do evento.
+    """
+    if not isinstance(payload, dict):
+        return (event or "").strip().lower() or ""
+    et = (event or "").strip().lower()
+    ptype = (payload.get("type") or payload.get("messageType") or payload.get("mimetype") or "").strip().lower()
+    frm = (payload.get("from") or "").strip()
+    to = (payload.get("to") or "").strip()
+    _data = payload.get("_data") or {}
+    # timestamp pode variar por engine
+    ts = (
+        payload.get("timestamp")
+        or payload.get("t")
+        or (payload.get("messageTimestamp") if isinstance(payload.get("messageTimestamp"), (str, int, float)) else None)
+        or (_data.get("t") if isinstance(_data, dict) else None)
+        or (_data.get("timestamp") if isinstance(_data, dict) else None)
+        or ""
+    )
+    ts_s = str(ts).strip()
+    mid = (str(message_id).strip() if message_id else "")
+    # Normaliza para reduzir comprimento e variação
+    out = f"e={et}|t={ptype}|ts={ts_s}|from={frm}|to={to}|id={mid[-24:]}"
+    return out[:200]
+
+
 @waha_webhook_bp.route("/waha", methods=["POST"])
 def webhook_entrada():
     """
@@ -414,7 +442,10 @@ def webhook_entrada():
     # IMPORTANTE: se temos message_id, a dedup por ID é suficiente. A dedup por conteúdo por 25s pode
     # causar o sintoma de "precisei mandar 1 várias vezes" quando o usuário repete a mesma resposta.
     if not message_id:
-        if _ja_processado_incoming(session_name, remote_id, texto or ""):
+        fp = _event_fingerprint(event, payload, message_id=None)
+        # Se o WAHA reenviar o mesmo evento (duplicado), o fingerprint costuma bater e deduplica.
+        # Se o usuário repetir o mesmo texto, o timestamp/from/to tende a mudar e não bloqueia indevidamente.
+        if _ja_processado_incoming(session_name, remote_id, texto or "", meta=fp or None):
             _dbg("waha_webhook_dedup_by_content", "H2", {"remoteLast4": remote_last4, "textoLen": len(texto or "")})
             print(f"📩 WAHA webhook: mensagem recebida já processada (conteúdo recente), ignorando para não duplicar envio.", flush=True)
             return jsonify({"status": "ok", "deduplicado_conteudo": True}), 200

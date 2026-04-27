@@ -2235,6 +2235,7 @@ def buscar_mensagens(canal):
     if canal in ("instagram", "facebook") and not can_use_channel(str(cliente_id), canal):
         return jsonify([]), 200
     before = request.args.get("before")  # ISO datetime: carregar mensagens mais antigas que esta
+    before_id_arg = (request.args.get("before_id") or "").strip()  # desempate (várias linhas no mesmo created_at)
     remote_id_arg = request.args.get("remote_id")  # opcional: filtrar por conversa (paginação por chat)
     limit = min(int(request.args.get("limit", 100)), 100)
     if before:
@@ -2314,8 +2315,17 @@ def buscar_mensagens(canal):
         if remote_id_arg:
             q = q.eq("remote_id", remote_id_arg.strip())
         if before:
-            q = q.lt("created_at", before.strip())
-        res = q.order("created_at", desc=True).limit(limit).execute()
+            b = before.strip()
+            if remote_id_arg and before_id_arg and re.match(r"^[0-9a-fA-F-]{36}$", before_id_arg):
+                b_escaped = b.replace('"', '""')
+                bid_escaped = before_id_arg.replace('"', '""')
+                q = q.or_(f'and(created_at.eq."{b_escaped}",id.lt."{bid_escaped}"),created_at.lt."{b_escaped}"')
+            else:
+                q = q.lt("created_at", b)
+        q = q.order("created_at", desc=True)
+        if before:
+            q = q.order("id", desc=True)
+        res = q.limit(limit).execute()
         data = res.data if res.data is not None else []
         if allowed is not None and not remote_id_arg:
             data = [row for row in data if _normalizar_remote_id(row.get("remote_id")) in allowed]

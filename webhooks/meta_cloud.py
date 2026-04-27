@@ -87,6 +87,8 @@ def meta_verify():
 
 def _find_cliente_by_phone_number_id(phone_number_id: str):
     """Retorna cliente_id e dados do cliente pelo meta_wa_phone_number_id."""
+    if supabase is None:
+        return None, None
     pid = (str(phone_number_id).strip() if phone_number_id is not None else "") or None
     if not pid:
         return None, None
@@ -100,6 +102,8 @@ def _find_cliente_by_phone_number_id(phone_number_id: str):
 
 def _find_cliente_by_page_id(page_id: str, canal: str):
     """Retorna cliente_id e dados. Instagram: webhook envia entry.id = Instagram Business Account ID (meta_ig_account_id)."""
+    if supabase is None:
+        return None, None
     pid = (str(page_id).strip() if page_id is not None else "") or None
     if not pid:
         return None, None
@@ -302,6 +306,12 @@ def _verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
 def meta_webhook():
     """Recebe eventos da Meta (mensagens WhatsApp Cloud, Instagram, Messenger)."""
     print("Meta webhook POST recebido (qualquer object)", flush=True)
+    if supabase is None:
+        try:
+            current_app.logger.warning("Meta webhook: supabase indisponível (503)")
+        except Exception:
+            pass
+        return Response("Supabase indisponível", status=503, mimetype="text/plain")
     raw_body = request.get_data()
     sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("x-hub-signature-256") or ""
     sig_ok = _verify_meta_signature(raw_body, sig)

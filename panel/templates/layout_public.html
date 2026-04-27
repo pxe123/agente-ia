@@ -28,7 +28,7 @@
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
     <header class="sticky top-0 z-40 border-b border-slate-700/60 backdrop-blur" style="background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);">
-        <div class="max-w-6xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="max-w-6xl mx-auto px-4 py-3 sm:py-4 flex flex-row items-center justify-between gap-3">
             <a href="{{ PUBLIC_BASE_URL }}/" class="flex items-center gap-2 font-semibold text-white shrink-0">
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="ZapAction" class="h-10 w-10 object-contain">
                 <span class="font-bold text-lg tracking-tight">Zap<span class="text-emerald-400">Action</span></span>
@@ -68,6 +68,25 @@
             </nav>
         </div>
     </footer>
+    <a
+        href="https://wa.me/5514998575836?text=Ol%C3%A1%21%20Quero%20falar%20com%20o%20atendimento."
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Falar no WhatsApp"
+        title="Falar no WhatsApp"
+        class="fixed z-50 flex items-center justify-center shadow-lg hover:shadow-xl transition focus:outline-none focus:ring-4 focus:ring-emerald-200"
+        style="
+            right: max(16px, env(safe-area-inset-right));
+            bottom: max(16px, env(safe-area-inset-bottom));
+            width: 58px;
+            height: 58px;
+            border-radius: 9999px;
+            background: #25D366;
+            color: white;
+        "
+    >
+        <i class="fab fa-whatsapp" style="font-size: 30px; line-height: 1;"></i>
+    </a>
     <script>
     // Mostrar/ocultar senha (delegado)
     (function() {

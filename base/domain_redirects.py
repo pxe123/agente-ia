@@ -18,6 +18,7 @@ PUBLIC_MARKETING_PATHS_EXACT = frozenset(
         "/",
         "/precos",
         "/cadastro",
+        "/cadastro/sucesso",
         "/assinatura",
         "/politica",
         "/termos",

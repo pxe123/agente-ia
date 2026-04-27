@@ -71,12 +71,15 @@
       "#agenteia-box.hidden{display:none;}",
       "#agenteia-header{padding:14px 16px;background:var(--agenteia-primary);color:#fff;border-radius:16px 16px 0 0;font-weight:600;font-size:15px;flex-shrink:0;}",
       "#agenteia-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:14px;-webkit-overflow-scrolling:touch;min-height:0;}",
-      "#agenteia-messages .msg{max-width:85%;padding:10px 14px;border-radius:12px;line-height:1.4;word-wrap:break-word;}",
+      // Preservar quebras de linha e evitar “estourar” o layout com URLs longas
+      "#agenteia-messages .msg{max-width:85%;padding:10px 14px;border-radius:12px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;}",
       "#agenteia-messages .msg.user{align-self:flex-end;background:#0f172a;color:#fff;border-bottom-right-radius:4px;}",
       "#agenteia-messages .msg.bot{align-self:flex-start;background:#f1f5f9;color:#334155;border-bottom-left-radius:4px;}",
       "#agenteia-messages .msg.msg-typing{opacity:.85;font-style:italic;}",
       "#agenteia-messages .msg-buttons-wrap{display:flex;flex-direction:column;gap:12px;max-width:85%;align-self:flex-start;}",
-      "#agenteia-messages .agenteia-bubble{padding:12px 14px;background:#f1f5f9;color:#334155;border-radius:12px;border-bottom-left-radius:4px;font-size:14px;line-height:1.5;word-wrap:break-word;}",
+      "#agenteia-messages .agenteia-bubble{padding:12px 14px;background:#f1f5f9;color:#334155;border-radius:12px;border-bottom-left-radius:4px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;}",
+      "#agenteia-messages a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;}",
+      "#agenteia-messages a:hover{color:#1d4ed8;}",
       "#agenteia-messages .agenteia-options-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}",
       "#agenteia-messages .agenteia-options-grid.single{grid-template-columns:1fr;}",
       "#agenteia-messages .agenteia-options-grid .agenteia-chat-btn.span-full{grid-column:1/-1;}",
@@ -122,11 +125,51 @@
     var inputEl = document.getElementById("agenteia-input");
     var inputInitialPlaceholder = inputEl.getAttribute("placeholder") || "Digite sua mensagem...";
 
+    function setLinkifiedText(el, rawText) {
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+      var text = String(rawText || "");
+      if (!text) return;
+      var urlRe = /((https?:\/\/|www\.)[^\s<]+)/gi;
+      var lastIndex = 0;
+      var match;
+      while ((match = urlRe.exec(text)) !== null) {
+        var start = match.index;
+        var end = urlRe.lastIndex;
+        if (start > lastIndex) {
+          el.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+        }
+        var urlText = text.slice(start, end);
+        var punct = urlText.match(/[)\].,!?;:]+$/);
+        var trailing = "";
+        if (punct) {
+          trailing = punct[0];
+          urlText = urlText.slice(0, -trailing.length);
+        }
+        var href = urlText.toLowerCase().indexOf("http") === 0 ? urlText : ("https://" + urlText);
+        var a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = urlText;
+        el.appendChild(a);
+        if (trailing) el.appendChild(document.createTextNode(trailing));
+        lastIndex = end;
+      }
+      if (lastIndex < text.length) {
+        el.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+    }
+
     function appendMsg(text, isUser, isTyping) {
       var p = document.createElement("div");
       p.className = "msg " + (isUser ? "user" : "bot") + (isTyping ? " msg-typing" : "");
       if (isTyping) p.setAttribute("data-typing", "1");
-      p.textContent = text;
+      if (isTyping) {
+        p.textContent = text;
+      } else {
+        setLinkifiedText(p, text);
+      }
       messagesEl.appendChild(p);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
@@ -148,7 +191,7 @@
       wrap.className = "msg-buttons-wrap";
       var bubble = document.createElement("div");
       bubble.className = "agenteia-bubble";
-      bubble.textContent = text || "";
+      setLinkifiedText(bubble, text || "");
       wrap.appendChild(bubble);
       if (buttons && buttons.length) {
         var grid = document.createElement("div");
@@ -210,16 +253,23 @@
                 var msg = data.mensagens[i];
                 var raw = typeof msg === "string" ? msg : (msg && (msg.conteudo != null ? msg.conteudo : msg.content));
                 if (raw == null) raw = "";
-                var conteudo = typeof raw === "string" ? raw : String(raw);
+                // Conteúdo pode vir como string JSON (mais comum) ou como objeto (defensivo)
+                var conteudo = typeof raw === "string" ? raw : raw;
                 try {
-                  var parsed = JSON.parse(conteudo);
+                  var parsed = null;
+                  if (conteudo && typeof conteudo === "object") {
+                    parsed = conteudo;
+                  } else {
+                    var s = String(conteudo || "").trim();
+                    if (s && s.charAt(0) === "{") parsed = JSON.parse(s);
+                  }
                   if (parsed && Array.isArray(parsed.buttons) && parsed.buttons.length) {
                     appendMsgWithButtons(parsed.text || "", parsed.buttons);
                   } else {
-                    appendMsg(conteudo, false);
+                    appendMsg(typeof conteudo === "string" ? conteudo : String(conteudo || ""), false);
                   }
                 } catch (_) {
-                  appendMsg(conteudo, false);
+                  appendMsg(typeof conteudo === "string" ? conteudo : String(conteudo || ""), false);
                 }
                 if (msg && msg.created_at) lastMessageAt = msg.created_at;
               }

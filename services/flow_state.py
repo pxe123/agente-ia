@@ -11,6 +11,7 @@ from database.supabase_sq import supabase
 from database.models import Tables, FlowModel, FlowUserStateModel, ChatbotModel
 
 from services.flow_helpers import canal_to_channel
+from services.flow_builder_helpers import normalize_flow_json
 
 
 def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
@@ -22,6 +23,19 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
         return None, None
     channel = canal_to_channel(canal)
 
+    def _norm(flow_json) -> dict:
+        # Supabase pode devolver JSON como string dependendo do client/coluna;
+        # garantimos dict com nodes/edges.
+        return normalize_flow_json(flow_json)
+
+    def _has_nodes(flow_json) -> bool:
+        try:
+            fj = _norm(flow_json)
+            nodes = fj.get("nodes") or []
+            return isinstance(nodes, list) and len(nodes) > 0
+        except Exception:
+            return False
+
     # 1) Fluxo de chatbot cujo channels contém este canal
     try:
         cb = (
@@ -30,7 +44,7 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
             .eq(ChatbotModel.CLIENTE_ID, cliente_id)
             .execute()
         )
-        chatbot_id = None
+        candidates: list[str] = []
         for row_cb in (cb.data or []):
             ch_val = row_cb.get(ChatbotModel.CHANNELS)
             match = False
@@ -43,9 +57,13 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
                 elif f'"{channel}"' in ch_lower or f"'{channel}'" in ch_lower or channel in ch_lower.split(","):
                     match = True
             if match:
-                chatbot_id = row_cb.get(ChatbotModel.ID)
-                break
-        if chatbot_id:
+                cbid = row_cb.get(ChatbotModel.ID)
+                if cbid:
+                    candidates.append(str(cbid))
+
+        # Se houver múltiplos chatbots marcados para o canal (ex.: website),
+        # priorizamos aquele que tem um fluxo com nós (evita "pegar o primeiro" vazio).
+        for chatbot_id in candidates:
             # 1.a) Fluxo específico por canal
             try:
                 r = (
@@ -59,9 +77,13 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
                 )
                 if r.data and len(r.data) > 0:
                     row = r.data[0]
-                    return (row.get(FlowModel.FLOW_JSON) or {}), str(row.get(FlowModel.ID) or "")
+                    flow_json = _norm(row.get(FlowModel.FLOW_JSON) or {})
+                    flow_id = str(row.get(FlowModel.ID) or "")
+                    if _has_nodes(flow_json) and flow_id:
+                        return flow_json, flow_id
             except Exception as e:
                 print(f"[FlowState] get_flow chatbot canal channel={channel} erro: {e}", flush=True)
+
             # 1.b) Fluxo default do chatbot
             try:
                 r_def = (
@@ -75,22 +97,28 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
                 )
                 if r_def.data and len(r_def.data) > 0:
                     row = r_def.data[0]
-                    return (row.get(FlowModel.FLOW_JSON) or {}), str(row.get(FlowModel.ID) or "")
+                    flow_json = _norm(row.get(FlowModel.FLOW_JSON) or {})
+                    flow_id = str(row.get(FlowModel.ID) or "")
+                    if _has_nodes(flow_json) and flow_id:
+                        return flow_json, flow_id
             except Exception as e:
                 print(f"[FlowState] get_flow chatbot default erro: {e}", flush=True)
-            # 1.c) Qualquer fluxo do chatbot
+
+            # 1.c) Qualquer fluxo do chatbot (fallback)
             try:
                 r_any = (
                     supabase.table(Tables.FLOWS)
                     .select(FlowModel.ID, FlowModel.FLOW_JSON)
                     .eq(FlowModel.CLIENTE_ID, cliente_id)
                     .eq(FlowModel.CHATBOT_ID, chatbot_id)
-                    .limit(1)
+                    .limit(3)
                     .execute()
                 )
-                if r_any.data and len(r_any.data) > 0:
-                    row = r_any.data[0]
-                    return (row.get(FlowModel.FLOW_JSON) or {}), str(row.get(FlowModel.ID) or "")
+                for row in (r_any.data or []):
+                    flow_json = _norm(row.get(FlowModel.FLOW_JSON) or {})
+                    flow_id = str(row.get(FlowModel.ID) or "")
+                    if _has_nodes(flow_json) and flow_id:
+                        return flow_json, flow_id
             except Exception as e:
                 print(f"[FlowState] get_flow chatbot any-flow erro: {e}", flush=True)
     except Exception as e:
@@ -108,7 +136,10 @@ def get_flow(cliente_id: str, canal: str) -> tuple[dict | None, str | None]:
         )
         for row in (r.data or []):
             if row.get(FlowModel.CHATBOT_ID) is None:
-                return (row.get(FlowModel.FLOW_JSON) or {}), str(row.get(FlowModel.ID) or "")
+                flow_json = _norm(row.get(FlowModel.FLOW_JSON) or {})
+                flow_id = str(row.get(FlowModel.ID) or "")
+                if _has_nodes(flow_json) and flow_id:
+                    return flow_json, flow_id
     except Exception as e:
         print(f"[FlowState] get_flow legado channel={channel} erro: {e}", flush=True)
     return None, None

@@ -13,7 +13,14 @@
     .animate-fade-in { animation: fadeIn 0.2s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     /* Respeita quebras de linha (\n) no texto das mensagens */
-    .msg-text { white-space: pre-line; }
+    .msg-text {
+        white-space: pre-line;
+        overflow-wrap: anywhere; /* quebra URLs/palavras longas sem estourar o layout */
+        word-break: break-word;
+    }
+    /* Permite links clicáveis e bem visíveis dentro dos balões */
+    .msg-text a { text-decoration: underline; text-underline-offset: 2px; }
+    .msg-text a:hover { opacity: 0.95; }
     /* Badge de notificação */
     .chat-badge { min-width: 18px; height: 18px; padding: 0 5px; font-size: 10px; font-weight: 700; border-radius: 9px; background: #ef4444; color: #fff; display: inline-flex; align-items: center; justify-content: center; }
     .chat-badge-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; flex-shrink: 0; }
@@ -118,7 +125,7 @@
             </div>
         </div>
 
-        <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4">
+        <div id="chat-container" class="flex-1 min-w-0 overflow-y-auto p-6 space-y-4">
             <div id="chat-empty" class="h-full flex flex-col items-center justify-center text-slate-400">
                 <i class="fa-regular fa-comments text-5xl mb-4 opacity-30"></i>
                 <p class="text-sm font-medium">Mensagens aparecerão aqui</p>
