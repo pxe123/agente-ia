@@ -85,6 +85,15 @@ class Settings:
     # Enforce billing/entitlements
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "5") or "5")
 
+    # --- AGENDAMENTO IA (nó agendamento_ia: webhook externo) ---
+    AGENDAMENTO_IA_WEBHOOK_URL = (os.getenv("AGENDAMENTO_IA_WEBHOOK_URL") or "").strip()
+    AGENDAMENTO_IA_API_KEY = (os.getenv("AGENDAMENTO_IA_API_KEY") or "").strip()
+    AGENDAMENTO_IA_TIMEOUT_SEC = int(os.getenv("AGENDAMENTO_IA_TIMEOUT_SEC", "25") or "25")
+    AGENDAMENTO_IA_FALLBACK_MESSAGE = (
+        os.getenv("AGENDAMENTO_IA_FALLBACK_MESSAGE")
+        or "Não consegui concluir o agendamento agora. Tente de novo em instantes."
+    ).strip() or "Não consegui concluir o agendamento agora. Tente de novo em instantes."
+
     # --- JOBS / FILA ---
     REDIS_URL = (os.getenv("REDIS_URL") or "").strip()
 

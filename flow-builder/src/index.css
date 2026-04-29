@@ -88,6 +88,8 @@ html, body, #root { width: 100%; height: 100%; min-height: 100vh; }
 .flow-block-btn--lead { background: #0e7490; color: #fff; }
 .flow-block-btn--lead:hover { background: #155e75; }
 .flow-block-btn--action { background: #b45309; color: #fff; }
+.flow-block-btn--agendamento_ia { background: #0f766e; color: #fff; }
+.flow-block-btn--agendamento_ia:hover { background: #115e59; }
 .flow-block-btn--end { background: #b91c1c; color: #fff; }
 
 .flow-sidebar-footer { padding: 12px 16px; border-top: 1px solid #f1f5f9; }
@@ -200,6 +202,8 @@ html, body, #root { width: 100%; height: 100%; min-height: 100vh; }
 .flow-toolbar-btn--lead:hover { background: #155e75; }
 .flow-toolbar-btn--action { background: #b45309; color: #fff; }
 .flow-toolbar-btn--action:hover { background: #d97706; }
+.flow-toolbar-btn--agendamento_ia { background: #0f766e; color: #fff; }
+.flow-toolbar-btn--agendamento_ia:hover { background: #14b8a6; }
 .flow-toolbar-btn--end { background: #b91c1c; color: #fff; }
 .flow-toolbar-btn--end:hover { background: #dc2626; }
 

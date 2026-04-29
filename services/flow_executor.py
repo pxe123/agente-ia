@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 
 from database.supabase_sq import supabase
@@ -32,6 +33,15 @@ from services.flow_helpers import (
     parse_lead_from_text,
 )
 from services.flow_state import get_flow, get_state, set_state, clear_state
+from services.agendamento_ia_bridge import (
+    build_request_body,
+    call_webhook,
+    parse_api_response,
+    HISTORY_LIMIT,
+)
+from services.agendamento_ia_actions import apply_agendamento_action, pick_or_derive_action
+from services.agendamento_ia_message_templates import format_agendamento_user_message
+from base.config import settings
 
 
 def _norm_url_for_compare(url: str | None) -> str:
@@ -67,6 +77,68 @@ def _norm_choice_value(v: str | None) -> str:
     # Remove qualquer coisa que não seja alfanumérico.
     s = re.sub(r"[^a-z0-9]+", "", s)
     return s
+
+
+_URL_RE = re.compile(r"(https?://[^\s]+|www\.[^\s]+)", re.IGNORECASE)
+
+
+def _norm_url_basic(u: str | None) -> str:
+    """
+    Normaliza URL para comparação "contains/equivalente":
+    - remove http/https
+    - remove www.
+    - remove query/fragment
+    - remove barras finais
+    """
+    s = (u or "").strip()
+    if not s:
+        return ""
+    s = s.replace("\u200b", "").strip()
+    s = s.lower()
+    if s.startswith("http://"):
+        s = s[len("http://") :]
+    elif s.startswith("https://"):
+        s = s[len("https://") :]
+    if s.startswith("www."):
+        s = s[len("www.") :]
+    # remove query/fragment
+    for sep in ("?", "#"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    s = s.strip()
+    while s.endswith("/"):
+        s = s[:-1]
+    return s
+
+
+def _text_has_equivalent_url(text: str, url: str) -> bool:
+    """
+    Retorna True se o texto já contém um link equivalente ao `url`,
+    mesmo com variações de scheme, www, barra final e query.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    want = _norm_url_basic(url)
+    if not want:
+        return False
+    # coletar URLs explícitas no texto
+    found = []
+    for m in _URL_RE.finditer(t):
+        found.append(m.group(0))
+    if not found:
+        # fallback: comparação simples por substring normalizada
+        return want in _norm_url_basic(t)
+    for f in found:
+        if _norm_url_basic(f) == want:
+            return True
+    return False
+
+
+def _extract_urls(text: str) -> list[str]:
+    if not (text or "").strip():
+        return []
+    return [m.group(0) for m in _URL_RE.finditer(text or "")]
 
 
 def _payload_mensagem_com_botoes(text: str, buttons: list) -> dict:
@@ -414,16 +486,42 @@ def _execute_action(
             return (True, None)
         if raw_message:
             # Se o usuário configurou mensagem, garantimos que a URL esteja presente.
-            text = raw_message
-            if url and (url not in text):
+            text = raw_message.strip()
+            # Evitar duplicar URL quando o usuário já colocou o link (com variações) na mensagem.
+            appended = False
+            if url and not _text_has_equivalent_url(text, url):
                 # Colocar em nova linha ajuda o WhatsApp a detectar e "pré-visualizar" o link.
                 text = f"{text}\n{url}".strip()
+                appended = True
         else:
             # Sem mensagem customizada, enviamos "TextoDoLink URL".
             if url:
-                text = f"{link_text}\n{url}".strip()
+                # Evitar duplicar quando link_text é o próprio link.
+                if _norm_url_basic(link_text) == _norm_url_basic(url):
+                    text = url.strip()
+                else:
+                    text = f"{link_text}\n{url}".strip()
             else:
                 text = (link_text or "Clique aqui").strip() or "Clique aqui"
+            appended = True
+
+        # Log de diagnóstico (truncado) para investigar duplicação de links.
+        try:
+            rid_last4 = "".join([c for c in str(remote_id) if c.isdigit()])[-4:] if remote_id else ""
+            raw_urls = _extract_urls(raw_message or "")
+            out_urls = _extract_urls(text or "")
+            print(
+                "[send_link] "
+                f"remoteLast4={rid_last4} "
+                f"url={_norm_url_basic(url)!r} "
+                f"raw_urls={[ _norm_url_basic(u) for u in raw_urls ]} "
+                f"out_urls={[ _norm_url_basic(u) for u in out_urls ]} "
+                f"appended={bool(appended)} "
+                f"text_head={(text or '')[:140]!r}",
+                flush=True,
+            )
+        except Exception:
+            pass
         if canal == "website":
             try:
                 MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text, socketio)
@@ -442,36 +540,6 @@ def _execute_action(
                     MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text, socketio)
                 except Exception:
                     pass
-
-            # WAHA geralmente NÃO envia webhook ao apenas "abrir/clicar" o link puro.
-            # Para o fluxo avançar de forma confiável, enviamos uma confirmação quick-reply.
-            confirm_title = (data.get("confirmTitle") or data.get("confirm_title") or "Já cliquei").strip() or "Já cliquei"
-            confirm_id = (data.get("confirmId") or data.get("confirm_id") or "send_link_confirm").strip() or "send_link_confirm"
-            confirm_body = (
-                data.get("confirmMessage")
-                or data.get("confirm_message")
-                or "Para continuar, toque no botão abaixo (confirmar que abriu o link)."
-            ).strip() or "Para continuar, toque no botão abaixo (confirmar que abriu o link)."
-
-            ok2, err2 = RoutingService.enviar_resposta_interativa(
-                canal,
-                instancia or "default",
-                remote_id,
-                confirm_body,
-                [{"id": confirm_id, "title": confirm_title}],
-                cliente_id,
-            )
-            if not ok2:
-                # Fallback se interactive não estiver disponível.
-                ok3, err3 = RoutingService.enviar_resposta(
-                    canal,
-                    instancia or "default",
-                    remote_id,
-                    "Para continuar, responda 1 para confirmar que abriu o link.",
-                    cliente_id,
-                )
-                if not ok3:
-                    return (False, err3 or err2)
         return (True, None)
 
     if action_type == "qualificar_lead":
@@ -551,6 +619,514 @@ def _deliver_website_message(
             socketio.emit("embed_reply", {"conteudo": text}, room=website_room)
         except Exception as e:
             print(f"[FlowExecutor] _deliver_website_message SocketIO emit falhou: {e}", flush=True)
+    return True
+
+
+AGENDAMENTO_IA_STATE_KEY = "__agendamento_ia"
+
+
+def _send_plain_assistant_text(
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    instancia: str | None,
+    text: str,
+    socketio=None,
+    website_room: str | None = None,
+    embed_reply_store: dict | None = None,
+) -> None:
+    t = (text or "").strip()
+    if not t:
+        return
+    if canal == "website":
+        try:
+            MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, t, socketio)
+        except Exception as e:
+            print(f"[FlowExecutor] plain assistant text website: {e}", flush=True)
+        if website_room and embed_reply_store is not None:
+            if website_room not in embed_reply_store:
+                embed_reply_store[website_room] = []
+            embed_reply_store[website_room].append({"conteudo": t})
+        if socketio and website_room:
+            try:
+                socketio.emit("embed_reply", {"conteudo": t}, room=website_room)
+            except Exception:
+                pass
+    else:
+        ok, err = RoutingService.enviar_resposta(
+            canal, instancia or "default", remote_id, t, cliente_id
+        )
+        if not ok:
+            print(f"[FlowExecutor] plain assistant text: {err}", flush=True)
+        if socketio:
+            try:
+                MessageService.registrar_mensagem_saida(
+                    cliente_id, remote_id, canal, t, socketio
+                )
+            except Exception:
+                pass
+
+
+def _agendamento_merge_substate(collected: dict | None, ag: dict) -> dict:
+    out = dict(collected or {})
+    out[AGENDAMENTO_IA_STATE_KEY] = ag
+    return out
+
+
+def _agendamento_process_turn(
+    *,
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    instancia: str | None,
+    flow_id: str,
+    contact_id: str | None,
+    nodes: list,
+    edges: list,
+    agendamento_node_id: str,
+    user_message: str,
+    message_meta: dict | None,
+    socketio,
+    website_room: str | None,
+    embed_reply_store: dict | None,
+) -> bool:
+    anode = node_by_id(nodes, agendamento_node_id)
+    if not anode or (anode.get("type") or "").strip().lower() != "agendamento_ia":
+        return True
+    _, _, collected_now = get_state(
+        cliente_id, canal, remote_id, contact_id=contact_id
+    )
+    data = anode.get("data") or {}
+    ag = (collected_now or {}).get(AGENDAMENTO_IA_STATE_KEY)
+    if not isinstance(ag, dict):
+        ag = {}
+    if (ag.get("node_id") or "") != str(agendamento_node_id):
+        ag = {
+            "v": 1,
+            "node_id": str(agendamento_node_id),
+            "session": None,
+            "turn_seq": 0,
+        }
+    ag["turn_seq"] = int(ag.get("turn_seq") or 0) + 1
+    turn_id = str(uuid.uuid4())
+    inbound = MessageService.get_last_user_message_id(
+        cliente_id, remote_id, canal
+    )
+    rows = MessageService.obter_historico(
+        cliente_id, remote_id, limite=HISTORY_LIMIT
+    )
+    history = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        c = (r.get("conteudo") or r.get("content") or "") or ""
+        history.append(
+            {
+                "id": r.get("id"),
+                "funcao": (r.get("funcao") or r.get("role") or "")
+                or "",
+                "conteudo": c[:2000] if isinstance(c, str) else c,
+            }
+        )
+    node_data = dict(data) if isinstance(data, dict) else {}
+    cex = node_data.get("context_extra")
+    if isinstance(cex, str) and cex.strip().startswith("{"):
+        try:
+            j = json.loads(cex)
+            if isinstance(j, dict):
+                node_data = {**node_data, **j}
+        except Exception:
+            pass
+    collected_for_ctx = {
+        k: v
+        for k, v in (collected_now or {}).items()
+        if not str(k).startswith("__")
+    }
+    context = {
+        "cliente_id": cliente_id,
+        "canal": canal,
+        "remote_id": remote_id,
+        "contact_id": contact_id,
+        "flow_id": flow_id,
+        "node_id": agendamento_node_id,
+        "node_data": node_data,
+        "collected_data": collected_for_ctx,
+        "history": history,
+    }
+    session = ag.get("session")
+    if not isinstance(session, dict):
+        session = None
+    body = build_request_body(
+        user_message=user_message or "",
+        context=context,
+        session=session,
+        zapaction_turn_id=turn_id,
+        inbound_user_message_id=inbound,
+    )
+    wh = call_webhook(body)
+    fallback = (getattr(settings, "AGENDAMENTO_IA_FALLBACK_MESSAGE", None) or "").strip()
+    if not fallback:
+        fallback = (
+            "Não consegui concluir o agendamento agora. Tente de novo em instantes."
+        )
+    if wh.get("ok") and (wh.get("text") is not None):
+        parsed = wh.get("parsed") or parse_api_response(wh.get("text") or "")
+    else:
+        parsed = {
+            "reply": "",
+            "done": False,
+            "action": None,
+            "session": None,
+            "raw_error": (wh.get("error") or "http_error") if not wh.get("ok") else None,
+        }
+    if not wh.get("ok") or (isinstance(parsed, dict) and parsed.get("raw_error")):
+        _send_plain_assistant_text(
+            cliente_id,
+            canal,
+            remote_id,
+            instancia,
+            fallback,
+            socketio=socketio,
+            website_room=website_room,
+            embed_reply_store=embed_reply_store,
+        )
+        merged = _agendamento_merge_substate(collected_now, ag)
+        set_state(
+            cliente_id,
+            canal,
+            remote_id,
+            flow_id,
+            agendamento_node_id,
+            merged,
+            contact_id=contact_id,
+        )
+        print(
+            f"[agendamento_ia] stay (fallback) node={agendamento_node_id!r} http={wh.get('http_status')} err={wh.get('error')}",
+            flush=True,
+        )
+        return True
+    reply = (parsed or {}).get("reply") or ""
+    if not (reply or "").strip():
+        reply = format_agendamento_user_message(node_data, parsed if isinstance(parsed, dict) else None)
+    if not (reply or "").strip():
+        reply = fallback
+    _send_plain_assistant_text(
+        cliente_id,
+        canal,
+        remote_id,
+        instancia,
+        reply,
+        socketio=socketio,
+        website_room=website_room,
+        embed_reply_store=embed_reply_store,
+    )
+    act_ctx = {
+        "cliente_id": cliente_id,
+        "canal": canal,
+        "remote_id": remote_id,
+        "contact_id": contact_id,
+        "flow_id": flow_id,
+        "node_id": agendamento_node_id,
+        "inbound_user_message_id": inbound,
+        "message_meta": message_meta or {},
+    }
+    act = pick_or_derive_action(parsed if isinstance(parsed, dict) else None)
+    ares = apply_agendamento_action(act_ctx, act if isinstance(act, dict) else None, ag)
+    ag = ares["ag_state"]
+    if isinstance((parsed or {}).get("session"), dict):
+        prev = ag.get("session") if isinstance(ag.get("session"), dict) else {}
+        ag["session"] = {**prev, **(parsed or {})["session"]}
+    done = isinstance(parsed, dict) and (parsed.get("done") is True)
+    new_collected = _agendamento_merge_substate(collected_now, ag)
+    print(
+        f"[agendamento_ia] decision={'advance' if done else 'stay'} node={agendamento_node_id!r} turn={turn_id!r} ms={wh.get('duration_ms')}",
+        flush=True,
+    )
+    if not done:
+        set_state(
+            cliente_id,
+            canal,
+            remote_id,
+            flow_id,
+            agendamento_node_id,
+            new_collected,
+            contact_id=contact_id,
+        )
+        return True
+    next_id = next_node_after(agendamento_node_id, edges)
+    new_collected2 = dict(new_collected)
+    new_collected2.pop(AGENDAMENTO_IA_STATE_KEY, None)
+    if not next_id:
+        set_state(
+            cliente_id, canal, remote_id, flow_id, None, new_collected2, contact_id=contact_id
+        )
+        return True
+    set_state(
+        cliente_id,
+        canal,
+        remote_id,
+        flow_id,
+        next_id,
+        new_collected2,
+        contact_id=contact_id,
+    )
+    return _flow_apply_next_id(
+        next_id,
+        cliente_id=cliente_id,
+        canal=canal,
+        remote_id=remote_id,
+        instancia=instancia,
+        flow_id=flow_id,
+        contact_id=contact_id,
+        nodes=nodes,
+        edges=edges,
+        message_meta=message_meta,
+        socketio=socketio,
+        website_room=website_room,
+        embed_reply_store=embed_reply_store,
+        user_text_for_agendamento="",
+    )
+
+
+def _flow_apply_next_id(
+    next_id: str,
+    *,
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    instancia: str | None,
+    flow_id: str,
+    contact_id: str | None,
+    nodes: list,
+    edges: list,
+    message_meta: dict | None,
+    socketio,
+    website_room: str | None,
+    embed_reply_store: dict | None,
+    user_text_for_agendamento: str = "",
+) -> bool:
+    """
+    Aplica a cadeia lead / action / end / message a partir de next_id (pós find_next ou pós agendamento done).
+    """
+    def _default_next_after(node_id: str, edges_list: list) -> str | None:
+        """
+        Próximo nó na sequência "linear" (preferir saída default/sem handle).
+        Isso é importante porque um nó message pode ter edges de botões (btn_0/1/2) que não devem ser seguidas
+        automaticamente.
+        """
+        try:
+            for e in edges_list or []:
+                if not isinstance(e, dict) or e.get("source") != node_id:
+                    continue
+                sh = (e.get("sourceHandle") or "").strip()
+                if not sh or sh == "default":
+                    return e.get("target")
+            # fallback: primeira edge encontrada
+            for e in edges_list or []:
+                if isinstance(e, dict) and e.get("source") == node_id:
+                    return e.get("target")
+        except Exception:
+            return None
+        return None
+
+    next_node = node_by_id(nodes, next_id)
+    if not next_node:
+        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+        return True
+    saved_lead_once = False
+    while next_node and next_node.get("type") == "lead":
+        _, _, collected_data = get_state(
+            cliente_id, canal, remote_id, contact_id=contact_id
+        )
+        if not saved_lead_once:
+            _save_lead(
+                cliente_id,
+                canal,
+                remote_id,
+                contact_id,
+                flow_id,
+                collected_data,
+                next_node.get("data") or {},
+            )
+            saved_lead_once = True
+        next_id = next_node_after(next_id, edges)
+        next_node = node_by_id(nodes, next_id) if next_id else None
+
+    if not next_node:
+        set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+        return True
+
+    if next_node.get("type") == "agendamento_ia":
+        return _agendamento_process_turn(
+            cliente_id=cliente_id,
+            canal=canal,
+            remote_id=remote_id,
+            instancia=instancia,
+            flow_id=flow_id,
+            contact_id=contact_id,
+            nodes=nodes,
+            edges=edges,
+            agendamento_node_id=next_id,
+            user_message=(user_text_for_agendamento or "") or "",
+            message_meta=message_meta,
+            socketio=socketio,
+            website_room=website_room,
+            embed_reply_store=embed_reply_store,
+        )
+
+    if next_node.get("type") == "action":
+        data = next_node.get("data") or {}
+        action_type = (data.get("actionType") or data.get("action_type") or "").strip().lower().replace(" ", "_")
+        ok, err = _execute_action(
+            cliente_id,
+            canal,
+            remote_id,
+            contact_id,
+            data,
+            instancia,
+            socketio,
+            website_room,
+            embed_reply_store,
+        )
+        if not ok:
+            print(f"[FlowExecutor] _execute_action falhou: {err}", flush=True)
+        if action_type in ("transfer_human", "transfer_to_sector"):
+            return True
+
+        # Ações não-bloqueantes (ex.: qualificar_lead) NÃO devem “quebrar” a sequência automática.
+        # Após executar, avançamos para o próximo nó e reaproveitamos a rotina padrão (que inclui auto-avanço de mensagens).
+        next_after_id = next_node_after(next_id, edges)
+        set_state(
+            cliente_id, canal, remote_id, flow_id, next_after_id, contact_id=contact_id
+        )
+        if next_after_id:
+            return _flow_apply_next_id(
+                next_after_id,
+                cliente_id=cliente_id,
+                canal=canal,
+                remote_id=remote_id,
+                instancia=instancia,
+                flow_id=flow_id,
+                contact_id=contact_id,
+                nodes=nodes,
+                edges=edges,
+                message_meta=message_meta,
+                socketio=socketio,
+                website_room=website_room,
+                embed_reply_store=embed_reply_store,
+                user_text_for_agendamento=user_text_for_agendamento,
+            )
+        return True
+
+    if next_node.get("type") == "end":
+        text = (next_node.get("data") or {}).get("text") or ""
+        if (text or "").strip():
+            if canal == "website":
+                try:
+                    MessageService.registrar_mensagem_saida(
+                        cliente_id, remote_id, canal, text.strip(), socketio
+                    )
+                except Exception as e:
+                    print(f"[FlowExecutor] website end: {e}", flush=True)
+            else:
+                RoutingService.enviar_resposta(
+                    canal, instancia or "default", remote_id, text.strip(), cliente_id
+                )
+                if socketio:
+                    try:
+                        MessageService.registrar_mensagem_saida(
+                            cliente_id, remote_id, canal, text.strip(), socketio
+                        )
+                    except Exception:
+                        pass
+        set_state(
+            cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id
+        )
+    else:
+        ok, err = _send_node_message(
+            cliente_id,
+            canal,
+            remote_id,
+            instancia,
+            next_node,
+            socketio,
+            website_room,
+            embed_reply_store,
+        )
+        if ok:
+            if next_node.get("type") == "questionnaire":
+                keys = questionnaire_collect_keys(next_node.get("data") or {})
+                collect_state = {PENDING_COLLECT_KEYS: keys} if keys else {}
+                set_state(
+                    cliente_id,
+                    canal,
+                    remote_id,
+                    flow_id,
+                    next_id,
+                    collect_state,
+                    contact_id=contact_id,
+                )
+            else:
+                # Auto-avanço seguro: se for message SEM botões, caminhar automaticamente por mensagens sequenciais.
+                data0 = next_node.get("data") or {}
+                btns0 = data0.get("buttons") or []
+                if (next_node.get("type") or "").strip().lower() == "message" and not (isinstance(btns0, list) and len(btns0) > 0):
+                    # Enviar até N mensagens seguidas, parando ao encontrar uma message com botões ou outro tipo de nó.
+                    MAX_AUTO_STEPS = 6
+                    last_sent_id = next_id
+                    steps = 0
+                    cur_id = next_id
+                    while steps < MAX_AUTO_STEPS:
+                        nxt = _default_next_after(cur_id, edges)
+                        if not nxt:
+                            break
+                        nxt_node = node_by_id(nodes, nxt)
+                        if not nxt_node:
+                            break
+                        ntype = (nxt_node.get("type") or "message").strip().lower()
+                        if ntype != "message":
+                            # Para tipos não-message, não auto-executar aqui; apenas posicionar estado para o próximo turno.
+                            cur_id = nxt
+                            break
+                        ndata = nxt_node.get("data") or {}
+                        nbtns = ndata.get("buttons") or []
+                        ok2, err2 = _send_node_message(
+                            cliente_id,
+                            canal,
+                            remote_id,
+                            instancia,
+                            nxt_node,
+                            socketio,
+                            website_room,
+                            embed_reply_store,
+                        )
+                        if not ok2:
+                            print(f"[FlowExecutor] Falha ao auto-avançar message {nxt}: {err2}", flush=True)
+                            break
+                        last_sent_id = nxt
+                        steps += 1
+                        # Se esta mensagem tem botões, parar aqui (aguardar clique/resposta).
+                        if isinstance(nbtns, list) and len(nbtns) > 0:
+                            cur_id = nxt
+                            break
+                        cur_id = nxt
+
+                    # Se paramos em message com botões, o estado deve ser ela.
+                    last_node = node_by_id(nodes, last_sent_id) if last_sent_id else None
+                    last_btns = ((last_node or {}).get("data") or {}).get("buttons") or []
+                    if last_node and (last_node.get("type") or "").strip().lower() == "message" and isinstance(last_btns, list) and len(last_btns) > 0:
+                        set_state(cliente_id, canal, remote_id, flow_id, last_sent_id, contact_id=contact_id)
+                    else:
+                        # Caso contrário, avançamos o estado para o próximo nó linear (ou None).
+                        next_linear = _default_next_after(last_sent_id, edges) if last_sent_id else None
+                        set_state(cliente_id, canal, remote_id, flow_id, next_linear, contact_id=contact_id)
+                else:
+                    # message com botões (ou outro tipo): aguardar resposta do usuário neste nó
+                    set_state(
+                        cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id
+                    )
+        else:
+            print(f"[FlowExecutor] Falha ao enviar nó {next_id}: {err}", flush=True)
     return True
 
 
@@ -744,6 +1320,24 @@ class FlowExecutor:
                             set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                             return True
 
+                        if next_node.get("type") == "agendamento_ia":
+                            return _agendamento_process_turn(
+                                cliente_id=cliente_id,
+                                canal=canal,
+                                remote_id=remote_id,
+                                instancia=instancia,
+                                flow_id=flow_id,
+                                contact_id=contact_id,
+                                nodes=nodes,
+                                edges=edges,
+                                agendamento_node_id=next_id,
+                                user_message="",
+                                message_meta=message_meta,
+                                socketio=socketio,
+                                website_room=website_room,
+                                embed_reply_store=embed_reply_store,
+                            )
+
                         # Mensagem/questionário
                         ok, err = _send_node_message(
                             cliente_id,
@@ -892,6 +1486,24 @@ class FlowExecutor:
                         set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
                         return True
 
+                    if next_node.get("type") == "agendamento_ia":
+                        return _agendamento_process_turn(
+                            cliente_id=cliente_id,
+                            canal=canal,
+                            remote_id=remote_id,
+                            instancia=instancia,
+                            flow_id=flow_id,
+                            contact_id=contact_id,
+                            nodes=nodes,
+                            edges=edges,
+                            agendamento_node_id=next_id,
+                            user_message=(texto or "") or "",
+                            message_meta=message_meta,
+                            socketio=socketio,
+                            website_room=website_room,
+                            embed_reply_store=embed_reply_store,
+                        )
+
                     # message/questionnaire
                     ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
                     if ok:
@@ -968,6 +1580,23 @@ class FlowExecutor:
                                             MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
                                         except Exception:
                                             pass
+                        elif next_node.get("type") == "agendamento_ia":
+                            return _agendamento_process_turn(
+                                cliente_id=cliente_id,
+                                canal=canal,
+                                remote_id=remote_id,
+                                instancia=instancia,
+                                flow_id=flow_id,
+                                contact_id=contact_id,
+                                nodes=nodes,
+                                edges=edges,
+                                agendamento_node_id=next_id,
+                                user_message=(texto or "") or "",
+                                message_meta=message_meta,
+                                socketio=socketio,
+                                website_room=website_room,
+                                embed_reply_store=embed_reply_store,
+                            )
                         elif next_node.get("type") != "lead":
                             ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
                             if not ok:
@@ -1024,9 +1653,49 @@ class FlowExecutor:
                                 except Exception:
                                     pass
                     set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                elif next_node and next_node.get("type") == "agendamento_ia":
+                    return _agendamento_process_turn(
+                        cliente_id=cliente_id,
+                        canal=canal,
+                        remote_id=remote_id,
+                        instancia=instancia,
+                        flow_id=flow_id,
+                        contact_id=contact_id,
+                        nodes=nodes,
+                        edges=edges,
+                        agendamento_node_id=next_id,
+                        user_message=(texto or "") or "",
+                        message_meta=message_meta,
+                        socketio=socketio,
+                        website_room=website_room,
+                        embed_reply_store=embed_reply_store,
+                    )
                 elif next_node:
                     _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
             return True
+
+        _ag_node = node_by_id(nodes, current_node_id) if current_node_id else None
+        if (
+            current_node_id
+            and _ag_node
+            and (_ag_node.get("type") or "").strip().lower() == "agendamento_ia"
+        ):
+            return _agendamento_process_turn(
+                cliente_id=cliente_id,
+                canal=canal,
+                remote_id=remote_id,
+                instancia=instancia,
+                flow_id=flow_id,
+                contact_id=contact_id,
+                nodes=nodes,
+                edges=edges,
+                agendamento_node_id=current_node_id,
+                user_message=(texto or "") or "",
+                message_meta=message_meta,
+                socketio=socketio,
+                website_room=website_room,
+                embed_reply_store=embed_reply_store,
+            )
 
         if current_node_id is None or current_node_id == "":
             print(f"[LEAD] ramo entrada sem estado (current_node vazio)", flush=True)
@@ -1110,21 +1779,95 @@ class FlowExecutor:
                                                 except Exception:
                                                     pass
                                     set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
+                                elif next_node_after_lead and next_node_after_lead.get("type") == "agendamento_ia":
+                                    return _agendamento_process_turn(
+                                        cliente_id=cliente_id,
+                                        canal=canal,
+                                        remote_id=remote_id,
+                                        instancia=instancia,
+                                        flow_id=flow_id,
+                                        contact_id=contact_id,
+                                        nodes=nodes,
+                                        edges=edges,
+                                        agendamento_node_id=next_after_leads,
+                                        user_message=(texto or "") or "",
+                                        message_meta=message_meta,
+                                        socketio=socketio,
+                                        website_room=website_room,
+                                        embed_reply_store=embed_reply_store,
+                                    )
                                 elif next_node_after_lead:
-                                    _send_node_message(cliente_id, canal, remote_id, instancia, next_node_after_lead, socketio, website_room, embed_reply_store)
+                                    # Use a rotina padrão para aplicar auto-avanço em sequência de mensagens.
+                                    return _flow_apply_next_id(
+                                        next_after_leads,
+                                        cliente_id=cliente_id,
+                                        canal=canal,
+                                        remote_id=remote_id,
+                                        instancia=instancia,
+                                        flow_id=flow_id,
+                                        contact_id=contact_id,
+                                        nodes=nodes,
+                                        edges=edges,
+                                        message_meta=message_meta,
+                                        socketio=socketio,
+                                        website_room=website_room,
+                                        embed_reply_store=embed_reply_store,
+                                        user_text_for_agendamento=(texto or "") or "",
+                                    )
                         else:
                             print(f"[LEAD] sem lead existente, enviando questionario e set_state next_id={next_id!r}", flush=True)
-                            ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
-                            if ok:
-                                set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
-                            else:
-                                print(f"[FlowExecutor] Falha ao enviar após start: {err}", flush=True)
+                            # Use a rotina padrão (inclui auto-avanço seguro para mensagens em sequência).
+                            return _flow_apply_next_id(
+                                next_id,
+                                cliente_id=cliente_id,
+                                canal=canal,
+                                remote_id=remote_id,
+                                instancia=instancia,
+                                flow_id=flow_id,
+                                contact_id=contact_id,
+                                nodes=nodes,
+                                edges=edges,
+                                message_meta=message_meta,
+                                socketio=socketio,
+                                website_room=website_room,
+                                embed_reply_store=embed_reply_store,
+                                user_text_for_agendamento=(texto or "") or "",
+                            )
+                    elif next_node and next_node.get("type") == "agendamento_ia":
+                        return _agendamento_process_turn(
+                            cliente_id=cliente_id,
+                            canal=canal,
+                            remote_id=remote_id,
+                            instancia=instancia,
+                            flow_id=flow_id,
+                            contact_id=contact_id,
+                            nodes=nodes,
+                            edges=edges,
+                            agendamento_node_id=next_id,
+                            user_message=(texto or "") or "",
+                            message_meta=message_meta,
+                            socketio=socketio,
+                            website_room=website_room,
+                            embed_reply_store=embed_reply_store,
+                        )
                     else:
-                        ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
-                        if ok:
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
-                        else:
-                            print(f"[FlowExecutor] Falha ao enviar após start: {err}", flush=True)
+                        # Use a rotina padrão (inclui auto-avanço seguro para mensagens em sequência).
+                        return _flow_apply_next_id(
+                            next_id,
+                            cliente_id=cliente_id,
+                            canal=canal,
+                            remote_id=remote_id,
+                            instancia=instancia,
+                            flow_id=flow_id,
+                            contact_id=contact_id,
+                            nodes=nodes,
+                            edges=edges,
+                            message_meta=message_meta,
+                            socketio=socketio,
+                            website_room=website_room,
+                            embed_reply_store=embed_reply_store,
+                            user_text_for_agendamento=(texto or "") or "",
+                        )
                 else:
                     set_state(cliente_id, canal, remote_id, flow_id, entry_id, contact_id=contact_id)
             else:
@@ -1165,179 +1908,22 @@ class FlowExecutor:
         # #endregion
 
         if next_id:
-            next_node = node_by_id(nodes, next_id)
-            if next_node:
-                saved_lead_once = False
-                while next_node and next_node.get("type") == "lead":
-                    _, _, collected_data = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
-                    if not saved_lead_once:
-                        _save_lead(
-                            cliente_id, canal, remote_id, contact_id, flow_id,
-                            collected_data,
-                            next_node.get("data") or {},
-                        )
-                        saved_lead_once = True
-                    next_id = next_node_after(next_id, edges)
-                    next_node = node_by_id(nodes, next_id) if next_id else None
-
-                if not next_node:
-                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
-                    return True
-
-                if next_node.get("type") == "action":
-                    data = next_node.get("data") or {}
-                    action_type = (data.get("actionType") or data.get("action_type") or "").strip().lower().replace(" ", "_")
-                    ok, err = _execute_action(
-                        cliente_id, canal, remote_id, contact_id, data, instancia,
-                        socketio, website_room, embed_reply_store,
-                    )
-                    if not ok:
-                        print(f"[FlowExecutor] _execute_action falhou: {err}", flush=True)
-                    if action_type in ("transfer_human", "transfer_to_sector"):
-                        return True
-                    if action_type == "send_link":
-                        # Não avançar o fluxo ainda: aguardamos o clique para concluir.
-                        expected_url = (data.get("url") or "").strip()
-                        next_after_id = next_node_after(next_id, edges)
-
-                        confirm_title = (data.get("confirmTitle") or data.get("confirm_title") or "Já cliquei").strip() or "Já cliquei"
-                        confirm_id = (data.get("confirmId") or data.get("confirm_id") or "send_link_confirm").strip() or "send_link_confirm"
-
-                        updated_collected = dict(collected_data or {})
-                        updated_collected["__awaiting_send_link_click"] = True
-                        updated_collected["__expected_url"] = expected_url
-                        updated_collected["__awaiting_send_link_next_after_id"] = next_after_id
-                        updated_collected["__awaiting_send_link_tries"] = 0
-                        updated_collected["__awaiting_send_link_confirm_title"] = confirm_title
-                        updated_collected["__awaiting_send_link_confirm_id"] = confirm_id
-                        updated_collected["__awaiting_send_link_confirm_choice"] = "1"
-
-                        set_state(cliente_id, canal, remote_id, flow_id, next_id, updated_collected, contact_id=contact_id)
-                        return True
-
-                    next_after_id = next_node_after(next_id, edges)
-                    set_state(cliente_id, canal, remote_id, flow_id, next_after_id, contact_id=contact_id)
-
-                    # Para ações imediatas (ex.: qualificar_lead), avançar automaticamente para o próximo nó.
-                    if next_after_id:
-                        after_node = node_by_id(nodes, next_after_id)
-                        if after_node:
-                            # Se a ação leva para nós de lead, precisamos processá-los imediatamente;
-                            # caso contrário, o fluxo "parece travado" (fica em lead/action sem enviar nada).
-                            saved_lead_once2 = False
-                            scan_id2 = next_after_id
-                            scan_node2 = after_node
-                            while scan_node2 and scan_node2.get("type") == "lead":
-                                _, _, cdata2 = get_state(cliente_id, canal, remote_id, contact_id=contact_id)
-                                if not saved_lead_once2:
-                                    _save_lead(
-                                        cliente_id,
-                                        canal,
-                                        remote_id,
-                                        contact_id,
-                                        flow_id,
-                                        cdata2,
-                                        scan_node2.get("data") or {},
-                                    )
-                                    saved_lead_once2 = True
-                                scan_id2 = next_node_after(scan_id2, edges)
-                                scan_node2 = node_by_id(nodes, scan_id2) if scan_id2 else None
-
-                            # Se acabaram os nós, encerra estado.
-                            if not scan_node2:
-                                set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
-                                return True
-
-                            # Se o próximo também for ação imediata, executa e avança 1 passo.
-                            if scan_node2.get("type") == "action":
-                                data2 = scan_node2.get("data") or {}
-                                action_type2 = (data2.get("actionType") or data2.get("action_type") or "").strip().lower().replace(" ", "_")
-                                ok_a, err_a = _execute_action(
-                                    cliente_id,
-                                    canal,
-                                    remote_id,
-                                    contact_id,
-                                    data2,
-                                    instancia,
-                                    socketio,
-                                    website_room,
-                                    embed_reply_store,
-                                )
-                                if not ok_a:
-                                    print(f"[FlowExecutor] _execute_action (after action) falhou: {err_a}", flush=True)
-                                if action_type2 in ("transfer_human", "transfer_to_sector"):
-                                    return True
-                                next_after_id3 = next_node_after(scan_id2, edges)
-                                set_state(cliente_id, canal, remote_id, flow_id, next_after_id3, contact_id=contact_id)
-                                return True
-
-                            if scan_node2.get("type") == "end":
-                                text = (scan_node2.get("data") or {}).get("text") or ""
-                                if (text or "").strip():
-                                    if canal == "website":
-                                        try:
-                                            MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
-                                        except Exception as e:
-                                            print(f"[FlowExecutor] website end after action: {e}", flush=True)
-                                    else:
-                                        RoutingService.enviar_resposta(canal, instancia or "default", remote_id, text.strip(), cliente_id)
-                                        if socketio:
-                                            try:
-                                                MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
-                                            except Exception:
-                                                pass
-                                set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
-                                return True
-
-                            ok2, err2 = _send_node_message(
-                                cliente_id,
-                                canal,
-                                remote_id,
-                                instancia,
-                                scan_node2,
-                                socketio,
-                                website_room,
-                                embed_reply_store,
-                            )
-                            if ok2:
-                                if scan_node2.get("type") == "questionnaire":
-                                    keys2 = questionnaire_collect_keys(scan_node2.get("data") or {})
-                                    collect_state2 = {PENDING_COLLECT_KEYS: keys2} if keys2 else {}
-                                    set_state(cliente_id, canal, remote_id, flow_id, scan_id2, collect_state2, contact_id=contact_id)
-                                else:
-                                    set_state(cliente_id, canal, remote_id, flow_id, scan_id2, contact_id=contact_id)
-                            else:
-                                print(f"[FlowExecutor] Falha ao auto-avançar após ação {next_id}: {err2}", flush=True)
-                    return True
-
-                if next_node.get("type") == "end":
-                    text = (next_node.get("data") or {}).get("text") or ""
-                    if (text or "").strip():
-                        if canal == "website":
-                            try:
-                                MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
-                            except Exception as e:
-                                print(f"[FlowExecutor] website end: {e}", flush=True)
-                        else:
-                            RoutingService.enviar_resposta(canal, instancia or "default", remote_id, text.strip(), cliente_id)
-                            if socketio:
-                                try:
-                                    MessageService.registrar_mensagem_saida(cliente_id, remote_id, canal, text.strip(), socketio)
-                                except Exception:
-                                    pass
-                    set_state(cliente_id, canal, remote_id, flow_id, None, contact_id=contact_id)
-                else:
-                    ok, err = _send_node_message(cliente_id, canal, remote_id, instancia, next_node, socketio, website_room, embed_reply_store)
-                    if ok:
-                        if next_node.get("type") == "questionnaire":
-                            keys = questionnaire_collect_keys(next_node.get("data") or {})
-                            collect_state = {PENDING_COLLECT_KEYS: keys} if keys else {}
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id, collect_state, contact_id=contact_id)
-                        else:
-                            set_state(cliente_id, canal, remote_id, flow_id, next_id, contact_id=contact_id)
-                    else:
-                        print(f"[FlowExecutor] Falha ao enviar nó {next_id}: {err}", flush=True)
-                return True
+            return _flow_apply_next_id(
+                next_id,
+                cliente_id=cliente_id,
+                canal=canal,
+                remote_id=remote_id,
+                instancia=instancia,
+                flow_id=flow_id,
+                contact_id=contact_id,
+                nodes=nodes,
+                edges=edges,
+                message_meta=message_meta,
+                socketio=socketio,
+                website_room=website_room,
+                embed_reply_store=embed_reply_store,
+                user_text_for_agendamento=(texto or "") or "",
+            )
 
         current_node = node_by_id(nodes, current_node_id)
         if current_node and ((current_node.get("data") or {}).get("buttons")):

@@ -336,3 +336,26 @@ class MessageService:
         except Exception as e:
             print(f"[MessageService] Erro ao buscar histórico: {e}", flush=True)
             return []
+
+    @staticmethod
+    def get_last_user_message_id(cliente_id, remote_id, canal: str) -> str | None:
+        """Id da última mensagem do utilizador (funcao=user) nesta conversa, para idempotência do nó agendamento_ia."""
+        if supabase is None:
+            return None
+        try:
+            res = (
+                supabase.table(Tables.MENSAGENS)
+                .select(MensagemModel.ID)
+                .eq(MensagemModel.CLIENTE_ID, cliente_id)
+                .eq(MensagemModel.REMOTE_ID, remote_id)
+                .eq(MensagemModel.CANAL, canal)
+                .eq(MensagemModel.FUNCAO, "user")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if res.data and len(res.data) > 0 and res.data[0].get(MensagemModel.ID) is not None:
+                return str(res.data[0][MensagemModel.ID])
+        except Exception as e:
+            print(f"[MessageService] get_last_user_message_id: {e}", flush=True)
+        return None

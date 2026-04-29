@@ -210,12 +210,15 @@ class RoutingService:
                 if getattr(settings, "WAHA_URL", None) and getattr(settings, "WAHA_API_KEY", None):
                     if buttons and len(buttons) > 0:
                         from integrations.whatsapp.waha_client import enviar_botoes as waha_enviar_botoes
-                        ok, err = waha_enviar_botoes(
-                            remote_id,
-                            body_text or " ",
-                            buttons[:3],
-                            session=session_name,
-                        )
+                        try:
+                            ok, err = waha_enviar_botoes(
+                                remote_id,
+                                body_text or " ",
+                                buttons[:3],
+                                session=session_name,
+                            )
+                        except Exception as e:
+                            ok, err = False, str(e)
                         if ok:
                             if cliente_id:
                                 try:
@@ -224,6 +227,12 @@ class RoutingService:
                                     pass
                             AntiLoopGuard.record_outgoing(cliente_id, canal, remote_id)
                             return (True, None)
+                        # Se o WAHA não suporta botões (ex.: WEBJS), seguimos para fallback em texto.
+                        if err:
+                            try:
+                                print(f"[RoutingService] WAHA botões indisponíveis, usando fallback em texto: {err}", flush=True)
+                            except Exception:
+                                pass
                     from integrations.whatsapp.waha_client import enviar_texto as waha_enviar_texto
                     # Fallback em texto com layout amigável:
                     # Olá, tudo bem?

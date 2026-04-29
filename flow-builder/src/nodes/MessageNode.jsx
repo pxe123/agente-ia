@@ -8,6 +8,7 @@ export function MessageNode({ data, id, selected }) {
   const { updateNodeData } = useReactFlow();
   const text = data?.text ?? '';
   const buttons = Array.isArray(data?.buttons) ? data.buttons : [];
+  const waitsForUser = buttons.length > 0;
   const scheduleSave = useCallback(() => {
     try {
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('flowbuilder:scheduleSave'));
@@ -70,6 +71,31 @@ export function MessageNode({ data, id, selected }) {
       <Handle type="target" position={Position.Left} id="target" style={{ left: -4 }} />
       <div style={{ marginBottom: 10, fontWeight: 600, color: '#2563eb', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
         Mensagem
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '0 0 8px 0' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 11,
+            padding: '4px 8px',
+            borderRadius: 999,
+            border: '1px solid',
+            borderColor: waitsForUser ? '#f59e0b' : '#16a34a',
+            background: waitsForUser ? '#fffbeb' : '#f0fdf4',
+            color: waitsForUser ? '#b45309' : '#166534',
+            lineHeight: 1,
+          }}
+          title={
+            waitsForUser
+              ? 'Este bloco aguarda a interação do usuário (clique nos botões).'
+              : 'Este bloco continua automaticamente para a próxima conexão (saída default).'
+          }
+        >
+          <span style={{ fontSize: 12 }}>{waitsForUser ? '⏸' : '▶'}</span>
+          {waitsForUser ? 'Aguarda clique/resposta' : 'Continua automaticamente'}
+        </span>
       </div>
       <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px 0', lineHeight: 1.4 }}>
         Cada botão tem uma bolinha (●) à direita: <strong>arraste até o bloco</strong> que deve executar quando a pessoa clicar nesse botão.

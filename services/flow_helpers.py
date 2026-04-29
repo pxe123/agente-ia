@@ -111,6 +111,9 @@ def find_next_node_id(nodes: list, edges: list, current_node_id: str, user_respo
     if not node:
         return None
     node_type = (node.get("type") or "").strip().lower()
+    # Cinto de segurança: agendamento_ia avança só via FlowExecutor + API (não seguir aresta “linear” por engano).
+    if node_type == "agendamento_ia":
+        return None
     data = node.get("data") or {}
 
     if node_type == "condition":
@@ -178,6 +181,10 @@ def find_next_node_id(nodes: list, edges: list, current_node_id: str, user_respo
 
     # 3) Se não achou match de botão (ou não temos source_handle), tenta edge default.
     #    Isso evita o comportamento antigo de sempre escolher a primeira edge arbitrariamente.
+    #    IMPORTANTE: se o nó TEM botões e o usuário respondeu algo que NÃO casa com 1/2/3/título,
+    #    não devemos avançar por default — senão qualquer texto ("0", "oi") pula a escolha.
+    if buttons and user_txt and source_handle is None:
+        return None
     default_edges = [
         e for e in outgoing_edges
         if not str(e.get("sourceHandle") or "").strip()
