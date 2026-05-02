@@ -2345,6 +2345,10 @@ def marcar_conversacao_lida():
         data = strip_untrusted_tenant_ids(request.get_json() or {})
         canal = (data.get("canal") or "").strip().lower()
         remote_id = _normalizar_remote_id(data.get("remote_id") or "")
+        if canal == "whatsapp":
+            _wa_key = _remote_id_chave_painel_whatsapp(data.get("remote_id") or "")
+            if _wa_key:
+                remote_id = _wa_key
         if not canal or not remote_id:
             return jsonify({"erro": "canal e remote_id obrigatórios"}), 400
         if canal not in ("whatsapp", "facebook", "instagram", "website"):
@@ -2416,6 +2420,102 @@ def push_subscribe():
         return jsonify({"status": "ok"}), 200
 
 
+def _parse_iso_datetime(value):
+    """Parse ISO8601 (Supabase pode devolver ...Z ou ...+00:00). Comparação em string quebra com formatos mistos."""
+    from datetime import datetime
+
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _iso_pick_latest(a, b):
+    """Entre dois ISO, devolve o mais recente (para última msg por conversa)."""
+    da, db = _parse_iso_datetime(a), _parse_iso_datetime(b)
+    if da is not None and db is not None:
+        return a if da >= db else b
+    if da is not None:
+        return a
+    if db is not None:
+        return b
+    return (a or "") if (a or "") >= (b or "") else (b or "")
+
+
+def _mensagem_user_ja_lida(ultima_msg_iso: str, ultima_leitura_iso: str) -> bool:
+    """True se a última msg do usuário é anterior ou igual ao momento em que o painel marcou leitura."""
+    if not ultima_leitura_iso:
+        return False
+    if not ultima_msg_iso:
+        return False
+    dm = _parse_iso_datetime(ultima_msg_iso)
+    dr = _parse_iso_datetime(ultima_leitura_iso)
+    if dm is not None and dr is not None:
+        return dm <= dr
+    return (ultima_msg_iso or "") <= (ultima_leitura_iso or "")
+
+
+def _remote_id_chave_painel_whatsapp(remote_id) -> str:
+    """
+    Chave estável para leitura/não-lida no WhatsApp (alinhada a contact_resolver):
+    E.164 BR em dígitos quando o remote_id for telefone; caso contrário prefixo sem @ (ex. LID).
+    Evita marcar lido numa chave e contar não-lido noutra (@c.us vs dígitos vs variante).
+    """
+    from services.contact_identity import normalize_whatsapp_phone
+
+    s = _normalizar_remote_id(str(remote_id or ""))
+    if not s:
+        return ""
+    p = normalize_whatsapp_phone(s) or normalize_whatsapp_phone(str(remote_id or "").strip())
+    return p if p else s
+
+
+def _whatsapp_leitura_lookup_keys(rid: str) -> set:
+    """Chaves equivalentes para alinhar painel_ultima_leitura ao rid agregado das mensagens (evita badge após F5)."""
+    out = set()
+    r = str(rid or "").strip()
+    if not r:
+        return out
+    for k in (
+        r,
+        _normalizar_remote_id(r),
+        _remote_id_chave_painel_whatsapp(r),
+        _remote_id_chave_painel_whatsapp(_normalizar_remote_id(r)),
+    ):
+        if k:
+            out.add(k)
+    return out
+
+
+def _whatsapp_leitura_store_keys_from_painel_raw(raw_rid: str) -> set:
+    """Todas as chaves sob as quais guardar ultima_leitura para um remote_id vindo da tabela painel."""
+    return _whatsapp_leitura_lookup_keys(str(raw_rid or ""))
+
+
+def _ultima_leitura_mais_recente(leituras: dict, canal: str, rid: str) -> str:
+    """Devolve o ultima_leitura_at mais recente entre chaves equivalentes (WhatsApp)."""
+    if not rid or canal not in ("whatsapp", "facebook", "instagram", "website"):
+        return ""
+    if canal != "whatsapp":
+        return leituras.get((canal, rid), "") or ""
+    times = []
+    for k in _whatsapp_leitura_lookup_keys(rid):
+        t = leituras.get((canal, k)) or ""
+        if t:
+            times.append(t)
+    if not times:
+        return ""
+    out = times[0]
+    for t in times[1:]:
+        out = _iso_pick_latest(out, t)
+    return out
+
+
 @customer_bp.route('/api/mensagens/contatos-nao-lidos')
 @login_required
 def contatos_nao_lidos():
@@ -2425,21 +2525,61 @@ def contatos_nao_lidos():
     cliente_id = get_current_cliente_id(current_user)
     try:
         from services.setores_helpers import get_allowed_remote_ids_for_canal
-        res = supabase.table(Tables.MENSAGENS).select("canal, remote_id, created_at").eq("cliente_id", cliente_id).eq("funcao", "user").execute()
-        data = res.data if res.data else []
+        # Ordenar + paginar: sem order, o PostgREST pode devolver um subconjunto arbitrário e o max por conversa fica errado.
+        data = []
+        _batch = 2500
+        for _off in range(0, 15000, _batch):
+            res = (
+                supabase.table(Tables.MENSAGENS)
+                .select("canal, remote_id, created_at")
+                .eq("cliente_id", cliente_id)
+                .eq("funcao", "user")
+                .order("created_at", desc=True)
+                .range(_off, _off + _batch - 1)
+                .execute()
+            )
+            part = res.data if res.data else []
+            data.extend(part)
+            if len(part) < _batch:
+                break
         max_por_conversa = {}
         for row in data:
             c = (row.get("canal") or "whatsapp").strip().lower()
-            rid = _normalizar_remote_id(row.get("remote_id") or "")
+            if c == "whatsapp":
+                rid = _remote_id_chave_painel_whatsapp(row.get("remote_id") or "")
+            else:
+                rid = _normalizar_remote_id(row.get("remote_id") or "")
             if c not in ("whatsapp", "facebook", "instagram", "website") or not rid:
                 continue
             key = (c, rid)
             created = row.get("created_at") or ""
-            if key not in max_por_conversa or (created and created > max_por_conversa[key]):
+            if key not in max_por_conversa:
                 max_por_conversa[key] = created
+            else:
+                max_por_conversa[key] = _iso_pick_latest(created, max_por_conversa[key])
         try:
             res2 = supabase.table("painel_ultima_leitura").select("canal, remote_id, ultima_leitura_at").eq("cliente_id", cliente_id).execute()
-            leituras = {(r.get("canal", "").strip().lower(), _normalizar_remote_id(r.get("remote_id") or "")): (r.get("ultima_leitura_at") or "") for r in (res2.data or [])}
+            leituras = {}
+            for r in (res2.data or []):
+                c0 = (r.get("canal") or "").strip().lower()
+                raw_rid = r.get("remote_id") or ""
+                if c0 == "whatsapp":
+                    rk = _remote_id_chave_painel_whatsapp(raw_rid)
+                    key_ids = _whatsapp_leitura_store_keys_from_painel_raw(raw_rid)
+                else:
+                    rk = _normalizar_remote_id(raw_rid)
+                    key_ids = {rk} if rk else set()
+                if not key_ids or c0 not in ("whatsapp", "facebook", "instagram", "website"):
+                    continue
+                ult = (r.get("ultima_leitura_at") or "")
+                for kr in key_ids:
+                    if not kr:
+                        continue
+                    lk = (c0, kr)
+                    if lk not in leituras:
+                        leituras[lk] = ult
+                    else:
+                        leituras[lk] = _iso_pick_latest(ult, leituras[lk])
         except Exception:
             leituras = {}
         por_canal = {"whatsapp": [], "facebook": [], "instagram": [], "website": []}
@@ -2454,10 +2594,15 @@ def contatos_nao_lidos():
             if c == "facebook" and not can_use_channel(str(cliente_id), "facebook"):
                 continue
             allowed = get_allowed_remote_ids_for_canal(cliente_id, c, current_user)
-            if allowed is not None and rid not in allowed:
-                continue
-            ultima_leitura = leituras.get((c, rid)) or ""
-            if ultima_leitura and ultima_msg and ultima_msg <= ultima_leitura:
+            if allowed is not None:
+                if c == "whatsapp":
+                    allowed_wa = {_remote_id_chave_painel_whatsapp(x) or _normalizar_remote_id(x) for x in allowed}
+                    if rid not in allowed_wa:
+                        continue
+                elif rid not in allowed:
+                    continue
+            ultima_leitura = _ultima_leitura_mais_recente(leituras, c, rid)
+            if _mensagem_user_ja_lida(ultima_msg, ultima_leitura):
                 continue
             seen[c].add(rid)
             por_canal[c].append(rid)

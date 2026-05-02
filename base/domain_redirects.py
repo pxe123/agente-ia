@@ -5,7 +5,7 @@ Por defeito (sem .env): site público em ZapAction; app em api.updigitalbrasil.c
 Para servir tudo num único domínio: defina PUBLIC_BASE_URL e APP_BASE_URL com o mesmo URL.
 """
 import os
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 # Canónico de marketing (propaganda). Sobrescreve com PUBLIC_BASE_URL no .env.
 DEFAULT_PUBLIC_MARKETING_BASE = "https://zapaction.com.br"
@@ -52,6 +52,24 @@ def public_base_url() -> str:
     if p:
         return p
     return DEFAULT_PUBLIC_MARKETING_BASE.strip().rstrip("/")
+
+
+def get_support_whatsapp_url() -> str:
+    """
+    Link wa.me para o botão de suporte no painel.
+    - SUPPORT_WHATSAPP_URL: URL completa (tem precedência).
+    - SUPPORT_WHATSAPP_NUMBER ou SUPPORT_WHATSAPP_PHONE: só dígitos com DDI (ex.: 5514999999999).
+    - SUPPORT_WHATSAPP_TEXT: mensagem pré-preenchida (opcional).
+    """
+    raw = (os.getenv("SUPPORT_WHATSAPP_URL") or "").strip()
+    if raw:
+        return raw
+    num = (os.getenv("SUPPORT_WHATSAPP_NUMBER") or os.getenv("SUPPORT_WHATSAPP_PHONE") or "").strip()
+    digits = "".join(c for c in num if c.isdigit())
+    if not digits:
+        return ""
+    text = (os.getenv("SUPPORT_WHATSAPP_TEXT") or "Olá! Preciso de ajuda com o ZapAction.").strip()
+    return f"https://wa.me/{digits}?text={quote(text, safe='')}"
 
 
 def _hostname(url: str) -> str:

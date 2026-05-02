@@ -366,6 +366,9 @@
         function notificarNovaMensagem(data) {
             if (data.cliente_id != null && String(data.cliente_id) !== String(MEU_ID)) return;
             if (data.funcao !== "user") return;
+            var canalEv = data.canal || "whatsapp";
+            var ridEv = data.remote_id || "";
+            if (typeof window.agenteiaChatAberto === "function" && window.agenteiaChatAberto(canalEv, ridEv)) return;
             if (!document.hidden) return;
             if (Date.now() - ultimoFoco < 2500) return;
             var texto = (data.conteudo || "").slice(0, 60);

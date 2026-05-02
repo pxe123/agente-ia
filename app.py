@@ -208,17 +208,28 @@ def inject_domain_urls():
     Em localhost: ambos = origem do pedido (links relativos ao dev server).
     """
     from flask import request
-    from base.domain_redirects import app_base_url, is_local_request, public_base_url
+    from base.domain_redirects import (
+        app_base_url,
+        get_support_whatsapp_url,
+        is_local_request,
+        public_base_url,
+    )
 
     if is_local_request(request):
         root = request.url_root.rstrip("/")
         public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
-        return {"PUBLIC_BASE_URL": root, "APP_BASE_URL": root, "PUBLIC_CHAT_EMBED_KEY": public_chat_key}
+        return {
+            "PUBLIC_BASE_URL": root,
+            "APP_BASE_URL": root,
+            "PUBLIC_CHAT_EMBED_KEY": public_chat_key,
+            "support_whatsapp_url": get_support_whatsapp_url(),
+        }
     public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
     return {
         "PUBLIC_BASE_URL": public_base_url(),
         "APP_BASE_URL": app_base_url(),
         "PUBLIC_CHAT_EMBED_KEY": public_chat_key,
+        "support_whatsapp_url": get_support_whatsapp_url(),
     }
 
 @app.context_processor

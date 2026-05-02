@@ -125,6 +125,41 @@ function normalizarRemoteId(rid) {
     return String(rid || "").replace(/@.*$/, "").trim();
 }
 
+/**
+ * Chave alinhada ao backend (`_remote_id_chave_painel_whatsapp`) para badges não lidos / marcar-lido.
+ * Sem isto, API devolve 5514… mas o clique limpa outra chave e o contador do separador WhatsApp volta.
+ */
+function chaveUnreadRemoto(canal, remote_id) {
+    const c = String(canal || "").toLowerCase();
+    const base = normalizarRemoteId(remote_id);
+    if (!base) return "";
+    if (c !== "whatsapp") return base;
+    const d = base.replace(/\D/g, "");
+    if (!d) return base;
+    if (d.length === 10 || d.length === 11) return "55" + d;
+    if ((d.length === 12 || d.length === 13) && d.startsWith("55")) return d;
+    return base;
+}
+
+/** Mesmo interlocutor no canal (WhatsApp: compara chave E.164; evita marcar não-lido com a conversa aberta). */
+function mesmoContatoNoCanal(canal, a, b) {
+    const c = String(canal || "").toLowerCase();
+    if (a == null || b == null) return false;
+    if (c === "whatsapp") {
+        const ka = chaveUnreadRemoto("whatsapp", a);
+        const kb = chaveUnreadRemoto("whatsapp", b);
+        return Boolean(ka && kb && ka === kb);
+    }
+    return normalizarRemoteId(a) === normalizarRemoteId(b);
+}
+
+/** Usado em layout.html para não mostrar notificação global da conversa que está aberta no /chat. */
+window.agenteiaChatAberto = function (canal, remote_id) {
+    if (!idRemotoAtivo || !canalAtivo) return false;
+    if (String(canal || "whatsapp").toLowerCase() !== String(canalAtivo).toLowerCase()) return false;
+    return mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo);
+};
+
 const LIMITE_HISTORICO_INICIAL = 100;
 const LIMITE_PAGINA_ANTIGA = 50;
 
@@ -324,12 +359,12 @@ function atualizarBadgesCanais() {
 
 function marcarUnread(canal, remote_id) {
     if (!unreadByChannel[canal]) unreadByChannel[canal] = {};
-    unreadByChannel[canal][normalizarRemoteId(remote_id)] = true;
+    unreadByChannel[canal][chaveUnreadRemoto(canal, remote_id)] = true;
     atualizarBadgesCanais();
 }
 
 function limparUnread(canal, remote_id) {
-    const key = normalizarRemoteId(remote_id);
+    const key = chaveUnreadRemoto(canal, remote_id);
     if (unreadByChannel[canal]) delete unreadByChannel[canal][key];
     atualizarBadgesCanais();
 }
@@ -348,13 +383,7 @@ async function marcarTodasComoLidas() {
             renderizarListaContatos();
             return;
         }
-        await Promise.all(ids.map((rid) =>
-            fetch("/api/mensagens/marcar-lido", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-                body: JSON.stringify({ canal, remote_id: normalizarRemoteId(rid) || rid })
-            })
-        ));
+        ids.forEach((rid) => marcarLidoNoServidor(canal, rid, { immediate: true }));
         if (unreadByChannel[canal]) unreadByChannel[canal] = {};
         atualizarBadgesCanais();
         renderizarListaContatos();
@@ -365,6 +394,40 @@ async function marcarTodasComoLidas() {
 
 function limparUnreadCanalAoAbrir(remote_id) {
     limparUnread(canalAtivo, remote_id);
+}
+
+/** Debounce por canal+remote_id: evita rajadas de POST ao receber várias mensagens seguidas. */
+const _marcarLidoTimers = {};
+function marcarLidoNoServidor(canal, remote_id, opts) {
+    const rid = chaveUnreadRemoto(canal, remote_id);
+    if (!canal || !rid) return;
+    const key = canal + "|" + rid;
+    const immediate = opts && opts.immediate === true;
+
+    function doPost(fetchOpts) {
+        return fetch("/api/mensagens/marcar-lido", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify({ canal, remote_id: rid }),
+            ...(fetchOpts || {})
+        })
+            .then(() => atualizarBadgesCanais())
+            .catch(() => {});
+    }
+
+    if (immediate) {
+        if (_marcarLidoTimers[key]) {
+            clearTimeout(_marcarLidoTimers[key]);
+            delete _marcarLidoTimers[key];
+        }
+        return doPost();
+    }
+
+    if (_marcarLidoTimers[key]) clearTimeout(_marcarLidoTimers[key]);
+    _marcarLidoTimers[key] = setTimeout(() => {
+        delete _marcarLidoTimers[key];
+        doPost();
+    }, 500);
 }
 
 /** Distância em px do fundo para considerar "no final" (evita puxar scroll se o usuário está lendo histórico). */
@@ -414,6 +477,8 @@ socket.on("nova_mensagem", (data) => {
     const isUser = data.funcao === "user";
     if (!data.created_at) data.created_at = new Date().toISOString();
 
+    if (existeDuplicataRecente(mensagensGlobais, data, 25000)) return;
+
     if (canal !== canalAtivo) {
         if (isUser) {
             marcarUnread(canal, data.remote_id);
@@ -426,9 +491,9 @@ socket.on("nova_mensagem", (data) => {
     }
 
     // Evitar duplicata: se for resposta nossa que já mostramos ao enviar, não adicionar de novo
-    const ehConversaAbertaAgora = normalizarRemoteId(idRemotoAtivo) === normalizarRemoteId(data.remote_id);
+    const ehConversaAbertaAgora = Boolean(idRemotoAtivo && mesmoContatoNoCanal(canal, data.remote_id, idRemotoAtivo));
     if (!isUser) {
-        const ultima = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(data.remote_id)).pop();
+        const ultima = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canal, m.remote_id, data.remote_id)).pop();
         if (ultima && ultima.funcao === "assistant" && ultima.conteudo === data.conteudo) return;
     } else {
         // Só marcar não lida e notificar se NÃO for a conversa que está aberta na tela
@@ -436,12 +501,13 @@ socket.on("nova_mensagem", (data) => {
             marcarUnread(canal, data.remote_id);
             tocarSomNotificacao();
             if (document.hidden) mostrarNotificacaoDesktop("Nova mensagem", (data.conteudo || "").slice(0, 60) + (data.conteudo && data.conteudo.length > 60 ? "…" : ""));
+        } else if (!document.hidden) {
+            marcarLidoNoServidor(canal, data.remote_id);
         }
     }
 
-    if (existeDuplicataRecente(mensagensGlobais, data, 25000)) return;
     mensagensGlobais.push(data);
-    if (normalizarRemoteId(idRemotoAtivo) === normalizarRemoteId(data.remote_id)) {
+    if (idRemotoAtivo && mesmoContatoNoCanal(canal, data.remote_id, idRemotoAtivo)) {
         const container = document.getElementById("chat-container");
         const estavaNoFundo = container ? estaPertoDoFundo(container) : true;
         adicionarBalaoChat(data, false, false);
@@ -450,12 +516,38 @@ socket.on("nova_mensagem", (data) => {
     renderizarListaContatos();
 });
 
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && idRemotoAtivo) {
+        marcarLidoNoServidor(canalAtivo, idRemotoAtivo, { immediate: true });
+    }
+});
+
+/** Antes de fechar/atualizar a aba, envia leitura pendente (debounce de 500ms pode não ter disparado). */
+window.addEventListener("pagehide", () => {
+    if (!idRemotoAtivo) return;
+    const rid = chaveUnreadRemoto(canalAtivo, idRemotoAtivo);
+    if (!rid || !canalAtivo) return;
+    const key = canalAtivo + "|" + rid;
+    if (_marcarLidoTimers[key]) {
+        clearTimeout(_marcarLidoTimers[key]);
+        delete _marcarLidoTimers[key];
+    }
+    try {
+        fetch("/api/mensagens/marcar-lido", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify({ canal: canalAtivo, remote_id: rid }),
+            keepalive: true
+        }).catch(() => {});
+    } catch (_) {}
+});
+
 // Atualiza a área do chat aberto. Se só chegou mensagem nova, só acrescenta o balão e rola (sem redesenhar tudo).
 function atualizarAreaChatAberta(sempreAtualizar) {
     if (!idRemotoAtivo) return;
     const container = document.getElementById("chat-container");
     if (!container) return;
-    const mensagensFiltradas = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(idRemotoAtivo));
+    const mensagensFiltradas = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, idRemotoAtivo));
     const numBaloes = container.querySelectorAll(".msg-balao").length;
 
     if (!sempreAtualizar && numBaloes === mensagensFiltradas.length) return;
@@ -482,15 +574,18 @@ function atualizarAreaChatAberta(sempreAtualizar) {
     rolarFinal(true); // instantâneo no redesenho completo para não parecer que "rola todas"
 }
 
-function chaveMsg(m) {
-    return String(m.remote_id) + "|" + (m.created_at || "") + "|" + (m.conteudo || "").slice(0, 80);
-}
-
 /** Chave estável para deduplicar mensagens (merge thread / polling). */
 function chaveMensagemUnica(m) {
     if (!m) return "";
     if (m.id != null && String(m.id).length) return "id:" + String(m.id);
-    return String(m.remote_id || "") + "|" + (m.created_at || "") + "|" + (m.funcao || "") + "|" + String(m.conteudo || "").slice(0, 120);
+    const c = String(m.canal || "whatsapp").toLowerCase();
+    const ridPart =
+        c === "whatsapp"
+            ? chaveUnreadRemoto("whatsapp", m.remote_id) || normalizarRemoteId(m.remote_id)
+            : normalizarRemoteId(m.remote_id);
+    const t = new Date(m.created_at || 0).getTime();
+    const tKey = Number.isFinite(t) ? String(Math.floor(t / 1000)) : String(m.created_at || "");
+    return String(ridPart || "") + "|" + tKey + "|" + (m.funcao || "") + "|" + String(m.conteudo || "").slice(0, 120);
 }
 
 function _tsMs(v) {
@@ -526,18 +621,18 @@ function existeDuplicataRecente(lista, msg, janelaMs) {
  * substituir o histórico já carregado da conversa aberta.
  */
 function mesclarListaComThreadAberto(prev, ordenadoLista, canal) {
-    const ridActive = idRemotoAtivo ? normalizarRemoteId(idRemotoAtivo) : "";
-    if (!ridActive || !Array.isArray(prev) || !Array.isArray(ordenadoLista)) {
+    const c = canal || "whatsapp";
+    if (!idRemotoAtivo || !Array.isArray(prev) || !Array.isArray(ordenadoLista)) {
         return ordenadoLista;
     }
     const threadAberto = prev.filter(
-        (m) => normalizarRemoteId(m.remote_id) === ridActive && (m.canal || "whatsapp") === (canal || "whatsapp")
+        (m) => mesmoContatoNoCanal(c, m.remote_id, idRemotoAtivo) && (m.canal || "whatsapp") === c
     );
     if (threadAberto.length === 0) {
         return ordenadoLista;
     }
     const keys = new Set(threadAberto.map(chaveMensagemUnica));
-    const latestFromApi = ordenadoLista.find((m) => normalizarRemoteId(m.remote_id) === ridActive);
+    const latestFromApi = ordenadoLista.find((m) => mesmoContatoNoCanal(c, m.remote_id, idRemotoAtivo));
     let merged = threadAberto.slice();
     if (latestFromApi) {
         const k = chaveMensagemUnica(latestFromApi);
@@ -546,7 +641,7 @@ function mesclarListaComThreadAberto(prev, ordenadoLista, canal) {
             keys.add(k);
         }
     }
-    const outros = ordenadoLista.filter((m) => normalizarRemoteId(m.remote_id) !== ridActive);
+    const outros = ordenadoLista.filter((m) => !mesmoContatoNoCanal(c, m.remote_id, idRemotoAtivo));
     const combinado = [...outros, ...merged].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const dedup = [];
     combinado.forEach((m) => {
@@ -573,7 +668,7 @@ async function carregarContatosNaoLidos() {
             unreadByChannel[c] = {};
             const ids = data[c];
             if (Array.isArray(ids) && ids.length) {
-                ids.forEach((rid) => { unreadByChannel[c][normalizarRemoteId(rid)] = true; });
+                ids.forEach((rid) => { unreadByChannel[c][chaveUnreadRemoto(c, rid)] = true; });
             }
         });
         atualizarBadgesCanais();
@@ -611,24 +706,28 @@ async function carregarMensagens(canal) {
         // Só notificar mensagens "novas" quando estamos atualizando o MESMO canal (polling), não ao trocar de aba
         const mesmoCanal = canal === ultimoCanalCarregado;
         const msgsUserAntes = new Set(
-            prev.filter((m) => (m.canal || "whatsapp") === canal && m.funcao === "user").map(chaveMsg)
+            prev.filter((m) => (m.canal || "whatsapp") === canal && m.funcao === "user").map(chaveMensagemUnica)
         );
-        const countAtivoAntes = idRemotoAtivo ? prev.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(idRemotoAtivo)).length : 0;
+        const countAtivoAntes = idRemotoAtivo ? prev.filter((m) => mesmoContatoNoCanal(canal, m.remote_id, idRemotoAtivo)).length : 0;
         mensagensGlobais = mesclarListaComThreadAberto(prev, ordenado, canal);
         ultimoCanalCarregado = canal;
         if (!eraPrimeiraCarga && mesmoCanal) {
             ordenado.filter((m) => m.funcao === "user").forEach((m) => {
-                if (msgsUserAntes.has(chaveMsg(m))) return;
-                const ehConversaAberta = normalizarRemoteId(idRemotoAtivo) === normalizarRemoteId(m.remote_id);
+                if (msgsUserAntes.has(chaveMensagemUnica(m))) return;
+                const ehConversaAberta = mesmoContatoNoCanal(canal, m.remote_id, idRemotoAtivo);
                 if (!ehConversaAberta) {
                     marcarUnread(canal, m.remote_id);
                     tocarSomNotificacao();
                     if (document.hidden) mostrarNotificacaoDesktop("Nova mensagem", (m.conteudo || "").slice(0, 60) + (m.conteudo && m.conteudo.length > 60 ? "…" : ""));
+                } else {
+                    marcarLidoNoServidor(canal, m.remote_id);
                 }
             });
         }
         // Só manter como "não lido" conversas que existem na lista atual (evita badge de chats que sumiram da timeline)
-        const idsNaLista = new Set(mensagensGlobais.map((m) => normalizarRemoteId(m.remote_id)));
+        const idsNaLista = new Set(
+            mensagensGlobais.map((m) => chaveUnreadRemoto(m.canal || canal, m.remote_id))
+        );
         if (unreadByChannel[canal]) {
             Object.keys(unreadByChannel[canal]).forEach((rid) => {
                 if (!idsNaLista.has(rid)) delete unreadByChannel[canal][rid];
@@ -636,7 +735,7 @@ async function carregarMensagens(canal) {
         }
         atualizarBadgesCanais();
         renderizarListaContatos();
-        const countAtivoDepois = idRemotoAtivo ? mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(idRemotoAtivo)).length : 0;
+        const countAtivoDepois = idRemotoAtivo ? mensagensGlobais.filter((m) => mesmoContatoNoCanal(canal, m.remote_id, idRemotoAtivo)).length : 0;
         const temMensagemNova = countAtivoDepois > countAtivoAntes;
         atualizarAreaChatAberta(temMensagemNova);
     } catch (err) {
@@ -742,8 +841,8 @@ function renderizarListaContatos() {
     listaUl.innerHTML = "";
     contatosFiltrados.forEach((contato) => {
         const info = getContactInfo(contato);
-        const eAtivo = normalizarRemoteId(idRemotoAtivo) === normalizarRemoteId(contato.remote_id);
-        const temUnread = !!(unreadByChannel[canalAtivo] && unreadByChannel[canalAtivo][normalizarRemoteId(contato.remote_id)]);
+        const eAtivo = Boolean(idRemotoAtivo && mesmoContatoNoCanal(canalAtivo, contato.remote_id, idRemotoAtivo));
+        const temUnread = !!(unreadByChannel[canalAtivo] && unreadByChannel[canalAtivo][chaveUnreadRemoto(canalAtivo, contato.remote_id)]);
         const rid = contato.remote_id;
         const li = document.createElement("li");
         li.className = `border-b border-slate-100 transition-all ${eAtivo ? "bg-blue-50 border-r-4 border-blue-500" : ""}`;
@@ -819,10 +918,10 @@ function renderizarListaContatos() {
 function redesenharBaloesConversaAberta(remote_id) {
     const container = document.getElementById("chat-container");
     if (!container) return;
-    if (normalizarRemoteId(idRemotoAtivo) !== normalizarRemoteId(remote_id)) return;
+    if (!idRemotoAtivo || !mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) return;
     container.querySelectorAll(".msg-balao").forEach((el) => el.remove());
     const mensagensFiltradas = mensagensGlobais.filter(
-        (m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(remote_id)
+        (m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id)
     );
     mensagensFiltradas.forEach((msg) => adicionarBalaoChat(msg, false, true));
     atualizarBotaoCarregarMais(remote_id);
@@ -833,7 +932,7 @@ function redesenharBaloesConversaAberta(remote_id) {
  * Busca até 100 mensagens recentes da conversa e substitui o cache local deste remote_id.
  */
 async function carregarHistoricoInicialConversa(remote_id) {
-    const rid = normalizarRemoteId(remote_id);
+    const ridKey = chaveUnreadRemoto(canalAtivo, remote_id);
     const wrap = document.getElementById("chat-load-more");
     try {
         const params = new URLSearchParams({ remote_id: String(remote_id), limit: String(LIMITE_HISTORICO_INICIAL) });
@@ -861,20 +960,20 @@ async function carregarHistoricoInicialConversa(remote_id) {
             .map((m) => ({ ...m, canal: m.canal || canalAtivo }))
             .sort(compararMensagemHistorico);
 
-        if (normalizarRemoteId(idRemotoAtivo) !== rid) return;
+        if (!idRemotoAtivo || !mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) return;
 
-        const outras = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) !== rid);
+        const outras = mensagensGlobais.filter((m) => !mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id));
         mensagensGlobais = [...outras, ...ordenadas].sort(compararMensagemHistorico);
-        semMaisAntigasPorRemote[rid] = ordenadas.length < LIMITE_HISTORICO_INICIAL;
+        semMaisAntigasPorRemote[ridKey] = ordenadas.length < LIMITE_HISTORICO_INICIAL;
         redesenharBaloesConversaAberta(remote_id);
     } catch (e) {
         console.error("[Chat] carregarHistoricoInicialConversa:", e);
-        if (normalizarRemoteId(idRemotoAtivo) !== rid) return;
+        if (!idRemotoAtivo || !mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) return;
         if (wrap) {
             wrap.classList.remove("pointer-events-none");
             wrap.innerHTML = "<span class=\"text-xs text-amber-700\">Não foi possível carregar o histórico. Tente novamente.</span>";
         }
-        const fallback = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === rid);
+        const fallback = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id));
         if (fallback.length) {
             redesenharBaloesConversaAberta(remote_id);
         }
@@ -886,12 +985,8 @@ function abrirChat(remote_id) {
     console.log("[Chat] Contato selecionado", { remote_id, canal: canalAtivo });
     limparUnreadCanalAoAbrir(remote_id);
     window.dispatchEvent(new CustomEvent("agenteia-conversa-lida"));
-    fetch("/api/mensagens/marcar-lido", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ canal: canalAtivo, remote_id: normalizarRemoteId(remote_id) || remote_id })
-    }).then(() => atualizarBadgesCanais()).catch(() => {});
-    const ultimaMsg = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(remote_id)).pop();
+    marcarLidoNoServidor(canalAtivo, remote_id, { immediate: true });
+    const ultimaMsg = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id)).pop();
     const info = getContactInfo(ultimaMsg || { remote_id, canal: canalAtivo });
 
     const headerNome = document.getElementById("chat-nome");
@@ -1136,7 +1231,7 @@ function adicionarBalaoChat(msg, scrollAgora, semAnimacao, prepend) {
 function atualizarBotaoCarregarMais(remote_id) {
     const wrap = document.getElementById("chat-load-more");
     if (!wrap) return;
-    const rid = normalizarRemoteId(remote_id);
+    const rid = chaveUnreadRemoto(canalAtivo, remote_id);
     if (semMaisAntigasPorRemote[rid]) {
         wrap.innerHTML = "<span class=\"text-xs text-slate-400\">Não há mais mensagens antigas</span>";
         wrap.classList.add("pointer-events-none");
@@ -1169,9 +1264,9 @@ function bindScrollCarregarAntigas(container, remote_id) {
         raf = requestAnimationFrame(() => {
             raf = null;
             if (loadingMaisAntigas) return;
-            if (normalizarRemoteId(idRemotoAtivo) !== normalizarRemoteId(remote_id)) return;
-            if (semMaisAntigasPorRemote[normalizarRemoteId(remote_id)]) return;
-            const mensagensDesteChat = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === normalizarRemoteId(remote_id));
+            if (!idRemotoAtivo || !mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) return;
+            if (semMaisAntigasPorRemote[chaveUnreadRemoto(canalAtivo, remote_id)]) return;
+            const mensagensDesteChat = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id));
             if (mensagensDesteChat.length === 0) return;
             if (container.scrollTop < 100) carregarMensagensAntigas(remote_id);
         });
@@ -1180,9 +1275,9 @@ function bindScrollCarregarAntigas(container, remote_id) {
 }
 
 async function carregarMensagensAntigas(remote_id) {
-    const rid = normalizarRemoteId(remote_id);
+    const rid = chaveUnreadRemoto(canalAtivo, remote_id);
     if (loadingMaisAntigas || semMaisAntigasPorRemote[rid]) return;
-    const mensagensDesteChat = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) === rid);
+    const mensagensDesteChat = mensagensGlobais.filter((m) => mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id));
     if (mensagensDesteChat.length === 0) return;
     const ordenadas = [...mensagensDesteChat].sort(compararMensagemHistorico);
     const maisAntiga = ordenadas[0];
@@ -1243,12 +1338,12 @@ async function carregarMensagensAntigas(remote_id) {
         const novasAntigas = dataSemDuplicar
             .map((m) => ({ ...m, canal: m.canal || canalAtivo }))
             .sort(compararMensagemHistorico);
-        const outras = mensagensGlobais.filter((m) => normalizarRemoteId(m.remote_id) !== rid);
+        const outras = mensagensGlobais.filter((m) => !mesmoContatoNoCanal(canalAtivo, m.remote_id, remote_id));
         const todasDesteChat = [...novasAntigas, ...mensagensDesteChat];
         mensagensGlobais = [...outras, ...todasDesteChat].sort(compararMensagemHistorico);
 
         const container = document.getElementById("chat-container");
-        if (!container || normalizarRemoteId(idRemotoAtivo) !== rid) return;
+        if (!container || !idRemotoAtivo || !mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) return;
         const oldScrollHeight = container.scrollHeight;
         const oldScrollTop = container.scrollTop;
         novasAntigas.forEach((msg) => adicionarBalaoChat(msg, false, true, true));
@@ -1281,7 +1376,7 @@ async function carregarMensagensAntigas(remote_id) {
         showPainelToast("Não foi possível carregar mensagens antigas.", "error");
     } finally {
         loadingMaisAntigas = false;
-        if (normalizarRemoteId(idRemotoAtivo) === rid) {
+        if (idRemotoAtivo && mesmoContatoNoCanal(canalAtivo, remote_id, idRemotoAtivo)) {
             atualizarBotaoCarregarMais(remote_id);
         }
     }
