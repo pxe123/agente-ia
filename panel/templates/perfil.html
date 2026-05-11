@@ -3,25 +3,25 @@
 {% block page_title %}Meu perfil{% endblock %}
 
 {% block content %}
-<div class="p-6 lg:p-8 max-w-2xl mx-auto">
+<div class="p-6 lg:p-8 max-w-4xl mx-auto">
     <div class="bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
         <div class="p-6 border-b border-slate-100">
             <h3 class="font-bold text-slate-800">{% if is_perfil_sublogin %}Seu perfil{% else %}Dados da conta{% endif %}</h3>
             <p class="text-sm text-slate-500">{% if is_perfil_sublogin %}Altere seu nome e senha. O e-mail é o seu login.{% else %}Altere nome e senha. O e-mail é o seu login.{% endif %}</p>
         </div>
-        <form method="post" action="{{ url_for('customer.perfil_post') }}" class="p-6 space-y-4">
+        <form method="post" action="{{ url_for('customer.perfil_post') }}" class="p-6 space-y-4" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
             <div>
                 <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">Nome</label>
                 <input type="text" id="nome" name="nome" value="{{ cliente.nome or '' }}"
                        class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                       placeholder="{% if is_perfil_sublogin %}Seu nome{% else %}Seu nome ou da empresa{% endif %}">
+                       placeholder="{% if is_perfil_sublogin %}Seu nome{% else %}Seu nome ou da empresa{% endif %}" autocomplete="off" spellcheck="false">
             </div>
             <div>
                 <label for="email" class="block text-sm font-medium text-slate-700 mb-1">E-mail (login)</label>
                 <input type="email" id="email" value="{{ cliente.email or '' }}" disabled
                        class="w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-600 cursor-not-allowed"
-                       title="Alteração de e-mail entre em contato com o administrador da conta.">
+                       title="Alteração de e-mail entre em contato com o administrador da conta." autocomplete="off">
             </div>
             {% if not is_perfil_sublogin %}
             <div>
@@ -36,7 +36,7 @@
                 <div class="relative">
                     <input type="password" id="nova_senha" name="nova_senha" minlength="6"
                            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12"
-                           placeholder="Mínimo 6 caracteres">
+                           placeholder="Mínimo 6 caracteres" autocomplete="new-password" autocapitalize="none" spellcheck="false">
                     <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar senha" data-target="nova_senha">
                         <i class="fa-regular fa-eye"></i>
                     </button>
@@ -47,7 +47,7 @@
                 <div class="relative">
                     <input type="password" id="nova_senha2" name="nova_senha2" minlength="6"
                            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12"
-                           placeholder="Repita a nova senha">
+                           placeholder="Repita a nova senha" autocomplete="new-password" autocapitalize="none" spellcheck="false">
                     <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar senha" data-target="nova_senha2">
                         <i class="fa-regular fa-eye"></i>
                     </button>
@@ -83,6 +83,17 @@
             {% set trial_end = cliente.get('trial_ends_at') %}
             {% set period_end = cliente.get('billing_current_period_end') %}
             {% set cancel_flag = cliente.get('billing_cancel_at_period_end') %}
+            {% set current_key = (cliente.get('billing_plan_key') or cliente.get('plano') or 'default') %}
+            {% set pending_plan = cliente.get('billing_pending_plan_key') %}
+            {% set pending_at = cliente.get('billing_pending_plan_change_at') %}
+            {% set plans_list = plans if plans is defined and plans else [] %}
+            {% set is_active_like = (st in ('active','authorized','trialing','cancel_scheduled')) %}
+            {% set ns = namespace(current_price=0.0) %}
+            {% for p in plans_list %}
+                {% if (p.get('plan_key') or p.plan_key) == current_key %}
+                    {% set ns.current_price = (p.get('price') or p.price or 0)|float %}
+                {% endif %}
+            {% endfor %}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="p-4 rounded-xl border border-slate-200 bg-slate-50">
                     <div class="text-slate-500 text-xs">Status</div>
@@ -119,11 +130,75 @@
             </div>
             {% endif %}
 
+            {% if pending_plan %}
+            <div class="p-4 rounded-xl bg-blue-50 text-blue-800 border border-blue-200">
+                Downgrade para <strong>{{ pending_plan }}</strong> agendado para {{ pending_at or 'o fim do período atual' }}.
+            </div>
+            {% endif %}
+
+            {% if plans_list %}
+            <div class="pt-2">
+                <div class="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                        <h4 class="font-semibold text-slate-800">Trocar plano</h4>
+                        <p class="text-xs text-slate-500">Upgrade cobra pró-rata agora. Downgrade entra no fim do período.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {% for p in plans_list %}
+                    {% set key = p.get('plan_key') or p.plan_key %}
+                    {% set name = p.get('name') or p.name or key %}
+                    {% set price = (p.get('price') or p.price or 0)|float %}
+                    {% set currency = p.get('currency') or p.currency or 'BRL' %}
+                    {# Só considerar "plano atual" quando a assinatura está realmente ativa/aprovada #}
+                    {% set is_current = (is_active_like and key == current_key) %}
+                    {% set is_pending = pending_plan and key == pending_plan %}
+                    <div class="rounded-2xl border {{ 'border-emerald-300 bg-emerald-50' if is_current else 'border-slate-200 bg-white' }} p-4 flex flex-col gap-3">
+                        <div>
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="font-bold text-slate-800">{{ name }}</div>
+                                {% if is_current %}
+                                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Atual</span>
+                                {% elif is_pending %}
+                                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Agendado</span>
+                                {% endif %}
+                            </div>
+                            <div class="mt-2 text-2xl font-bold text-slate-900">
+                                R$ {{ ('%.2f'|format(price)).replace('.', ',') }}
+                                <span class="text-xs font-medium text-slate-500">/mês · {{ currency }}</span>
+                            </div>
+                        </div>
+                        {% if is_current %}
+                        <button type="button" class="mt-auto py-2.5 rounded-xl border border-emerald-200 bg-white text-emerald-700 font-semibold cursor-default" disabled>
+                            Plano atual
+                        </button>
+                        {% elif is_pending %}
+                        <button type="button" class="mt-auto py-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 font-semibold cursor-default" disabled>
+                            Downgrade agendado
+                        </button>
+                        {% elif price > ns.current_price %}
+                        <button type="button" data-plan-action="upgrade" data-plan-key="{{ key }}"
+                                class="btn-plan-change mt-auto py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
+                            Fazer upgrade
+                        </button>
+                        {% elif price < ns.current_price %}
+                        <button type="button" data-plan-action="downgrade" data-plan-key="{{ key }}"
+                                class="btn-plan-change mt-auto py-2.5 rounded-xl bg-white text-slate-700 font-semibold border border-slate-200 hover:bg-slate-50 transition">
+                            Agendar downgrade
+                        </button>
+                        {% else %}
+                        <button type="button" data-plan-action="subscribe" data-plan-key="{{ key }}"
+                                class="btn-plan-change mt-auto py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
+                            {% if st == 'pending' %}Tentar pagar novamente{% else %}Assinar este plano{% endif %}
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <div class="flex flex-col sm:flex-row gap-3">
-                <button type="button" id="btn-assinar"
-                        class="flex-1 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition">
-                    <i class="fas fa-lock mr-2"></i>Assinar agora
-                </button>
                 <button type="button" id="btn-cancelar"
                         class="flex-1 py-3 bg-white text-red-700 font-semibold rounded-xl border border-red-200 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         {% if cancel_flag %}disabled{% endif %}>
@@ -181,8 +256,8 @@
   var card = document.getElementById("assinatura-card");
   if (!card) return;
 
-  var btnAssinar = document.getElementById("btn-assinar");
   var btnCancelar = document.getElementById("btn-cancelar");
+  var planButtons = Array.prototype.slice.call(document.querySelectorAll(".btn-plan-change"));
   var msg = document.getElementById("assinatura-msg");
 
   function setMsg(text, isError) {
@@ -205,31 +280,57 @@
     }
   }
 
-  async function doCheckout() {
+  function setPlanButtonsDisabled(disabled) {
+    planButtons.forEach(function(btn) { btn.disabled = !!disabled; });
+  }
+
+  async function doPlanChange(btn) {
+    var action = (btn && btn.getAttribute("data-plan-action") || "").trim();
+    var toPlanKey = (btn && btn.getAttribute("data-plan-key") || "").trim();
+    if (!action || !toPlanKey) return;
+    if (action === "downgrade" && !confirm("Agendar downgrade para o fim do período atual? Seus acessos atuais continuam até lá.")) {
+      return;
+    }
     try {
-      setMsg("Abrindo checkout…");
-      btnAssinar.disabled = true;
-      var planKey = (card.getAttribute("data-plan-key") || "default").trim();
+      setMsg(action === "downgrade" ? "Agendando downgrade…" : "Abrindo checkout…");
+      setPlanButtonsDisabled(true);
       var email = (card.getAttribute("data-email") || "").trim();
-      var r = await fetch("/api/billing/mp/checkout", {
+      var url = "/api/billing/mp/checkout";
+      var payload = { plan_key: toPlanKey, payer_email: email };
+      if (action === "upgrade") {
+        url = "/api/billing/mp/prorata-checkout";
+        payload = { to_plan_key: toPlanKey, payer_email: email };
+      } else if (action === "downgrade") {
+        url = "/api/billing/mp/schedule-downgrade";
+        payload = { to_plan_key: toPlanKey };
+      }
+      var r = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || "").trim()
         },
         credentials: "same-origin",
-        body: bodyJson({ plan_key: planKey, payer_email: email })
+        body: bodyJson(payload)
       });
       var j = await r.json().catch(function() { return null; });
-      if (!r.ok || !j || !j.ok || !j.init_point) {
+      if (!r.ok || !j || !j.ok) {
         var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
-        throw new Error("Não foi possível iniciar o checkout." + detalhe);
+        throw new Error("Não foi possível trocar o plano." + detalhe);
+      }
+      if (action === "downgrade") {
+        setMsg("Downgrade agendado para " + (j.change_at || "o fim do período atual") + ".");
+        window.location.reload();
+        return;
+      }
+      if (!j.init_point) {
+        throw new Error("Checkout criado sem URL de pagamento.");
       }
       window.location.href = j.init_point;
     } catch (e) {
       setMsg(String(e && e.message ? e.message : e), true);
     } finally {
-      btnAssinar.disabled = false;
+      setPlanButtonsDisabled(false);
     }
   }
 
@@ -255,7 +356,9 @@
     }
   }
 
-  if (btnAssinar) btnAssinar.addEventListener("click", doCheckout);
+  planButtons.forEach(function(btn) {
+    btn.addEventListener("click", function() { doPlanChange(btn); });
+  });
   if (btnCancelar) btnCancelar.addEventListener("click", doCancel);
 })();
 </script>

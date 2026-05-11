@@ -80,6 +80,15 @@ def get_billing_state(cliente_id: str) -> Tuple[str, Optional[datetime], Optiona
     """
     if not supabase:
         return "active", None, None, None
+
+    # Fonte de verdade (Fase 3): subscriptions por tenant, com fallback para clientes.billing_*
+    try:
+        from services.billing.subscription_service import get_tenant_subscription_state
+
+        st, period_end, trial_end, plan_key = get_tenant_subscription_state(str(cliente_id))
+        return st, period_end, trial_end, plan_key
+    except Exception:
+        pass
     try:
         res = (
             supabase.table(Tables.CLIENTES)
@@ -119,9 +128,24 @@ def get_billing_state(cliente_id: str) -> Tuple[str, Optional[datetime], Optiona
         return "active", None, None, None
 
 
+def _is_super_admin_tenant(cliente_id: str | None) -> bool:
+    """True se cliente_id está em SUPER_ADMIN_TENANT_IDS (.env); não depende de request/sessão."""
+    cid = str(cliente_id or "").strip().lower()
+    if not cid:
+        return False
+    try:
+        raw = list(getattr(settings, "SUPER_ADMIN_TENANT_IDS", []) or [])
+    except Exception:
+        raw = []
+    allow = {str(x).strip().lower() for x in raw if str(x).strip()}
+    return cid in allow
+
+
 def can_use_product(cliente_id: str) -> EntitlementResult:
     if _admin_full_access():
         return EntitlementResult(True, "active", "admin_master")
+    if _is_super_admin_tenant(cliente_id):
+        return EntitlementResult(True, "active", "super_admin_tenant")
     status, period_end, trial_end, plan_key = get_billing_state(cliente_id)
 
     # Expiração de trial (best-effort). Se expirou, bloqueia.
@@ -133,6 +157,31 @@ def can_use_product(cliente_id: str) -> EntitlementResult:
         except Exception:
             pass
         return EntitlementResult(False, "inactive", "trial_expirado")
+
+    # Pendente: checkout iniciado ou cobrança ainda não confirmada.
+    # Nunca deve liberar acesso (mesmo em ambiente de desenvolvimento).
+    if status == "pending":
+        return EntitlementResult(False, status, "assinatura_pendente")
+
+    # Blindagem: não liberar acesso "ativo" sem assinatura válida referenciada.
+    # Trial interno pode não ter mp_preapproval_id; mas status pago (active/authorized/cancel_scheduled) deve ter.
+    if status in ("active", "authorized", "cancel_scheduled"):
+        try:
+            r = (
+                supabase.table(Tables.CLIENTES)
+                .select(getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id"))
+                .eq(ClienteModel.ID, cliente_id)
+                .limit(1)
+                .execute()
+            )
+            row = r.data[0] if r.data else {}
+            pid = (row.get(getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id")) or "").strip()
+        except Exception:
+            pid = ""
+        if not pid:
+            # Em produção, status pago sem referência do MP é inconsistente -> bloquear.
+            if getattr(settings, "ENVIRONMENT", "development") == "production":
+                return EntitlementResult(False, "inactive", "assinatura_inativa")
 
     # status normalizados do MP / interno
     # Regras de acesso: pending/past_due/cancel/inactive bloqueiam imediatamente.

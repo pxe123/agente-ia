@@ -14,7 +14,7 @@ _USER_ID_PREFIX_OPERADOR = "o:"
 class User(UserMixin):
     def __init__(self, id, email, plano='social', status_ia=True, ia_ativa=True, whatsapp_instancia=None,
                  acesso_whatsapp=True, acesso_instagram=True, acesso_messenger=True, acesso_site=True,
-                 cliente_id=None, operador_id=None, nome=None, is_admin_cliente=False, acesso_menus=None):
+                 cliente_id=None, operador_id=None, nome=None, is_admin_cliente=False, acesso_menus=None, role=None):
         self.id = id
         self.email = email
         self.plano = plano
@@ -30,6 +30,8 @@ class User(UserMixin):
         self.operador_id = operador_id
         self.nome = nome or ""
         self.is_admin_cliente = is_admin_cliente
+        # Role opcional (Fase 2): se presente, pode definir super_admin/tenant_admin/tenant_user.
+        self.role = role
         # Lista de chaves de menu que o sublogin pode ver/usar (chat, conexoes, chatbots, usuarios_setores). Dono ignora.
         self.acesso_menus = list(acesso_menus) if acesso_menus is not None else []
 
@@ -71,20 +73,41 @@ _LOAD_USER_TIMEOUT = 5
 
 # Colunas usadas ao carregar o dono da conta.
 # Importante: incluir `nome` para que o chat mostre o nome do perfil (e não o e-mail de login).
-_CLIENTES_SELECT = "id,auth_id,nome,email,plano,whatsapp_instancia,acesso_whatsapp,acesso_instagram,acesso_messenger,acesso_site"
+_CLIENTES_SELECT_BASE = "id,auth_id,nome,email,plano,whatsapp_instancia,acesso_whatsapp,acesso_instagram,acesso_messenger,acesso_site"
+
+# Compat: módulos legados importam `_CLIENTES_SELECT`.
+_CLIENTES_SELECT = _CLIENTES_SELECT_BASE
+
+
+def _select_cliente_row_by_auth_id(auth_id_str: str):
+    """
+    Lê o registro de clientes com colunas compatíveis.
+    `role` é opcional; tentamos incluir e, se o schema ainda não tiver, fazemos fallback sem quebrar login.
+    """
+    if supabase is None or not auth_id_str:
+        return None
+    try:
+        res = supabase.table("clientes").select(_CLIENTES_SELECT_BASE + ",role").eq("auth_id", auth_id_str).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+    try:
+        res = supabase.table("clientes").select(_CLIENTES_SELECT_BASE).eq("auth_id", auth_id_str).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        return None
+    return None
 
 
 def _load_cliente_as_user_by_auth_id(auth_id_str):
     """Carrega o dono da conta pelo auth_id (Supabase). Flask-Login id = 'c:' + auth_id."""
     if supabase is None or not auth_id_str:
         return None
-    try:
-        res = supabase.table("clientes").select(_CLIENTES_SELECT).eq("auth_id", auth_id_str).execute()
-    except Exception:
+    u = _select_cliente_row_by_auth_id(auth_id_str)
+    if not u:
         return None
-    if not res.data:
-        return None
-    u = res.data[0]
     pk = _pk_from_cliente_row(u)
     if pk is None:
         return None
@@ -107,6 +130,7 @@ def _load_cliente_as_user_by_auth_id(auth_id_str):
         operador_id=None,
         nome=u.get("nome") or "",
         is_admin_cliente=False,
+        role=(u.get("role") or None),
     )
 
 
@@ -115,7 +139,11 @@ def _load_cliente_as_user(cliente_pk):
     if supabase is None:
         return None
     try:
-        res = supabase.table("clientes").select(_CLIENTES_SELECT).eq("id", cliente_pk).execute()
+        # Também tenta role (coluna opcional)
+        try:
+            res = supabase.table("clientes").select(_CLIENTES_SELECT_BASE + ",role").eq("id", cliente_pk).execute()
+        except Exception:
+            res = supabase.table("clientes").select(_CLIENTES_SELECT_BASE).eq("id", cliente_pk).execute()
     except Exception:
         return None
     if not res.data:
@@ -135,7 +163,7 @@ def _load_operador_as_user(operador_id):
         from database.models import Tables, UsuarioInternoModel
         try:
             res = supabase.table(Tables.USUARIOS_INTERNOS).select(
-                "id,cliente_id,nome,email_login,ativo,is_admin_cliente,acesso_menus"
+                "id,cliente_id,nome,email_login,ativo,is_admin_cliente,acesso_menus,role"
             ).eq("id", operador_id).execute()
         except Exception:
             res = supabase.table(Tables.USUARIOS_INTERNOS).select(
@@ -175,6 +203,7 @@ def _load_operador_as_user(operador_id):
             nome=u.get("nome") or "",
             is_admin_cliente=bool(u.get("is_admin_cliente")),
             acesso_menus=acesso_menus,
+            role=(u.get("role") or None),
         )
     except Exception:
         return None
@@ -239,3 +268,25 @@ def is_admin(user):
     email = (getattr(user, "email", None) or "").strip().casefold()
     master = (getattr(settings, "ADMIN_EMAIL", None) or "").strip().casefold()
     return bool(email and master and email == master)
+
+
+def is_admin_like(user) -> bool:
+    """
+    Admin-like: acesso total ao sistema (ignora plano/canais/limites).
+    - Inclui o admin mestre (ADMIN_EMAIL)
+    - Inclui e-mails adicionais em ADMIN_EMAILS (lista separada por vírgula no .env)
+    """
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_authenticated:
+        return False
+    email = (getattr(user, "email", None) or "").strip().casefold()
+    if not email:
+        return False
+    master = (getattr(settings, "ADMIN_EMAIL", None) or "").strip().casefold()
+    extra = []
+    try:
+        extra = list(getattr(settings, "ADMIN_EMAILS", []) or [])
+    except Exception:
+        extra = []
+    extra_norm = [str(e or "").strip().casefold() for e in extra if str(e or "").strip()]
+    allow = [e for e in ([master] + extra_norm) if e]
+    return email in set(allow)

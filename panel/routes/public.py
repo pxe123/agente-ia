@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database.supabase_sq import supabase, supabase_public
 from database.models import Tables, ClienteModel
 from database.embed_key import gerar_embed_key
-from services.plans import list_active_plans, get_plan, plan_trial_ends_at, cliente_acesso_flags_for_plan
+from services.plans import list_active_plans, get_plan, get_plan_for_cliente, plan_trial_ends_at, cliente_acesso_flags_for_plan
 
 
 public_bp = Blueprint("public", __name__)
@@ -21,7 +21,7 @@ def precos():
 @public_bp.route("/cadastro", methods=["GET"])
 def cadastro_get():
     plan_key = (request.args.get("plano") or "").strip() or "social"
-    plan = get_plan(plan_key) or get_plan("social")
+    plan = get_plan_for_cliente(plan_key) or get_plan("social")
     return render_template("cadastro_publico.html", plan=plan, plan_key=plan_key)
 
 
@@ -42,7 +42,7 @@ def cadastro_post():
     senha2 = request.form.get("senha2") or ""
     plan_key = (request.form.get("plano") or "social").strip() or "social"
 
-    plan = get_plan(plan_key)
+    plan = get_plan_for_cliente(plan_key)
     if not plan:
         return render_template("cadastro_publico.html", mensagem="Plano inválido.", erro=True)
 
@@ -110,6 +110,22 @@ def cadastro_post():
     except Exception as e:
         return render_template("cadastro_publico.html", mensagem="Erro ao criar conta: " + str(e), erro=True, plan=plan, plan_key=plan_key, email=email, nome=nome)
 
+    # Fonte de verdade (Fase 3): subscriptions por tenant (best-effort)
+    try:
+        from services.billing.subscription_service import upsert_tenant_subscription
+
+        upsert_tenant_subscription(
+            cliente_id=str(cliente_pk),
+            provider="internal",
+            provider_subscription_id=None,
+            plan_key=plan_key,
+            status=("trialing" if trial_ends_at else "inactive"),
+            current_period_end=None,
+            trial_ends_at=trial_ends_at,
+        )
+    except Exception:
+        pass
+
     # Garantir que a página de sucesso abra no domínio público (zapaction),
     # mesmo quando o POST do cadastro acontece em outro host.
     from base.domain_redirects import public_base_url
@@ -122,7 +138,7 @@ def cadastro_post():
 def cadastro_sucesso():
     email = (request.args.get("email") or "").strip().lower()
     plan_key = (request.args.get("plano") or "").strip() or None
-    plan = get_plan(plan_key) if plan_key else None
+    plan = get_plan_for_cliente(plan_key) if plan_key else None
     return render_template("cadastro_sucesso.html", email=email, plan=plan, plan_key=plan_key)
 
 

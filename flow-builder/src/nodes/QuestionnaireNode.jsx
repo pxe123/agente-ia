@@ -88,6 +88,8 @@ export function QuestionnaireNode({ data, id, selected }) {
         value={intro}
         onChange={onIntroChange}
         placeholder="Texto introdutório (opcional)"
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 10,
@@ -108,6 +110,8 @@ export function QuestionnaireNode({ data, id, selected }) {
               value={q}
               onChange={(e) => onQuestionChange(i, e.target.value)}
               placeholder={`Pergunta ${i + 1}`}
+              autoComplete="off"
+              spellCheck={false}
               style={{
                 flex: 1,
                 background: '#f8fafc',
@@ -163,6 +167,8 @@ export function QuestionnaireNode({ data, id, selected }) {
                 value={keys[i] || ''}
                 onChange={(e) => onKeyChange(i, e.target.value)}
                 placeholder="ex: empresa, cargo"
+                autoComplete="off"
+                spellCheck={false}
                 style={{
                   width: 90,
                   background: '#f8fafc',

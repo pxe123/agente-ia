@@ -26,7 +26,23 @@ def get_plan(plan_key: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def list_active_plans() -> list[Dict[str, Any]]:
+def plan_is_available_to_cliente(plan: Optional[Dict[str, Any]], cliente_id: Optional[str] = None) -> bool:
+    if not plan:
+        return False
+    if not bool(plan.get(getattr(PlanModel, "IS_PRIVATE", "is_private"))):
+        return True
+    allowed_id = str(plan.get(getattr(PlanModel, "PRIVATE_CLIENTE_ID", "private_cliente_id")) or "").strip()
+    return bool(cliente_id and allowed_id and allowed_id == str(cliente_id).strip())
+
+
+def get_plan_for_cliente(plan_key: str, cliente_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    plan = get_plan(plan_key)
+    if not plan_is_available_to_cliente(plan, cliente_id):
+        return None
+    return plan
+
+
+def list_active_plans(cliente_id: Optional[str] = None, include_private: bool = False) -> list[Dict[str, Any]]:
     if not supabase:
         return []
     try:
@@ -37,13 +53,35 @@ def list_active_plans() -> list[Dict[str, Any]]:
             .order(PlanModel.PRICE)
             .execute()
         )
-        return r.data or []
+        rows = r.data or []
+        if include_private and cliente_id:
+            return [
+                p
+                for p in rows
+                if (
+                    not bool(p.get(getattr(PlanModel, "IS_PRIVATE", "is_private")))
+                    or plan_is_available_to_cliente(p, cliente_id)
+                )
+            ]
+        return [p for p in rows if not bool(p.get(getattr(PlanModel, "IS_PRIVATE", "is_private")))]
     except Exception:
         return []
 
 
 def plan_price(plan_key: str) -> Tuple[Optional[float], str]:
     plan = get_plan(plan_key)
+    if not plan:
+        return None, "BRL"
+    try:
+        price = float(plan.get(PlanModel.PRICE) or 0)
+    except Exception:
+        price = 0.0
+    currency = (plan.get(PlanModel.CURRENCY) or "BRL").strip() or "BRL"
+    return price, currency
+
+
+def plan_price_for_cliente(plan_key: str, cliente_id: Optional[str] = None) -> Tuple[Optional[float], str]:
+    plan = get_plan_for_cliente(plan_key, cliente_id)
     if not plan:
         return None, "BRL"
     try:

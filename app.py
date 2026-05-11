@@ -182,7 +182,7 @@ app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(public_bp)                        # /precos, /cadastro, /assinatura
 app.register_blueprint(seo_bp)                           # /sitemap.xml, /robots.txt
 
-from base.auth import is_admin, get_current_cliente_id
+from base.auth import is_admin, is_admin_like, get_current_cliente_id
 
 app.jinja_env.globals["getattr"] = getattr
 
@@ -401,8 +401,22 @@ def inject_billing_paywall():
         if ent.reason not in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso"):
             return {"billing_paywall": None}
 
+        from datetime import datetime, timezone
+
         status, period_end, trial_end, plan_key = get_billing_state(str(cid))
         plans = list_active_plans()
+
+        # Trial deve existir apenas na primeira vez. Depois que `trial_ends_at` existe,
+        # não exibimos novo trial no paywall e também não prometemos "dias de teste" nos cards.
+        has_used_trial = bool(trial_end)
+        show_trial = bool(status == "trialing" and trial_end and datetime.now(timezone.utc) < trial_end)
+        if has_used_trial and plans:
+            try:
+                for p in plans:
+                    if isinstance(p, dict) and (p.get("trial_days") or 0):
+                        p["trial_days"] = 0
+            except Exception:
+                pass
         return {
             "billing_paywall": {
                 "required": True,
@@ -412,6 +426,7 @@ def inject_billing_paywall():
                 "period_end": period_end.isoformat() if period_end else None,
                 "current_plan_key": plan_key,
                 "plans": plans,
+                "show_trial": show_trial,
                 "email": (getattr(current_user, "email", "") or "").strip().lower(),
             }
         }
@@ -474,15 +489,31 @@ def request_context():
     # request_id para logs/diagnóstico
     rid = request.headers.get("X-Request-Id") or secrets.token_hex(8)
     g.request_id = rid
-    # Admin mestre: entitlements ignoram plano/billing (ver services.entitlements._admin_full_access)
+    # Authorization context (fail-safe + feature flag)
+    # - g.admin_full_access é consumido por services.entitlements._admin_full_access
+    # - g.authz_role / g.authz_role_source são para auditoria/diagnóstico
+    g.authz_role = None
+    g.authz_role_source = None
     try:
         from flask_login import current_user as _cu
+        from services.authz.roles import resolve_role
 
-        g.admin_full_access = bool(
-            getattr(_cu, "is_authenticated", False) and _cu.is_authenticated and is_admin(_cu)
-        )
+        if getattr(settings, "USE_NEW_AUTHZ_PIPELINE", False):
+            rr = resolve_role(_cu)
+            g.authz_role = rr.role
+            g.authz_role_source = rr.source
+            g.admin_full_access = bool(rr.role == "super_admin")
+        else:
+            # Legado: admin-like por e-mail (ADMIN_EMAIL/ADMIN_EMAILS)
+            g.admin_full_access = bool(
+                getattr(_cu, "is_authenticated", False) and _cu.is_authenticated and is_admin_like(_cu)
+            )
+            g.authz_role = "super_admin" if g.admin_full_access else None
+            g.authz_role_source = "legacy_admin_like" if g.admin_full_access else None
     except Exception:
         g.admin_full_access = False
+        g.authz_role = None
+        g.authz_role_source = None
 
     # Garante token CSRF para sessões autenticadas (para JS e forms)
     try:
@@ -556,10 +587,9 @@ def request_context():
         from flask_login import current_user
         if getattr(current_user, "is_authenticated", False) and current_user.is_authenticated:
             p = request.path or ""
-            # Admin master nunca deve ser bloqueado por billing
+            # Bypass: super_admin nunca deve ser bloqueado por billing (fail-safe por env)
             try:
-                from base.auth import is_admin
-                if is_admin(current_user):
+                if bool(getattr(g, "admin_full_access", False)):
                     return None
             except Exception:
                 pass
@@ -579,7 +609,8 @@ def request_context():
                 "/whatsapp-atendimento",
                 "/login",
                 "/logout",
-                # Páginas do painel devem carregar para exibir o modal paywall
+                # Páginas do painel: permitimos o dashboard para exibir o paywall,
+                # mas não liberamos navegação livre em /painel/* sem assinatura ok.
                 "/painel",
                 "/static/",
                 "/panel/static/",
@@ -596,6 +627,23 @@ def request_context():
                 if cliente_id:
                     ent = can_use_product(str(cliente_id))
                     if not ent.allowed:
+                        # Audit log (somente quando a flag nova estiver ativa)
+                        try:
+                            if getattr(settings, "USE_NEW_AUTHZ_PIPELINE", False):
+                                from services.authz.audit import log_authz_event
+                                log_authz_event(
+                                    allowed=False,
+                                    reason=str(ent.reason or "billing_blocked"),
+                                    role=str(getattr(g, "authz_role", "") or ""),
+                                    role_source=str(getattr(g, "authz_role_source", "") or ""),
+                                    tenant_id=str(cliente_id),
+                                    subscription_status=str(ent.status or ""),
+                                    route=p,
+                                    method=request.method,
+                                    request_id=str(getattr(g, "request_id", "") or ""),
+                                )
+                        except Exception:
+                            pass
                         from flask import jsonify, url_for
                         if p.startswith("/api/"):
                             return jsonify(
@@ -628,6 +676,55 @@ def request_context():
                     if p.startswith("/flow") and not can_access_feature(str(cliente_id), "flow_builder"):
                         from flask import jsonify
                         return jsonify({"erro": "Seu plano não inclui o Flow Builder."}), 403
+                    # Audit log de allow (somente quando a flag nova estiver ativa)
+                    try:
+                        if getattr(settings, "USE_NEW_AUTHZ_PIPELINE", False):
+                            from services.authz.audit import log_authz_event
+                            log_authz_event(
+                                allowed=True,
+                                reason="ok",
+                                role=str(getattr(g, "authz_role", "") or ""),
+                                role_source=str(getattr(g, "authz_role_source", "") or ""),
+                                tenant_id=str(cliente_id),
+                                subscription_status=str(ent.status or ""),
+                                route=p,
+                                method=request.method,
+                                request_id=str(getattr(g, "request_id", "") or ""),
+                            )
+                    except Exception:
+                        pass
+            else:
+                # Está na allowlist: ainda assim, se o billing estiver bloqueado,
+                # só permitimos o dashboard (/painel) e assets; impede acesso a /painel/*.
+                try:
+                    if p.startswith("/painel/") and p not in ("/painel", "/painel/"):
+                        from base.auth import get_current_cliente_id
+                        from services.entitlements import can_use_product
+                        from flask import url_for
+
+                        cliente_id = get_current_cliente_id(current_user)
+                        if cliente_id:
+                            ent = can_use_product(str(cliente_id))
+                            if not ent.allowed:
+                                try:
+                                    if getattr(settings, "USE_NEW_AUTHZ_PIPELINE", False):
+                                        from services.authz.audit import log_authz_event
+                                        log_authz_event(
+                                            allowed=False,
+                                            reason=str(ent.reason or "billing_blocked_allowlist"),
+                                            role=str(getattr(g, "authz_role", "") or ""),
+                                            role_source=str(getattr(g, "authz_role_source", "") or ""),
+                                            tenant_id=str(cliente_id),
+                                            subscription_status=str(ent.status or ""),
+                                            route=p,
+                                            method=request.method,
+                                            request_id=str(getattr(g, "request_id", "") or ""),
+                                        )
+                                except Exception:
+                                    pass
+                                return redirect(url_for("customer.dashboard"))
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -639,9 +736,9 @@ def inject_admin():
         current_cliente_id = None
         if getattr(current_user, "is_authenticated", False) and current_user.is_authenticated:
             current_cliente_id = get_current_cliente_id(current_user)
-        return dict(is_admin=is_admin, current_cliente_id=current_cliente_id)
+        return dict(is_admin=is_admin, is_admin_like=is_admin_like, current_cliente_id=current_cliente_id)
     except Exception:
-        return dict(is_admin=is_admin, current_cliente_id=None)
+        return dict(is_admin=is_admin, is_admin_like=is_admin_like, current_cliente_id=None)
 app.register_blueprint(embed_bp)                         # /api/embed/key, rotate-key, send, message, poll, media
 app.register_blueprint(meta_bp, url_prefix='/webhook')   # GET/POST /webhook/meta (WhatsApp, Instagram, Messenger)
 app.register_blueprint(waha_webhook_bp, url_prefix='/webhook')  # POST /webhook/waha (eventos WAHA)

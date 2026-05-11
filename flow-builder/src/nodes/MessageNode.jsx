@@ -104,6 +104,8 @@ export function MessageNode({ data, id, selected }) {
         value={text}
         onChange={onTextChange}
         placeholder="Digite o texto da mensagem..."
+        autoComplete="off"
+        spellCheck={false}
         rows={3}
         style={{
           width: '100%',
@@ -136,6 +138,8 @@ export function MessageNode({ data, id, selected }) {
                 value={btn.title ?? ''}
                 onChange={(e) => onButtonTitleChange(i, e.target.value)}
                 placeholder={`Texto do botão ${i + 1}`}
+                autoComplete="off"
+                spellCheck={false}
                 style={{
                   flex: 1,
                   background: '#f8fafc',

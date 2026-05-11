@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from flask import Blueprint, current_app, jsonify, request
@@ -9,12 +10,13 @@ from base.request_security import strip_untrusted_tenant_ids
 from base.config import settings
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel, BillingEventModel
-from services.plans import plan_price, cliente_acesso_flags_for_plan
+from services.plans import plan_price, plan_price_for_cliente, cliente_acesso_flags_for_plan
 from services.billing.mercadopago import (
     create_preapproval,
     create_preference,
     get_preapproval,
     get_payment,
+    update_preapproval_amount,
     cancel_preapproval,
     now_iso,
     verify_webhook_signature,
@@ -53,6 +55,18 @@ def _seconds_remaining_until(value: Optional[str]) -> Optional[int]:
         return None
 
 
+def _is_due(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt <= datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
 def _require_supabase():
     if supabase is None:
         return jsonify({"ok": False, "erro": "Supabase não configurado no servidor."}), 503
@@ -73,6 +87,9 @@ def _cliente_row(cliente_id: str) -> Optional[Dict[str, Any]]:
                     getattr(ClienteModel, "BILLING_CURRENT_PERIOD_END", "billing_current_period_end"),
                     getattr(ClienteModel, "TRIAL_ENDS_AT", "trial_ends_at"),
                     getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id"),
+                    getattr(ClienteModel, "BILLING_PENDING_PLAN_KEY", "billing_pending_plan_key"),
+                    getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_AT", "billing_pending_plan_change_at"),
+                    getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_TYPE", "billing_pending_plan_change_type"),
                     getattr(ClienteModel, "BILLING_CANCEL_AT_PERIOD_END", "billing_cancel_at_period_end"),
                     getattr(ClienteModel, "BILLING_CANCEL_SCHEDULED_AT", "billing_cancel_scheduled_at"),
                 ]
@@ -100,13 +117,15 @@ def mp_checkout():
     if not cliente_id:
         return jsonify({"ok": False, "erro": "Cliente não identificado na sessão."}), 400
 
+    row = _cliente_row(str(cliente_id)) or {}
+
     body = strip_untrusted_tenant_ids(request.get_json(silent=True) or {})
     plan_key = (body.get("plan_key") or "default").strip()
     payer_email = (body.get("payer_email") or getattr(current_user, "email", "") or "").strip().lower()
     if not payer_email:
         return jsonify({"ok": False, "erro": "E-mail do pagador é obrigatório."}), 400
 
-    amount, currency = plan_price(plan_key)
+    amount, currency = plan_price_for_cliente(plan_key, str(cliente_id))
     if amount is None:
         return jsonify({"ok": False, "erro": f"Plano inválido: {plan_key}"}), 400
 
@@ -131,13 +150,40 @@ def mp_checkout():
 
     # Salva referência no cliente (se as colunas existirem no Supabase)
     try:
+        status_field = getattr(ClienteModel, "BILLING_STATUS", "billing_status")
+        # Ao criar um novo checkout, marcamos como pending até o webhook confirmar (authorized/active).
+        # Isso evita que clientes "revivam" acesso por estados antigos inconsistentes.
+        next_status = "pending"
+        try:
+            existing_status = (row.get(status_field) or "").strip().lower()
+            if existing_status == "past_due":
+                next_status = "pending"
+        except Exception:
+            next_status = "pending"
         supabase.table(Tables.CLIENTES).update(
             {
                 getattr(ClienteModel, "BILLING_PLAN_KEY", "billing_plan_key"): plan_key,
                 getattr(ClienteModel, "PLANO", "plano"): plan_key,
+                status_field: next_status,
                 getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id"): preapproval_id or None,
+                getattr(ClienteModel, "BILLING_PENDING_PLAN_KEY", "billing_pending_plan_key"): None,
+                getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_AT", "billing_pending_plan_change_at"): None,
+                getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_TYPE", "billing_pending_plan_change_type"): None,
             }
         ).eq(ClienteModel.ID, cliente_id).execute()
+        # Fonte de verdade (Fase 3): subscriptions por tenant (best-effort)
+        try:
+            from services.billing.subscription_service import upsert_tenant_subscription
+
+            upsert_tenant_subscription(
+                cliente_id=str(cliente_id),
+                provider="mercadopago",
+                provider_subscription_id=preapproval_id or None,
+                plan_key=plan_key,
+                status=next_status,
+            )
+        except Exception:
+            pass
     except Exception as e:
         current_app.logger.warning("billing: falha ao salvar preapproval no cliente: %s", e)
 
@@ -178,7 +224,7 @@ def mp_prorata_checkout():
         return jsonify({"ok": False, "erro": "E-mail do pagador é obrigatório."}), 400
 
     old_amount, currency = plan_price(current_plan_key)
-    new_amount, currency2 = plan_price(to_plan_key)
+    new_amount, currency2 = plan_price_for_cliente(to_plan_key, str(cliente_id))
     if new_amount is None:
         return jsonify({"ok": False, "erro": f"Plano inválido: {to_plan_key}"}), 400
     if old_amount is None:
@@ -385,6 +431,105 @@ def mp_cancel():
     return jsonify({"ok": True, "scheduled": True, "cliente": row2})
 
 
+@billing_bp.route("/mp/schedule-downgrade", methods=["POST"])
+@login_required
+def mp_schedule_downgrade():
+    """
+    Agenda downgrade para o fim do período atual; não corta acesso imediatamente.
+    """
+    sup = _require_supabase()
+    if sup:
+        return sup
+    cliente_id = get_current_cliente_id(current_user)
+    if not cliente_id:
+        return jsonify({"ok": False, "erro": "Cliente não identificado na sessão."}), 400
+
+    body = strip_untrusted_tenant_ids(request.get_json(silent=True) or {})
+    to_plan_key = (body.get("to_plan_key") or "").strip()
+    if not to_plan_key:
+        return jsonify({"ok": False, "erro": "Informe o plano de destino."}), 400
+
+    row = _cliente_row(str(cliente_id)) or {}
+    current_plan_key = _current_plan_key_from_cliente(row)
+    if to_plan_key == current_plan_key:
+        return jsonify({"ok": False, "erro": "Este já é o plano atual."}), 400
+
+    current_amount, current_currency = plan_price(current_plan_key)
+    target_amount, target_currency = plan_price_for_cliente(to_plan_key, str(cliente_id))
+    if current_amount is None:
+        return jsonify({"ok": False, "erro": f"Plano atual inválido: {current_plan_key}"}), 400
+    if target_amount is None:
+        return jsonify({"ok": False, "erro": f"Plano de destino inválido: {to_plan_key}"}), 400
+    if (target_currency or current_currency or "BRL") != (current_currency or target_currency or "BRL"):
+        return jsonify({"ok": False, "erro": "Não é possível trocar entre planos de moedas diferentes."}), 400
+    if float(target_amount) >= float(current_amount):
+        return jsonify({"ok": False, "erro": "Use o fluxo de upgrade para plano igual ou superior."}), 400
+
+    change_at = (
+        row.get(getattr(ClienteModel, "BILLING_CURRENT_PERIOD_END", "billing_current_period_end"))
+        or row.get(getattr(ClienteModel, "TRIAL_ENDS_AT", "trial_ends_at"))
+    )
+    if not change_at:
+        return jsonify({"ok": False, "erro": "Não há período atual para agendar o downgrade."}), 400
+
+    preapproval_id = (row.get(getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id")) or "").strip()
+    if not preapproval_id:
+        return jsonify({"ok": False, "erro": "Assinatura Mercado Pago não encontrada para atualizar o valor futuro."}), 400
+    ok_mp, mp_resp = update_preapproval_amount(
+        preapproval_id,
+        amount=float(target_amount),
+        currency_id=target_currency or current_currency or "BRL",
+        metadata={
+            "plan_key": current_plan_key,
+            "pending_plan_key": to_plan_key,
+            "pending_plan_change_type": "downgrade",
+            "pending_plan_change_at": str(change_at),
+        },
+    )
+    if not ok_mp:
+        return jsonify(
+            {
+                "ok": False,
+                "erro": "Falha ao atualizar a assinatura no Mercado Pago para o próximo ciclo.",
+                "detalhe": mp_resp,
+            }
+        ), 400
+
+    payload = {
+        getattr(ClienteModel, "BILLING_PENDING_PLAN_KEY", "billing_pending_plan_key"): to_plan_key,
+        getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_AT", "billing_pending_plan_change_at"): change_at,
+        getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_TYPE", "billing_pending_plan_change_type"): "downgrade",
+    }
+    try:
+        supabase.table(Tables.CLIENTES).update(payload).eq(ClienteModel.ID, cliente_id).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+    try:
+        event_id = f"plan_change_scheduled:{cliente_id}:{to_plan_key}:{change_at}"
+        supabase.table(Tables.BILLING_EVENTS).insert(
+            {
+                BillingEventModel.EVENT_ID: event_id,
+                BillingEventModel.REQUEST_ID: request.headers.get("X-Request-Id") or "schedule_downgrade",
+                BillingEventModel.RESOURCE_TYPE: "plan_change",
+                BillingEventModel.DATA_ID: to_plan_key,
+                BillingEventModel.CLIENTE_ID: str(cliente_id),
+                BillingEventModel.STATUS: "received",
+                BillingEventModel.RECEIVED_AT: now_iso(),
+                BillingEventModel.PLAN_KEY: to_plan_key,
+                BillingEventModel.RAW_BODY: json.dumps(
+                    {"from_plan_key": current_plan_key, "to_plan_key": to_plan_key, "change_at": change_at},
+                    ensure_ascii=False,
+                )[:50000],
+            }
+        ).execute()
+    except Exception:
+        pass
+
+    row2 = _cliente_row(str(cliente_id)) or {**row, **payload}
+    return jsonify({"ok": True, "scheduled": True, "change_at": change_at, "cliente": row2})
+
+
 def _mark_event_received(event_id: str, request_id: str, resource_type: str, data_id: str, raw_body: str):
     """
     Best-effort: registra evento para idempotência.
@@ -392,6 +537,22 @@ def _mark_event_received(event_id: str, request_id: str, resource_type: str, dat
     """
     if supabase is None:
         return
+
+    # Fonte de verdade (Fase 3): subscriptions por tenant (best-effort, não quebra produção se tabela não existir)
+    try:
+        from services.billing.subscription_service import upsert_tenant_subscription
+
+        upsert_tenant_subscription(
+            cliente_id=str(cliente_id),
+            provider="mercadopago",
+            provider_subscription_id=str(data_id).strip() or None,
+            plan_key=plan_key,
+            status=final_status,
+            current_period_end=str(current_period_end) if current_period_end else None,
+            # trial_ends_at permanece em clientes por enquanto; webhook não traz claramente aqui.
+        )
+    except Exception:
+        pass
     try:
         existing = (
             supabase.table(Tables.BILLING_EVENTS)
@@ -416,6 +577,42 @@ def _mark_event_received(event_id: str, request_id: str, resource_type: str, dat
     except Exception:
         # Se já existe ou falhou, seguimos o fluxo de idempotência via select no handler
         return
+
+
+def _update_payment_event_status(
+    event_id: str,
+    status: str,
+    payment: Optional[Dict[str, Any]] = None,
+    *,
+    cliente_id: Optional[str] = None,
+    plan_key: Optional[str] = None,
+) -> None:
+    if supabase is None:
+        return
+    payload = {
+        BillingEventModel.STATUS: status,
+        BillingEventModel.PROCESSED_AT: now_iso(),
+    }
+    if cliente_id:
+        payload[BillingEventModel.CLIENTE_ID] = str(cliente_id)
+    if plan_key:
+        payload[BillingEventModel.PLAN_KEY] = plan_key
+    if payment:
+        mp_status = (payment.get("status") or "").strip().lower()
+        if mp_status:
+            payload[BillingEventModel.MP_STATUS] = mp_status
+        amount = payment.get("transaction_amount")
+        currency = (payment.get("currency_id") or "").strip().upper()
+        if amount is not None:
+            payload[BillingEventModel.AMOUNT] = amount
+        if currency:
+            payload[BillingEventModel.CURRENCY] = currency
+    try:
+        supabase.table(Tables.BILLING_EVENTS).update(payload).eq(
+            BillingEventModel.EVENT_ID, event_id
+        ).execute()
+    except Exception:
+        pass
 
 
 def process_mercadopago_event(resource_type: str, data_id: str, request_id: str, raw_body: str):
@@ -546,6 +743,27 @@ def process_mercadopago_event(resource_type: str, data_id: str, request_id: str,
     if current_period_end:
         payload[getattr(ClienteModel, "BILLING_CURRENT_PERIOD_END", "billing_current_period_end")] = current_period_end
 
+    pending_applied_plan = None
+    pending_key_field = getattr(ClienteModel, "BILLING_PENDING_PLAN_KEY", "billing_pending_plan_key")
+    pending_at_field = getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_AT", "billing_pending_plan_change_at")
+    pending_type_field = getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_TYPE", "billing_pending_plan_change_type")
+    pending_plan_key = (row.get(pending_key_field) or "").strip()
+    pending_change_type = (row.get(pending_type_field) or "").strip().lower()
+    pending_change_at = row.get(pending_at_field)
+    if pending_plan_key and pending_change_type == "downgrade" and final_status in _mp_active_like and _is_due(pending_change_at):
+        pending_amount, _ = plan_price(pending_plan_key)
+        if pending_amount is not None:
+            pending_applied_plan = pending_plan_key
+            payload[getattr(ClienteModel, "BILLING_PLAN_KEY", "billing_plan_key")] = pending_plan_key
+            payload[getattr(ClienteModel, "PLANO", "plano")] = pending_plan_key
+            payload[pending_key_field] = None
+            payload[pending_at_field] = None
+            payload[pending_type_field] = None
+            try:
+                payload.update(cliente_acesso_flags_for_plan(pending_plan_key))
+            except Exception:
+                pass
+
     try:
         supabase.table(Tables.CLIENTES).update(payload).eq(ClienteModel.ID, cliente_id).execute()
     except Exception as e:
@@ -556,6 +774,32 @@ def process_mercadopago_event(resource_type: str, data_id: str, request_id: str,
         except Exception:
             pass
         return
+
+    if pending_applied_plan:
+        try:
+            supabase.table(Tables.BILLING_EVENTS).insert(
+                {
+                    BillingEventModel.EVENT_ID: f"plan_change_applied:{cliente_id}:{pending_applied_plan}:{event_id}",
+                    BillingEventModel.REQUEST_ID: normalized_request_id,
+                    BillingEventModel.RESOURCE_TYPE: "plan_change",
+                    BillingEventModel.DATA_ID: pending_applied_plan,
+                    BillingEventModel.CLIENTE_ID: cliente_id,
+                    BillingEventModel.STATUS: "processed",
+                    BillingEventModel.RECEIVED_AT: now_iso(),
+                    BillingEventModel.PROCESSED_AT: now_iso(),
+                    BillingEventModel.PLAN_KEY: pending_applied_plan,
+                    BillingEventModel.RAW_BODY: json.dumps(
+                        {
+                            "type": "downgrade",
+                            "applied_from_event": event_id,
+                            "change_at": pending_change_at,
+                        },
+                        ensure_ascii=False,
+                    )[:50000],
+                }
+            ).execute()
+        except Exception:
+            pass
 
     # Marca evento como processado e associa ao cliente (best-effort)
     try:
@@ -598,22 +842,35 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
     """
     if supabase is None:
         return
+    event_id = f"payment:{payment_id}:{request_id or 'no_request_id'}"
     ok, pay = get_payment(payment_id)
     if not ok:
+        _update_payment_event_status(event_id, "failed")
+        try:
+            current_app.logger.warning(
+                "mercadopago_payment: get_payment falhou payment_id=%s resp=%s", payment_id, pay
+            )
+        except Exception:
+            pass
         return
 
     status = (pay.get("status") or "").strip().lower()
     if status != "approved":
+        cliente_id = (pay.get("external_reference") or "").strip() or None
+        _update_payment_event_status(event_id, "ignored", pay, cliente_id=cliente_id)
         return
 
     meta = pay.get("metadata") or {}
     if not isinstance(meta, dict):
         meta = {}
     if (meta.get("intent") or "").strip() != "prorata_upgrade":
+        cliente_id = (pay.get("external_reference") or meta.get("cliente_id") or "").strip() or None
+        _update_payment_event_status(event_id, "ignored", pay, cliente_id=cliente_id)
         return
 
     cliente_id = (pay.get("external_reference") or meta.get("cliente_id") or "").strip()
     if not cliente_id:
+        _update_payment_event_status(event_id, "failed", pay)
         return
 
     to_plan_key = (meta.get("to_plan_key") or "").strip() or None
@@ -622,10 +879,10 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
     payer_email = (pay.get("payer", {}) or {}).get("email") or ""
 
     if not to_plan_key:
+        _update_payment_event_status(event_id, "failed", pay, cliente_id=cliente_id)
         return
 
     # Idempotência: se já existe um billing_event processed para esse payment, não reprocessa
-    event_id = f"payment:{payment_id}:{request_id or 'no_request_id'}"
     try:
         existing = (
             supabase.table(Tables.BILLING_EVENTS)
@@ -649,6 +906,7 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
     # Cria nova assinatura
     amount, currency = plan_price(to_plan_key)
     if amount is None:
+        _update_payment_event_status(event_id, "failed", pay, cliente_id=cliente_id, plan_key=to_plan_key)
         return
     ok2, pre = create_preapproval(
         plan_key=to_plan_key,
@@ -660,6 +918,7 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
         back_url=settings.MERCADOPAGO_BACK_URL or "",
     )
     if not ok2:
+        _update_payment_event_status(event_id, "failed", pay, cliente_id=cliente_id, plan_key=to_plan_key)
         return
 
     new_preapproval_id = (pre.get("id") or "").strip() or None
@@ -669,6 +928,9 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
         upd = {
             getattr(ClienteModel, "BILLING_PLAN_KEY", "billing_plan_key"): to_plan_key,
             getattr(ClienteModel, "PLANO", "plano"): to_plan_key,
+            getattr(ClienteModel, "BILLING_PENDING_PLAN_KEY", "billing_pending_plan_key"): None,
+            getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_AT", "billing_pending_plan_change_at"): None,
+            getattr(ClienteModel, "BILLING_PENDING_PLAN_CHANGE_TYPE", "billing_pending_plan_change_type"): None,
         }
         if new_preapproval_id:
             upd[getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id")] = new_preapproval_id
@@ -682,18 +944,7 @@ def _process_mercadopago_payment(payment_id: str, request_id: str):
         pass
 
     # Marca evento como processado (best-effort)
-    try:
-        supabase.table(Tables.BILLING_EVENTS).update(
-            {
-                BillingEventModel.PROCESSED_AT: now_iso(),
-                BillingEventModel.STATUS: "processed",
-                BillingEventModel.CLIENTE_ID: cliente_id,
-                BillingEventModel.MP_STATUS: status,
-                BillingEventModel.PLAN_KEY: to_plan_key,
-            }
-        ).eq(BillingEventModel.EVENT_ID, event_id).execute()
-    except Exception:
-        pass
+    _update_payment_event_status(event_id, "processed", pay, cliente_id=cliente_id, plan_key=to_plan_key)
 
 
 """

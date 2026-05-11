@@ -69,7 +69,7 @@
 
       <div class="space-y-2">
         <label class="block text-sm font-medium text-slate-700">E-mail</label>
-        <input type="email" id="email" value="{{ email or '' }}" class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="seu@email.com" autocomplete="email">
+        <input type="email" id="email" value="{{ email or '' }}" class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="seu@email.com" autocomplete="off" autocapitalize="none" spellcheck="false">
         <div id="msg" class="hidden p-3 rounded-xl text-sm"></div>
         <p class="text-xs text-slate-500">
           Por segurança, o reenvio sempre retorna uma resposta genérica.

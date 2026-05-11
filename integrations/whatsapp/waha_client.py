@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
+import time
+from typing import Any, Optional
 
 import requests
 
@@ -394,14 +395,27 @@ def get_session(name: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def create_session(name: str, *, tenant_id: Any, start: bool = True) -> dict[str, Any]:
+def create_session(
+    name: str,
+    *,
+    tenant_id: Any,
+    start: bool = True,
+    proxy_config: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
     _ensure_configured()
     url = f"{settings.WAHA_URL}/api/sessions"
     hooks = _build_webhook_config(name)
-    payload: dict[str, Any] = {"name": name, "config": {"webhooks": hooks} if hooks else {}}
+    cfg: dict[str, Any] = {"webhooks": hooks} if hooks else {}
+    if proxy_config:
+        # Formato WAHA: { server: "host:port", username?: "...", password?: "..." }
+        cfg["proxy"] = dict(proxy_config)
+    payload: dict[str, Any] = {"name": name, "config": cfg} if cfg else {"name": name}
     if start is False:
         payload["start"] = False
     r = requests.post(url, json=payload, headers={"Content-Type": "application/json", **_headers()}, timeout=30)
+    # Sessão já existe: WAHA pode manter sessão fantasma; recrie fora (delete + create).
+    if r.status_code in (409, 422):
+        raise RuntimeError(f"Sessão WAHA já existe: {name}")
     r.raise_for_status()
     try:
         data = r.json()
@@ -491,6 +505,44 @@ def logout_session(name: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def delete_session(name: str) -> bool:
+    """DELETE /api/sessions/{session} - remove a sessão (útil para sessões fantasmas)."""
+    _ensure_configured()
+    s = (name or "").strip()
+    if not s:
+        raise RuntimeError("Nome de sessão WAHA inválido.")
+    url = f"{settings.WAHA_URL}/api/sessions/{s}"
+    r = requests.delete(url, headers=_headers(), timeout=30)
+    if r.status_code in (200, 204, 404):
+        return True
+    # Em algumas versões, pode retornar 405 se rota não existir; trate como erro real.
+    r.raise_for_status()
+    return False
+
+
+def wait_session_stopped(name: str, *, timeout_sec: int = 30, poll_sec: int = 2) -> bool:
+    """
+    Aguarda a sessão encerrar após logout/stop.
+    Condições de sucesso: STOPPED, FAILED ou 404.
+    """
+    s = (name or "").strip()
+    if not s:
+        return True
+    deadline = time.time() + max(1, int(timeout_sec))
+    while time.time() < deadline:
+        try:
+            sess = get_session(s)
+            status = (sess.get("status") or "").strip().upper() if isinstance(sess, dict) else ""
+            if status in ("STOPPED", "FAILED"):
+                return True
+        except Exception as e:
+            # 404 ou similares: considere encerrada
+            if "404" in str(e):
+                return True
+        time.sleep(max(1, int(poll_sec)))
+    return False
+
+
 def get_qr_base64(name: str) -> dict[str, Any]:
     """
     Retorna { mimetype, data } (base64) do QR.
@@ -536,8 +588,13 @@ def ensure_default_session() -> dict[str, Any]:
     return sess if isinstance(sess, dict) else {}
 
 
-def ensure_session(name: str, *, tenant_id: Any) -> dict[str, Any]:
-    """Garante existência da sessão por nome e tenta manter webhooks por sessão."""
+def ensure_session(
+    name: str,
+    *,
+    tenant_id: Any,
+    proxy_config: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
+    """Garante existência da sessão por nome e mantém webhooks. Proxy só é aplicado na criação."""
     _ensure_configured()
     s = (name or "").strip()
     if not s:
@@ -545,7 +602,19 @@ def ensure_session(name: str, *, tenant_id: Any) -> dict[str, Any]:
     url = f"{settings.WAHA_URL}/api/sessions/{s}"
     r = requests.get(url, headers=_headers(), timeout=20)
     if r.status_code in (404, 204):
-        create_session(s, tenant_id=tenant_id, start=True)
+        # Proxy é aplicado na criação (fonte da verdade = banco).
+        try:
+            create_session(s, tenant_id=tenant_id, start=True, proxy_config=proxy_config)
+        except RuntimeError as e:
+            # Sessão fantasma: delete + recria com config correta
+            if "já existe" in str(e).lower():
+                try:
+                    delete_session(s)
+                except Exception:
+                    pass
+                create_session(s, tenant_id=tenant_id, start=True, proxy_config=proxy_config)
+            else:
+                raise
         r = requests.get(url, headers=_headers(), timeout=20)
     r.raise_for_status()
     try:

@@ -173,6 +173,8 @@ export function ActionNode({ data, id, selected }) {
             onChange={onMessageChange}
             onBlur={onMessageBlur}
             placeholder="Ex.: Um atendente vai te atender."
+            autoComplete="off"
+            spellCheck={false}
             style={{
               width: '100%',
               marginBottom: 8,
@@ -222,6 +224,8 @@ export function ActionNode({ data, id, selected }) {
             onChange={onMessageChange}
             onBlur={onMessageBlur}
             placeholder="Ex.: Encaminhando para o setor de vendas."
+            autoComplete="off"
+            spellCheck={false}
             style={{
               width: '100%',
               marginBottom: 8,
@@ -271,6 +275,8 @@ export function ActionNode({ data, id, selected }) {
             onChange={onUrlChange}
             onBlur={onUrlBlur}
             placeholder="https://..."
+            autoComplete="off"
+            spellCheck={false}
             style={{
               width: '100%',
               marginBottom: 8,
@@ -291,6 +297,8 @@ export function ActionNode({ data, id, selected }) {
             onChange={onLinkTextChange}
             onBlur={onLinkTextBlur}
             placeholder="Clique aqui"
+            autoComplete="off"
+            spellCheck={false}
             style={{
               width: '100%',
               marginBottom: 8,

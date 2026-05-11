@@ -55,6 +55,8 @@ export function LeadNode({ data, id, selected }) {
         value={fieldsStr}
         onChange={onFieldsChange}
         placeholder="nome, email, telefone"
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           background: 'rgba(0,0,0,0.2)',

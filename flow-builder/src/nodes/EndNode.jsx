@@ -40,6 +40,8 @@ export function EndNode({ data, id, selected }) {
         value={text}
         onChange={onTextChange}
         placeholder="Mensagem de despedida (opcional)"
+        autoComplete="off"
+        spellCheck={false}
         rows={2}
         style={{
           width: '100%',

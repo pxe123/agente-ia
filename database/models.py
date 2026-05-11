@@ -24,6 +24,35 @@ class Tables:
     PLANS = "plans"
     APP_SETTINGS = "app_settings"
     ADMIN_LOGS = "admin_logs"
+    EGRESS_PROFILES = "egress_profiles"
+    EGRESS_ASSIGNMENTS = "egress_assignments"
+
+
+class EgressProfileModel:
+    """Colunas da tabela egress_profiles (proxy por tenant)."""
+    ID = "id"
+    NAME = "name"
+    HOST = "host"
+    PORT = "port"
+    USERNAME = "username"
+    PASSWORD = "password"
+    TYPE = "type"
+    COUNTRY = "country"
+    IS_ACTIVE = "is_active"
+    MAX_CLIENTS = "max_clients"
+    LAST_TEST_IP = "last_test_ip"
+    LAST_TEST_LATENCY = "last_test_latency"
+    LAST_TEST_AT = "last_test_at"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class EgressAssignmentModel:
+    """Colunas da tabela egress_assignments (tenant->profile)."""
+    ID = "id"
+    EGRESS_PROFILE_ID = "egress_profile_id"
+    CLIENTE_ID = "cliente_id"
+    CREATED_AT = "created_at"
 
 
 class AdminLogModel:
@@ -64,6 +93,9 @@ class ClienteModel:
     TRIAL_ENDS_AT = "trial_ends_at"
     MP_CUSTOMER_ID = "mp_customer_id"
     MP_PREAPPROVAL_ID = "mp_preapproval_id"
+    BILLING_PENDING_PLAN_KEY = "billing_pending_plan_key"
+    BILLING_PENDING_PLAN_CHANGE_AT = "billing_pending_plan_change_at"
+    BILLING_PENDING_PLAN_CHANGE_TYPE = "billing_pending_plan_change_type"
     # Cancelamento (fim do período)
     BILLING_CANCEL_AT_PERIOD_END = "billing_cancel_at_period_end"
     BILLING_CANCEL_SCHEDULED_AT = "billing_cancel_scheduled_at"
@@ -119,6 +151,7 @@ class SubscriptionModel:
     PLAN_KEY = "plan_key"
     STATUS = "status"
     CURRENT_PERIOD_END = "current_period_end"
+    TRIAL_ENDS_AT = "trial_ends_at"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
 
@@ -132,6 +165,8 @@ class PlanModel:
     TRIAL_DAYS = "trial_days"
     ACTIVE = "active"
     ENTITLEMENTS_JSON = "entitlements_json"
+    IS_PRIVATE = "is_private"
+    PRIVATE_CLIENTE_ID = "private_cliente_id"
 
 class MensagemModel:
     """

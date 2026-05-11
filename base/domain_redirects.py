@@ -12,7 +12,8 @@ DEFAULT_PUBLIC_MARKETING_BASE = "https://zapaction.com.br"
 # App: login, painel, Socket.IO, APIs. Sobrescreve com APP_BASE_URL no .env.
 DEFAULT_APP_BASE = "https://api.updigitalbrasil.com.br"
 
-# Páginas só no host de propaganda (marketing + login/recuperação; painel fica na API).
+# Páginas só no host de propaganda (marketing). Em ambientes com dois domínios,
+# manter o login no host da app evita bloqueio de cookie (3rd-party) em guia anônima.
 PUBLIC_MARKETING_PATHS_EXACT = frozenset(
     {
         "/",
@@ -31,10 +32,9 @@ PUBLIC_MARKETING_PATHS_EXACT = frozenset(
     }
 )
 
-PUBLIC_LOGIN_PATHS = frozenset({"/login", "/nova-senha"})
-
-# Redirecionar pedidos na API para o host público (SEO + login no ZapAction).
-PATHS_CANONICAL_ON_PUBLIC_HOST = frozenset.union(PUBLIC_MARKETING_PATHS_EXACT, PUBLIC_LOGIN_PATHS)
+# Redirecionar pedidos na API para o host público (SEO).
+# Login/recuperação devem ficar no host da APP em split-host, para a sessão ser 1st-party.
+PATHS_CANONICAL_ON_PUBLIC_HOST = PUBLIC_MARKETING_PATHS_EXACT
 
 PUBLIC_MARKETING_PREFIXES = (
     "/landing/",
@@ -162,7 +162,5 @@ def redirect_to_app_login():
     from flask import redirect, request, url_for
 
     if not is_local_request(request):
-        if use_split_public_app_routing():
-            return redirect(f"{public_base_url()}/login")
         return redirect(f"{app_base_url()}/login")
     return redirect(url_for("customer.login"))

@@ -3,7 +3,7 @@
 Painel administrativo completo do SaaS.
 Acesso restrito ao usuário com email = ADMIN_EMAIL.
 """
-from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, Response
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, Response, current_app
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 import json
@@ -11,6 +11,7 @@ import re
 import time
 import os
 import uuid
+import requests
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from database.supabase_sq import supabase
@@ -25,6 +26,8 @@ from database.models import (
     MensagemModel,
     UsuarioInternoModel,
     ChatbotModel,
+    EgressProfileModel,
+    EgressAssignmentModel,
 )
 from base.auth import is_admin
 from base.request_security import strip_untrusted_tenant_ids
@@ -159,6 +162,283 @@ def canais_globais():
     if not _require_admin():
         return "Acesso negado", 403
     return render_template("admin/canais-globais.html")
+
+
+@admin_bp.route("/egress")
+@login_required
+def egress():
+    if not _require_admin():
+        return "Acesso negado", 403
+    return render_template("admin/egress.html")
+
+
+def _egress_profile_public(row: dict) -> dict:
+    """Profile sem credenciais sensíveis."""
+    return {
+        "id": row.get(EgressProfileModel.ID),
+        "name": row.get(EgressProfileModel.NAME),
+        "host": row.get(EgressProfileModel.HOST),
+        "port": row.get(EgressProfileModel.PORT),
+        "username": row.get(EgressProfileModel.USERNAME),
+        "type": row.get(EgressProfileModel.TYPE),
+        "country": row.get(EgressProfileModel.COUNTRY),
+        "is_active": row.get(EgressProfileModel.IS_ACTIVE),
+        "max_clients": row.get(EgressProfileModel.MAX_CLIENTS),
+        "last_test_ip": row.get(EgressProfileModel.LAST_TEST_IP),
+        "last_test_latency": row.get(EgressProfileModel.LAST_TEST_LATENCY),
+        "last_test_at": row.get(EgressProfileModel.LAST_TEST_AT),
+        "created_at": row.get(EgressProfileModel.CREATED_AT),
+        "updated_at": row.get(EgressProfileModel.UPDATED_AT),
+    }
+
+
+@admin_bp.route("/api/egress", methods=["GET"])
+@login_required
+def api_egress_list():
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    if supabase is None:
+        return jsonify({"ok": True, "profiles": []}), 200
+    try:
+        pr = supabase.table(Tables.EGRESS_PROFILES).select("*").order(EgressProfileModel.CREATED_AT, desc=True).execute()
+        ar = supabase.table(Tables.EGRESS_ASSIGNMENTS).select(EgressAssignmentModel.EGRESS_PROFILE_ID, EgressAssignmentModel.CLIENTE_ID).execute()
+        assigns = ar.data or []
+        used_by_profile: dict[str, int] = defaultdict(int)
+        tenants_by_profile: dict[str, list[str]] = defaultdict(list)
+        for a in assigns:
+            pid = str(a.get(EgressAssignmentModel.EGRESS_PROFILE_ID) or "")
+            cid = str(a.get(EgressAssignmentModel.CLIENTE_ID) or "")
+            if not pid:
+                continue
+            used_by_profile[pid] += 1
+            if cid:
+                tenants_by_profile[pid].append(cid)
+        profiles_out = []
+        for row in (pr.data or []):
+            pid = str(row.get(EgressProfileModel.ID) or "")
+            pub = _egress_profile_public(row)
+            used = used_by_profile.get(pid, 0)
+            mx = int(row.get(EgressProfileModel.MAX_CLIENTS) or 2)
+            pub["used_clients"] = used
+            pub["usage_pct"] = int(round((used / mx) * 100)) if mx > 0 else 0
+            pub["tenants"] = tenants_by_profile.get(pid, [])
+            profiles_out.append(pub)
+        return jsonify({"ok": True, "profiles": profiles_out}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@admin_bp.route("/api/egress", methods=["POST"])
+@login_required
+def api_egress_create():
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível"}), 503
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
+    name = (data.get("name") or "").strip()
+    host = (data.get("host") or "").strip()
+    port = int(data.get("port") or 0)
+    username = (data.get("username") or "").strip() or None
+    password = (data.get("password") or "").strip() or None
+    typ = (data.get("type") or "").strip() or None
+    country = (data.get("country") or "").strip() or None
+    is_active = bool(data.get("is_active", True))
+    max_clients = int(data.get("max_clients") or 2)
+    if not name or not host or not port:
+        return jsonify({"ok": False, "erro": "name/host/port são obrigatórios."}), 400
+    try:
+        row = {
+            EgressProfileModel.NAME: name,
+            EgressProfileModel.HOST: host,
+            EgressProfileModel.PORT: port,
+            EgressProfileModel.USERNAME: username,
+            EgressProfileModel.PASSWORD: password,
+            EgressProfileModel.TYPE: typ,
+            EgressProfileModel.COUNTRY: country,
+            EgressProfileModel.IS_ACTIVE: is_active,
+            EgressProfileModel.MAX_CLIENTS: max(1, max_clients),
+            EgressProfileModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
+        }
+        r = supabase.table(Tables.EGRESS_PROFILES).insert(row).execute()
+        _log_admin_action("egress_create", target_id=name)
+        return jsonify({"ok": True, "profile": _egress_profile_public((r.data or [{}])[0])}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+
+
+@admin_bp.route("/api/egress/<profile_id>", methods=["PUT"])
+@login_required
+def api_egress_update(profile_id: str):
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível"}), 503
+    pid = (profile_id or "").strip()
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
+    patch: dict = {}
+    for k in ("name", "host", "type", "country"):
+        if k in data:
+            patch[k] = (data.get(k) or "").strip() or None
+    if "port" in data:
+        patch["port"] = int(data.get("port") or 0)
+    if "username" in data:
+        patch["username"] = (data.get("username") or "").strip() or None
+    # password é write-only: só atualiza se vier preenchida
+    if (data.get("password") or "").strip():
+        patch["password"] = (data.get("password") or "").strip()
+    if "is_active" in data:
+        patch["is_active"] = bool(data.get("is_active"))
+    if "max_clients" in data:
+        patch["max_clients"] = max(1, int(data.get("max_clients") or 2))
+    patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        r = supabase.table(Tables.EGRESS_PROFILES).update(patch).eq(EgressProfileModel.ID, pid).execute()
+        _log_admin_action("egress_update", target_id=pid)
+        return jsonify({"ok": True, "profile": _egress_profile_public((r.data or [{}])[0])}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+
+
+@admin_bp.route("/api/egress/<profile_id>", methods=["DELETE"])
+@login_required
+def api_egress_delete(profile_id: str):
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível"}), 503
+    pid = (profile_id or "").strip()
+    try:
+        # Não permitir deletar se em uso
+        c = supabase.table(Tables.EGRESS_ASSIGNMENTS).select(EgressAssignmentModel.ID, count="exact").eq(EgressAssignmentModel.EGRESS_PROFILE_ID, pid).execute()
+        used = int(getattr(c, "count", None) or len(c.data or []))
+        if used > 0:
+            return jsonify({"ok": False, "erro": f"Perfil em uso por {used} cliente(s)."}), 400
+        supabase.table(Tables.EGRESS_PROFILES).delete().eq(EgressProfileModel.ID, pid).execute()
+        _log_admin_action("egress_delete", target_id=pid)
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+
+
+@admin_bp.route("/api/egress/<profile_id>/assign", methods=["POST"])
+@login_required
+def api_egress_assign(profile_id: str):
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
+    cliente_id = (data.get("cliente_id") or "").strip()
+    pid = (profile_id or "").strip()
+    if not cliente_id or not pid:
+        return jsonify({"ok": False, "erro": "cliente_id/profile_id obrigatórios."}), 400
+    try:
+        from services.network.egress_manager import assign_profile
+
+        assign_profile(cliente_id, pid)
+        _log_admin_action("egress_assign", target_id=f"{pid}:{cliente_id}")
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+
+
+@admin_bp.route("/api/egress/<profile_id>/release", methods=["POST"])
+@login_required
+def api_egress_release(profile_id: str):
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
+    cliente_id = (data.get("cliente_id") or "").strip()
+    if not cliente_id:
+        return jsonify({"ok": False, "erro": "cliente_id obrigatório."}), 400
+    try:
+        from services.network.egress_manager import release_profile
+
+        release_profile(cliente_id)
+        _log_admin_action("egress_release", target_id=f"{profile_id}:{cliente_id}")
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+
+
+@admin_bp.route("/api/egress/<profile_id>/test", methods=["POST"])
+@login_required
+def api_egress_test(profile_id: str):
+    if not _require_admin():
+        return jsonify({"ok": False, "erro": "Acesso negado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível"}), 503
+    pid = (profile_id or "").strip()
+    try:
+        r = (
+            supabase.table(Tables.EGRESS_PROFILES)
+            .select("*")
+            .eq(EgressProfileModel.ID, pid)
+            .limit(1)
+            .execute()
+        )
+        if not r.data:
+            return jsonify({"ok": False, "erro": "Perfil não encontrado."}), 404
+        row = r.data[0]
+        host = (row.get(EgressProfileModel.HOST) or "").strip()
+        port = int(row.get(EgressProfileModel.PORT) or 0)
+        username = (row.get(EgressProfileModel.USERNAME) or "").strip()
+        password = (row.get(EgressProfileModel.PASSWORD) or "").strip()
+        if not host or not port:
+            return jsonify({"ok": False, "erro": "host/port inválidos no perfil."}), 400
+
+        proxy_url = f"http://{host}:{port}"
+        proxies = {"http": proxy_url, "https": proxy_url}
+        auth = (username, password) if username and password else None
+
+        def _call(url: str) -> tuple[bool, dict, int]:
+            t0 = time.time()
+            try:
+                rr = requests.get(url, proxies=proxies, auth=auth, timeout=20)
+                ms = int(round((time.time() - t0) * 1000))
+                ok = rr.status_code >= 200 and rr.status_code < 300
+                data = {}
+                try:
+                    data = rr.json()
+                except Exception:
+                    data = {"text": rr.text[:2000]}
+                return ok, data, ms
+            except Exception as e:
+                ms = int(round((time.time() - t0) * 1000))
+                return False, {"error": str(e)}, ms
+
+        ok1, d1, ms1 = _call("https://api.ipify.org?format=json")
+        ok2, d2, ms2 = _call("https://httpbin.org/ip")
+
+        ip1 = (d1.get("ip") if isinstance(d1, dict) else None) or None
+        ip2 = None
+        if isinstance(d2, dict):
+            if isinstance(d2.get("origin"), str):
+                ip2 = d2.get("origin")
+        ip_eff = ip1 or ip2
+        latency_ms = ms1 + ms2
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        supabase.table(Tables.EGRESS_PROFILES).update(
+            {
+                EgressProfileModel.LAST_TEST_IP: (ip_eff or None),
+                EgressProfileModel.LAST_TEST_LATENCY: int(latency_ms),
+                EgressProfileModel.LAST_TEST_AT: now_iso,
+                EgressProfileModel.UPDATED_AT: now_iso,
+            }
+        ).eq(EgressProfileModel.ID, pid).execute()
+
+        _log_admin_action("egress_test", target_id=pid)
+        return jsonify(
+            {
+                "ok": bool(ok1 and ok2 and ip_eff),
+                "ipify": {"ok": ok1, "data": d1, "latency_ms": ms1},
+                "httpbin": {"ok": ok2, "data": d2, "latency_ms": ms2},
+                "ip_efetivo": ip_eff,
+                "latency_ms": latency_ms,
+            }
+        ), 200
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
 
 
 @admin_bp.route("/financeiro")
@@ -612,6 +892,31 @@ def _ent_json_obj(v):
     return {}
 
 
+def _plan_private_fields(data: dict) -> tuple[bool, str | None]:
+    is_private = bool(data.get("is_private", False))
+    private_cliente_id = (data.get("private_cliente_id") or "").strip() or None
+    if is_private and not private_cliente_id:
+        raise ValueError("Informe o ID do cliente para um plano privado.")
+    if is_private:
+        try:
+            private_cliente_id = str(uuid.UUID(private_cliente_id or ""))
+        except Exception:
+            raise ValueError("ID do cliente inválido para plano privado.")
+    if is_private and supabase is not None:
+        exists = (
+            supabase.table(Tables.CLIENTES)
+            .select(ClienteModel.ID)
+            .eq(ClienteModel.ID, private_cliente_id)
+            .limit(1)
+            .execute()
+        )
+        if not (exists.data or []):
+            raise ValueError("Cliente informado para o plano privado não foi encontrado.")
+    if not is_private:
+        private_cliente_id = None
+    return is_private, private_cliente_id
+
+
 def _normalize_featured_plans(selected_plan_key: str):
     """Mantém apenas 1 plano como featured=true no entitlements_json."""
     if supabase is None or not selected_plan_key:
@@ -651,6 +956,7 @@ def api_plans_create():
     if not ok_pk:
         return jsonify({"ok": False, "erro": err_pk}), 400
     try:
+        is_private, private_cliente_id = _plan_private_fields(data)
         payload = {
             PlanModel.PLAN_KEY: plan_key,
             PlanModel.NAME: name,
@@ -659,13 +965,17 @@ def api_plans_create():
             PlanModel.TRIAL_DAYS: int(trial_days or 0),
             PlanModel.ACTIVE: active,
             PlanModel.ENTITLEMENTS_JSON: entitlements_json,
+            getattr(PlanModel, "IS_PRIVATE", "is_private"): is_private,
+            getattr(PlanModel, "PRIVATE_CLIENTE_ID", "private_cliente_id"): private_cliente_id,
         }
         supabase.table(Tables.PLANS).insert(payload).execute()
         ent_obj = _ent_json_obj(entitlements_json)
         if bool(ent_obj.get("featured")):
             _normalize_featured_plans(plan_key)
-        _log_admin_action(f"plan.create {plan_key} name={name}", plan_key)
+        _log_admin_action(f"plan.create {plan_key} name={name} private={is_private}", plan_key)
         return jsonify({"ok": True})
+    except ValueError as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
 
@@ -680,6 +990,13 @@ def api_plans_update(plan_key):
     for k in ("name", "price", "currency", "trial_days", "active", "entitlements_json"):
         if k in data:
             payload[k] = data[k]
+    if "is_private" in data or "private_cliente_id" in data:
+        try:
+            is_private, private_cliente_id = _plan_private_fields(data)
+        except ValueError as e:
+            return jsonify({"ok": False, "erro": str(e)}), 400
+        payload[getattr(PlanModel, "IS_PRIVATE", "is_private")] = is_private
+        payload[getattr(PlanModel, "PRIVATE_CLIENTE_ID", "private_cliente_id")] = private_cliente_id
     if "price" in payload:
         try:
             payload["price"] = float(payload["price"] or 0)
@@ -754,6 +1071,10 @@ def api_set_plano_cliente(cliente_id):
         # carrega entitlements do plano para cache nos acessos
         plan = supabase.table(Tables.PLANS).select("*").eq(PlanModel.PLAN_KEY, plan_key).single().execute()
         p = plan.data or {}
+        if bool(p.get(getattr(PlanModel, "IS_PRIVATE", "is_private"))):
+            allowed_cliente_id = str(p.get(getattr(PlanModel, "PRIVATE_CLIENTE_ID", "private_cliente_id")) or "").strip()
+            if allowed_cliente_id != str(cliente_id).strip():
+                return jsonify({"ok": False, "erro": "Este plano privado pertence a outro cliente."}), 403
         ent = p.get("entitlements_json") or {}
         if not isinstance(ent, dict):
             ent = {}
@@ -1105,6 +1426,59 @@ def api_cobranca_reconciliar(cliente_id):
         out = reconcile_cliente(str(cliente_id))
         return jsonify(out)
     except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@admin_bp.route("/api/financeiro/mercadopago/reprocess-payment", methods=["POST"])
+@login_required
+def api_financeiro_reprocess_payment():
+    if not _require_admin():
+        return jsonify({"erro": "Não autorizado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível."}), 503
+    data = strip_untrusted_tenant_ids(request.json or request.form or {})
+    payment_id = "".join(ch for ch in str(data.get("payment_id") or "").strip() if ch.isdigit())
+    if not payment_id:
+        return jsonify({"ok": False, "erro": "Informe um ID de pagamento válido."}), 400
+
+    request_id = "manual-reconcile"
+    raw_body = json.dumps(
+        {
+            "manual": True,
+            "source": "admin.financeiro",
+            "type": "payment",
+            "data": {"id": payment_id},
+            "requested_by": getattr(current_user, "email", None),
+        },
+        ensure_ascii=False,
+    )
+    event_id = f"payment:{payment_id}:{request_id}"
+    try:
+        from panel.routes.billing import _mark_event_received, process_mercadopago_event
+
+        _mark_event_received(event_id, request_id, "payment", payment_id, raw_body)
+        process_mercadopago_event("payment", payment_id, request_id, raw_body)
+
+        ev = (
+            supabase.table(Tables.BILLING_EVENTS)
+            .select("*")
+            .eq(BillingEventModel.EVENT_ID, event_id)
+            .limit(1)
+            .execute()
+        )
+        row = (ev.data or [None])[0]
+        _log_admin_action("financeiro.reprocess_payment", payment_id)
+        return jsonify(
+            {
+                "ok": True,
+                "payment_id": payment_id,
+                "event_id": event_id,
+                "event": row,
+                "message": "Reprocessamento executado. Confira o status do evento retornado.",
+            }
+        )
+    except Exception as e:
+        current_app.logger.exception("api_financeiro_reprocess_payment")
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 

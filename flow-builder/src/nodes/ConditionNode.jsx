@@ -84,6 +84,8 @@ export function ConditionNode({ data, id, selected }) {
         value={value}
         onChange={onValueChange}
         placeholder="Ex.: preço, ajuda"
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 8,

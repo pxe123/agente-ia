@@ -9,13 +9,13 @@
       <label class="text-sm text-slate-600">Status</label>
       <select id="f-status" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
         <option value="">Todos</option>
-        <option value="active">active</option>
-        <option value="authorized">authorized</option>
-        <option value="trialing">trialing</option>
-        <option value="pending">pending</option>
-        <option value="past_due">past_due</option>
-        <option value="canceled">canceled</option>
-        <option value="inactive">inactive</option>
+        <option value="active">Ativa</option>
+        <option value="authorized">Ativa (autorizada)</option>
+        <option value="trialing">Teste</option>
+        <option value="pending">Pendente</option>
+        <option value="past_due">Em atraso</option>
+        <option value="canceled">Cancelada</option>
+        <option value="inactive">Inativa</option>
       </select>
       <button id="btn-load" class="px-3 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Carregar</button>
     </div>
@@ -31,7 +31,7 @@
           <th class="px-4 py-3 text-left">Cliente</th>
           <th class="px-4 py-3 text-left">Plano</th>
           <th class="px-4 py-3 text-left">Status</th>
-          <th class="px-4 py-3 text-left">Trial ends</th>
+          <th class="px-4 py-3 text-left">Fim do teste</th>
           <th class="px-4 py-3 text-left">Preapproval</th>
           <th class="px-4 py-3 text-left">Período</th>
           <th class="px-4 py-3 text-left">Ações</th>
@@ -53,6 +53,19 @@
   const fStatus = document.getElementById('f-status');
   const btn = document.getElementById('btn-load');
 
+  function statusLabel(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'active') return 'Ativa';
+    if (s === 'authorized') return 'Ativa (autorizada)';
+    if (s === 'trialing') return 'Teste';
+    if (s === 'pending') return 'Pendente';
+    if (s === 'past_due') return 'Em atraso';
+    if (s === 'canceled' || s === 'cancelled') return 'Cancelada';
+    if (s === 'inactive') return 'Inativa';
+    if (s === 'cancel_scheduled') return 'Cancelamento agendado';
+    return status ? String(status) : '—';
+  }
+
   function badge(status) {
     const s = String(status || '—');
     const cls =
@@ -61,7 +74,7 @@
       (s === 'past_due') ? 'bg-amber-100 text-amber-800' :
       (s === 'canceled') ? 'bg-red-100 text-red-700' :
       'bg-slate-100 text-slate-700';
-    return '<span class="px-2 py-0.5 rounded text-xs ' + cls + '">' + s + '</span>';
+    return '<span class="px-2 py-0.5 rounded text-xs ' + cls + '">' + statusLabel(s) + '</span>';
   }
 
   async function load() {

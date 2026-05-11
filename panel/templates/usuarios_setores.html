@@ -14,7 +14,7 @@
                 <p class="text-sm text-slate-500">Áreas de atuação (ex.: Vendas, Suporte, Atendimento)</p>
             </div>
             <div class="flex items-center gap-2">
-                <input type="text" id="novo-setor-nome" placeholder="Nome do setor" maxlength="80"
+                <input type="text" id="novo-setor-nome" placeholder="Nome do setor" maxlength="80" autocomplete="off" spellcheck="false"
                        class="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm w-48">
                 <button type="button" id="btn-adicionar-setor" class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
                     <i class="fas fa-plus mr-1"></i>Adicionar
@@ -56,16 +56,16 @@
             <input type="hidden" id="modal-usuario-id" value="">
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Nome</label>
-                <input type="text" id="modal-usuario-nome" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Ex.: Amanda">
+                <input type="text" id="modal-usuario-nome" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Ex.: Amanda" autocomplete="off" spellcheck="false">
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">E-mail (login)</label>
-                <input type="email" id="modal-usuario-email" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="amanda@empresa.com">
+                <input type="email" id="modal-usuario-email" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="amanda@empresa.com" autocomplete="off" autocapitalize="none" spellcheck="false">
             </div>
             <div id="modal-usuario-senha-wrap">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Senha (mín. 6 caracteres)</label>
                 <div class="relative">
-                    <input type="password" id="modal-usuario-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12" minlength="6">
+                    <input type="password" id="modal-usuario-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12" minlength="6" autocomplete="new-password" autocapitalize="none" spellcheck="false">
                     <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar senha" data-target="modal-usuario-senha">
                         <i class="fa-regular fa-eye"></i>
                     </button>
@@ -74,7 +74,7 @@
             <div id="modal-usuario-nova-senha-wrap" class="hidden">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Nova senha (deixe em branco para não alterar)</label>
                 <div class="relative">
-                    <input type="password" id="modal-usuario-nova-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12" minlength="6">
+                    <input type="password" id="modal-usuario-nova-senha" class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-12" minlength="6" autocomplete="new-password" autocapitalize="none" spellcheck="false">
                     <button type="button" class="toggle-pass absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-slate-700" aria-label="Mostrar senha" data-target="modal-usuario-nova-senha">
                         <i class="fa-regular fa-eye"></i>
                     </button>

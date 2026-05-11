@@ -66,6 +66,13 @@ def _require_menu(menu_key):
     """Para operador (sublogin), exige permissão do menu. Retorna (response, status) se negado; (None, None) se permitido."""
     if not current_user.is_authenticated:
         return None, None
+    # Admin-like ignora permissões de menu
+    try:
+        from base.auth import is_admin_like
+        if is_admin_like(current_user):
+            return None, None
+    except Exception:
+        pass
     if not getattr(current_user, "is_operador", lambda: False)():
         return None, None
     if getattr(current_user, "can_access_menu", lambda k: False)(menu_key):
@@ -163,18 +170,8 @@ def dashboard():
 
     # Cliente "dono" da conta (para operadores usamos cliente_id associado)
     cliente_id = getattr(current_user, "cliente_id", None)
-    # Se trial expirou ou assinatura inativa, manda para paywall (admin mestre ignora)
-    try:
-        from base.auth import is_admin
-        from services.entitlements import can_use_product
-        if cliente_id and not is_admin(current_user):
-            ent = can_use_product(str(cliente_id))
-            if not ent.allowed and ent.reason in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso"):
-                # Não redireciona para páginas públicas (evita loop e “novo trial”).
-                # O paywall é tratado no layout do painel (modal com seleção de plano + checkout).
-                pass
-    except Exception:
-        pass
+    # Paywall: a fonte de verdade de bloqueio já é o enforcement central em app.py.
+    # Aqui mantemos apenas UX (banner/modal) sem duplicar bloqueio.
 
     # Filtro de período simples: últimos 7 dias
     from datetime import datetime, timedelta, timezone
@@ -316,7 +313,10 @@ def chat():
     if resp is not None:
         return resp
     try:
-        from base.auth import get_current_cliente_id
+        from base.auth import get_current_cliente_id, is_admin
+        # Admin mestre não deve ser bloqueado por plano/canais
+        if is_admin(current_user):
+            return render_template('chat.html')
         cid = get_current_cliente_id(current_user)
         # Chat depende do canal; aqui só garantimos que pelo menos 1 canal está habilitado
         if cid and not any(
@@ -629,7 +629,19 @@ def _save_cliente_whatsapp_instancia(cliente_id: str, session_name: str) -> None
 
 
 def _generate_cliente_session_uuid() -> str:
+    # Legacy: mantido apenas por compatibilidade histórica.
     return f"wa_{uuid.uuid4().hex}"
+
+
+def _deterministic_session_name(cliente_id: str) -> str:
+    """
+    Nome determinístico para evitar sessões duplicadas e perda de controle.
+    Ex.: tenant_3f9a... (remove hífens e caracteres não alfanuméricos).
+    """
+    cid = str(cliente_id or "").strip().lower()
+    slug = "".join(ch for ch in cid if ch.isalnum())
+    slug = slug[:48] or "anon"
+    return f"tenant_{slug}"
 
 
 def _resolve_or_create_cliente_waha_session() -> tuple[str, bool]:
@@ -642,14 +654,26 @@ def _resolve_or_create_cliente_waha_session() -> tuple[str, bool]:
     if not tenant_id:
         raise RuntimeError("Cliente não identificado.")
     from integrations.whatsapp import waha_client
+    desired = _deterministic_session_name(tenant_id)
     current = _get_cliente_whatsapp_instancia(tenant_id)
     created_now = False
+    # IMPORTANTE (rollout seguro): não migrar automaticamente sessões existentes.
+    # Enquanto você ainda não comprou/configurou egress/proxy, manter o nome atual evita desconexões.
+    # Usamos nome determinístico apenas quando o cliente ainda não tem whatsapp_instancia.
     if not current:
-        current = _generate_cliente_session_uuid()
+        current = desired
         _save_cliente_whatsapp_instancia(tenant_id, current)
         created_now = True
     try:
-        waha_client.ensure_session(current, tenant_id=tenant_id)
+        # Egress (proxy) é aplicado na criação; buscar config no domínio.
+        from services.network.egress_manager import (
+            enforce_on_waha_sessions,
+            get_proxy_config_for_waha,
+        )
+        proxy_cfg = get_proxy_config_for_waha(tenant_id)
+        if enforce_on_waha_sessions() and not proxy_cfg:
+            raise RuntimeError("Egress obrigatório: nenhum perfil de egress associado ao tenant.")
+        waha_client.ensure_session(current, tenant_id=tenant_id, proxy_config=proxy_cfg)
     except Exception:
         if created_now:
             raise
@@ -678,11 +702,18 @@ def api_waha_list_sessions():
         return guard
     try:
         from integrations.whatsapp import waha_client
+        from services.network.egress_manager import (
+            enforce_on_waha_sessions,
+            get_proxy_config_for_waha,
+        )
         tenant_id = _waha_tenant_id()
         session_name = _get_cliente_whatsapp_instancia(tenant_id)
         if not session_name:
             return jsonify({"ok": True, "sessions": []}), 200
-        sess = waha_client.ensure_session(session_name, tenant_id=tenant_id)
+        proxy_cfg = get_proxy_config_for_waha(tenant_id)
+        if enforce_on_waha_sessions() and not proxy_cfg:
+            return jsonify({"ok": False, "erro": "Egress obrigatório: configure um perfil de egress para este cliente."}), 403
+        sess = waha_client.ensure_session(session_name, tenant_id=tenant_id, proxy_config=proxy_cfg)
         if not _waha_is_session_owned(sess, tenant_id):
             return jsonify({"ok": False, "erro": "Sessão WAHA não pertence ao cliente logado."}), 403
         return jsonify({"ok": True, "sessions": [sess]}), 200
@@ -702,7 +733,15 @@ def api_waha_create_session():
     try:
         from integrations.whatsapp import waha_client
         session_name, created_now = _resolve_or_create_cliente_waha_session()
-        sess = waha_client.ensure_session(session_name, tenant_id=_waha_tenant_id())
+        from services.network.egress_manager import (
+            enforce_on_waha_sessions,
+            get_proxy_config_for_waha,
+        )
+        tenant_id = _waha_tenant_id()
+        proxy_cfg = get_proxy_config_for_waha(tenant_id)
+        if enforce_on_waha_sessions() and not proxy_cfg:
+            return jsonify({"ok": False, "erro": "Egress obrigatório: configure um perfil de egress para este cliente."}), 403
+        sess = waha_client.ensure_session(session_name, tenant_id=tenant_id, proxy_config=proxy_cfg)
         return jsonify({"ok": True, "session": sess, "created_now": created_now, "session_name": session_name}), 200
     except Exception as e:
         current_app.logger.exception("api_waha_create_session")
@@ -977,6 +1016,7 @@ def perfil():
             perfil=None,
             cliente=cliente,
             conta_desde=conta_desde,
+            plans=list_active_plans(str(get_current_cliente_id(current_user)), include_private=True),
         ),
     )
 

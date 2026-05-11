@@ -93,6 +93,8 @@ export function AgendamentoIANode({ data, id, selected }) {
         onChange={onMessageTemplateChange}
         rows={2}
         placeholder='ex.: "Horários: {{slot_list}}"'
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 8,
@@ -111,6 +113,8 @@ export function AgendamentoIANode({ data, id, selected }) {
         onChange={onMessageTemplatesChange}
         rows={5}
         placeholder='{ "default": "…", "needs_input": "…", "ok": "…", "error": "…" }'
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 8,
@@ -129,6 +133,8 @@ export function AgendamentoIANode({ data, id, selected }) {
         value={label}
         onChange={onLabelChange}
         placeholder="ex.: Marcar consulta"
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 8,
@@ -146,6 +152,8 @@ export function AgendamentoIANode({ data, id, selected }) {
         onChange={onNotesChange}
         rows={2}
         placeholder="Instruções para a equipa / lembrete…"
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           marginBottom: 8,
@@ -164,6 +172,8 @@ export function AgendamentoIANode({ data, id, selected }) {
         onChange={onContextExtraChange}
         rows={3}
         placeholder='ex.: { "service_id": "42" }'
+        autoComplete="off"
+        spellCheck={false}
         style={{
           width: '100%',
           fontFamily: 'ui-monospace, Consolas, monospace',

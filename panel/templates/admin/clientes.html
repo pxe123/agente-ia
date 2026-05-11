@@ -319,7 +319,7 @@ function renderFinanceiroBody(el, d, clienteId) {
 }
 
 window.acaoResetTrial = async function (id) {
-  if (!confirm('Resetar trial deste cliente? O status passará para trialing e a data de fim será recalculada pelo plano.')) return;
+  if (!confirm('Resetar o período de teste deste cliente? O status passará para "Teste" e a data de fim será recalculada pelo plano.')) return;
   try {
     const r = await fetch('/admin/api/clientes/' + encodeURIComponent(id) + '/reset-trial', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const d = await r.json();
@@ -330,7 +330,7 @@ window.acaoResetTrial = async function (id) {
 };
 
 window.acaoPausar = async function (id) {
-  if (!confirm('Pausar/cancelar assinatura? Será chamado o cancelamento no Mercado Pago (se houver preapproval) e o status local ficará canceled.')) return;
+  if (!confirm('Pausar/cancelar assinatura? Será chamado o cancelamento no Mercado Pago (se houver preapproval) e o status local ficará "Cancelada".')) return;
   try {
     const r = await fetch('/admin/api/clientes/' + encodeURIComponent(id) + '/pausar-assinatura', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const d = await r.json();
@@ -386,6 +386,18 @@ function renderizarClientes(lista) {
     const tempoConta = formatarTempoConta(c._conta_desde);
     const billing = (c.billing_status || c.billingStatus || '—');
     const trialEnds = c.trial_ends_at ? String(c.trial_ends_at).slice(0, 10) : '';
+    function billingLabel(st) {
+      const s = String(st || '').toLowerCase();
+      if (s === 'active') return 'Ativa';
+      if (s === 'authorized') return 'Ativa (autorizada)';
+      if (s === 'trialing') return 'Teste';
+      if (s === 'pending') return 'Pendente';
+      if (s === 'past_due') return 'Em atraso';
+      if (s === 'canceled' || s === 'cancelled') return 'Cancelada';
+      if (s === 'inactive') return 'Inativa';
+      if (s === 'cancel_scheduled') return 'Cancelamento agendado';
+      return st ? String(st) : '—';
+    }
     const billingBadge = billing === 'active' || billing === 'authorized'
       ? 'bg-emerald-100 text-emerald-700'
       : billing === 'trialing'
@@ -410,7 +422,7 @@ function renderizarClientes(lista) {
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><div class="font-medium text-slate-800">' + esc(c.email || '—') + '</div><div class="text-xs text-slate-500">' + esc(id ? id.slice(0, 8) + '…' : '') + '</div></td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><span title="' + esc(contaDesde) + '">' + esc(tempoConta) + '</span><div class="text-xs text-slate-500">' + esc(contaDesde) + '</div></td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><div class="font-medium text-slate-800">' + esc(planoNome) + '</div><div class="text-[10px] text-slate-400 mt-1">' + esc(planKey) + '</div></td>' +
-        '<td class="px-3 sm:px-4 py-2 sm:py-3"><span class="px-2 py-0.5 rounded text-xs ' + billingBadge + '">' + esc(billing) + '</span>' + (trialEnds ? '<div class="text-[10px] text-slate-400 mt-1">trial: ' + esc(trialEnds) + '</div>' : '') + '</td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3"><span class="px-2 py-0.5 rounded text-xs ' + billingBadge + '">' + esc(billingLabel(billing)) + '</span>' + (trialEnds ? '<div class="text-[10px] text-slate-400 mt-1">teste até: ' + esc(trialEnds) + '</div>' : '') + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 text-slate-700 text-xs"><div>' + esc(periodo) + '</div><div class="text-[10px] text-slate-400 mt-1 font-mono">' + esc(mpShort) + '</div></td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3">' + ferramentasEmUso(c) + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-1">' + acessos + '</td>' +

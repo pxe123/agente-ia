@@ -329,16 +329,60 @@ def webhook_entrada():
     )
     push_name = (payload.get("notifyName") or payload.get("pushName") or payload.get("senderName") or "").strip()
 
-    # WAHA Core: buscar cliente pela sessão
+    # WAHA Core: buscar cliente pela sessão.
+    # Segurança multi-tenant: NUNCA fazer fallback para "primeiro cliente".
+    # Se a sessão do webhook não estiver vinculada a clientes.whatsapp_instancia,
+    # ignoramos para evitar atendimento cruzado entre tenants.
     try:
-        res = supabase.table(Tables.CLIENTES).select("id").eq(ClienteModel.WHATSAPP_INSTANCIA, session_name).limit(1).execute()
-        if res.data and len(res.data) > 0:
-            cliente_id = res.data[0]["id"]
+        # Nunca usar .limit(1) sem checar duplicata: dois clientes com a mesma sessão WAHA fariam
+        # o PostgREST devolver uma linha arbitrária e as conversas "pularem" de um tenant para outro.
+        res = (
+            supabase.table(Tables.CLIENTES)
+            .select("id")
+            .eq(ClienteModel.WHATSAPP_INSTANCIA, session_name)
+            .limit(8)
+            .execute()
+        )
+        rows = res.data or []
+        if len(rows) > 1:
+            current_app.logger.error(
+                "waha_webhook: sessão WAHA duplicada no banco (session=%s, %s clientes). "
+                "Corrija whatsapp_instancia e aplique o índice único (migration 018). Ignorando evento.",
+                session_name,
+                len(rows),
+            )
+            _dbg(
+                "waha_webhook_duplicate_session_blocked",
+                "SEC",
+                {
+                    "session": (session_name or "")[:48],
+                    "clienteCount": len(rows),
+                    "event": event,
+                    "fromMe": bool(from_me),
+                    "remoteLast4": remote_last4,
+                },
+            )
+            return jsonify({"status": "ignorado", "motivo": "sessao_duplicada_no_banco"}), 200
+        if len(rows) == 1:
+            cliente_id = rows[0]["id"]
         else:
-            res2 = supabase.table(Tables.CLIENTES).select("id").limit(1).execute()
-            if not res2.data or len(res2.data) == 0:
-                return jsonify({"status": "ignorado", "motivo": "nenhum cliente"}), 200
-            cliente_id = res2.data[0]["id"]
+            current_app.logger.warning(
+                "waha_webhook: sessão desconhecida/sem vínculo (session=%s, source=%s). Ignorando para evitar atendimento cruzado.",
+                session_name,
+                "payload" if session_name_payload else ("header" if header_session else "default"),
+            )
+            _dbg(
+                "waha_webhook_unknown_session_blocked",
+                "SEC",
+                {
+                    "session": (session_name or "")[:48],
+                    "source": "payload" if session_name_payload else ("header" if header_session else "default"),
+                    "event": event,
+                    "fromMe": bool(from_me),
+                    "remoteLast4": remote_last4,
+                },
+            )
+            return jsonify({"status": "ignorado", "motivo": "sessao_desconhecida"}), 200
     except Exception as e:
         current_app.logger.warning("waha_webhook: erro ao buscar cliente: %s", e)
         return jsonify({"status": "erro"}), 200

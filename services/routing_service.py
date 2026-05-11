@@ -58,6 +58,16 @@ class RoutingService:
             if canal == "whatsapp":
                 if not getattr(settings, "WAHA_URL", None) or not getattr(settings, "WAHA_API_KEY", None):
                     return (False, "WhatsApp (WAHA) não configurado. Defina WAHA_URL e WAHA_API_KEY no .env.")
+                # Garante sessão com egress aplicado (proxy por tenant) antes de enviar
+                if cid:
+                    try:
+                        from services.dispatchers.whatsapp_dispatcher import ensure_waha_session_ready
+
+                        ok_sess, err_sess = ensure_waha_session_ready(cliente_id=cid, session_name=session_name)
+                        if not ok_sess:
+                            return (False, err_sess or "Falha ao preparar sessão WAHA.")
+                    except Exception as e:
+                        return (False, str(e))
                 if anexo_base64 and anexo_mimetype:
                     from integrations.whatsapp.waha_client import enviar_imagem, enviar_documento, enviar_audio
                     mimetype = (anexo_mimetype or "").strip().lower()
@@ -208,6 +218,16 @@ class RoutingService:
                     return (ok, err)
                 # WAHA: tenta botões nativos (POST /api/sendButtons, motor NOWEB); se falhar, fallback texto
                 if getattr(settings, "WAHA_URL", None) and getattr(settings, "WAHA_API_KEY", None):
+                    # Garante sessão com egress aplicado (proxy por tenant) antes de enviar
+                    if cid:
+                        try:
+                            from services.dispatchers.whatsapp_dispatcher import ensure_waha_session_ready
+
+                            ok_sess, err_sess = ensure_waha_session_ready(cliente_id=cid, session_name=session_name)
+                            if not ok_sess:
+                                return (False, err_sess or "Falha ao preparar sessão WAHA.")
+                        except Exception as e:
+                            return (False, str(e))
                     if buttons and len(buttons) > 0:
                         from integrations.whatsapp.waha_client import enviar_botoes as waha_enviar_botoes
                         try:

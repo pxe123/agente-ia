@@ -1158,9 +1158,18 @@ class FlowExecutor:
             contact_id = None
         flow_json, flow_id = get_flow(cliente_id, canal)
         if not flow_json or not flow_id:
+            print(
+                f"[FlowExecutor] sem fluxo publicado/resolvido: cliente_id={cliente_id} canal={canal} "
+                f"(confirme chatbot.channels com 'whatsapp' e tabela flows com nodes). remote_id={remote_id!r}",
+                flush=True,
+            )
             return False
         nodes, edges = nodes_and_edges(flow_json)
         if not nodes:
+            print(
+                f"[FlowExecutor] fluxo sem nós (nodes vazio): cliente_id={cliente_id} canal={canal} flow_id={flow_id}",
+                flush=True,
+            )
             return False
 
         if is_reiniciar_comando(texto or ""):

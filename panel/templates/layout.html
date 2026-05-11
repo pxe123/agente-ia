@@ -65,7 +65,8 @@
                                 <div class="text-xs font-semibold tracking-wider uppercase {{ 'paywall-muted-featured' if is_featured else 'paywall-muted' }}">Plano</div>
                                 <div class="text-lg font-extrabold mt-1">{{ p.get('name') or p.get('plan_key') }}</div>
                                 <div class="text-sm mt-1 {{ 'paywall-muted-featured' if is_featured else 'paywall-muted' }}">
-                                    {% if (p.get('trial_days') or 0) %}
+                                    {% set show_trial = billing_paywall.get('show_trial', False) %}
+                                    {% if show_trial and (p.get('trial_days') or 0) %}
                                         {{ p.get('trial_days') }} dias de teste
                                     {% else %}
                                         Acesso imediato

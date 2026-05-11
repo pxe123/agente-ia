@@ -133,6 +133,41 @@ def get_preapproval(preapproval_id: str) -> Tuple[bool, Dict[str, Any]]:
     return False, data
 
 
+def update_preapproval_amount(
+    preapproval_id: str,
+    *,
+    amount: float,
+    currency_id: str = "BRL",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Atualiza o valor da assinatura recorrente para ciclos futuros.
+    """
+    pid = (preapproval_id or "").strip()
+    if not pid:
+        return False, {"erro": "preapproval_id vazio."}
+    url = f"{MP_API_BASE}/preapproval/{pid}"
+    headers = mp_headers()
+    if not headers:
+        return False, {"erro": "MERCADOPAGO_ACCESS_TOKEN não configurado."}
+    body: Dict[str, Any] = {
+        "auto_recurring": {
+            "transaction_amount": float(amount),
+            "currency_id": currency_id,
+        }
+    }
+    if metadata is not None:
+        body["metadata"] = metadata
+    r = requests.put(url, json=body, headers=headers, timeout=20)
+    try:
+        data = r.json()
+    except Exception:
+        data = {"erro": "Resposta inválida do Mercado Pago.", "status_code": r.status_code, "text": r.text[:2000]}
+    if r.status_code >= 200 and r.status_code < 300:
+        return True, data
+    return False, data
+
+
 def cancel_preapproval(preapproval_id: str) -> Tuple[bool, Dict[str, Any]]:
     """
     Cancela uma assinatura (preapproval) no Mercado Pago.

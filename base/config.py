@@ -49,6 +49,39 @@ class Settings:
     
     # --- SEGURANÇA ---
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "master@sistema.com")  # Centraliza o email do admin
+    # Admins adicionais (lista separada por vírgula). Ex.: "a@x.com,b@y.com"
+    # Observação: ADMIN_EMAIL também é incluído nessa lista automaticamente.
+    ADMIN_EMAILS = [
+        e.strip()
+        for e in (os.getenv("ADMIN_EMAILS", "") or "").split(",")
+        if e.strip()
+    ]
+
+    # Super-admin (bypass total): fail-safe por env para evitar lockout mesmo se DB/RLS estiverem fora.
+    # Lista separada por vírgula. Ex.: "root@empresa.com,cto@empresa.com"
+    SUPER_ADMIN_EMAILS = [
+        e.strip()
+        for e in (os.getenv("SUPER_ADMIN_EMAILS", "") or "").split(",")
+        if e.strip()
+    ]
+
+    # Tenants (UUID em clientes.id) que ignoram billing/pending no backend inteiro.
+    # Útil para a conta do dono da plataforma: webhooks WA/Meta não têm sessão Flask nem g.admin_full_access.
+    # Lista separada por vírgula. Ex.: "uuid-do-seu-tenant,uuid-outro"
+    SUPER_ADMIN_TENANT_IDS = [
+        x.strip().lower()
+        for x in (os.getenv("SUPER_ADMIN_TENANT_IDS", "") or "").split(",")
+        if x.strip()
+    ]
+
+    # Feature flag: pipeline nova de autorização (role -> billing -> quota).
+    # Default = false (mantém comportamento legado).
+    USE_NEW_AUTHZ_PIPELINE = (os.getenv("USE_NEW_AUTHZ_PIPELINE") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     # --- CORS / ORIGENS PERMITIDAS ---
     # Ex.: CORS_ORIGINS="https://meupainel.com,https://app.cliente.com"

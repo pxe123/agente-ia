@@ -1,0 +1,225 @@
+{% extends "admin/layout.html" %}
+{% block title %}Egress{% endblock %}
+{% block page_title %}Egress (proxy por tenant){% endblock %}
+
+{% block content %}
+<div class="max-w-5xl space-y-6">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+    <p class="text-sm text-slate-600">
+      Perfis de egress são usados para aplicar <strong>proxy por sessão</strong> no WAHA. Credenciais de proxy são <strong>write-only</strong> (a senha não é retornada).
+    </p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <h2 class="text-lg font-bold text-slate-800">Criar perfil</h2>
+      <span id="status" class="text-xs text-slate-500"></span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+      <input id="f-name" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="name (único)" autocomplete="off" spellcheck="false">
+      <input id="f-host" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="host" autocomplete="off" spellcheck="false">
+      <input id="f-port" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="port" inputmode="numeric" autocomplete="off" spellcheck="false">
+      <input id="f-username" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="username (opcional)" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input id="f-password" type="password" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="password (opcional)" autocomplete="new-password" autocapitalize="none" spellcheck="false">
+      <input id="f-type" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="type (metadata: http/socks5)" autocomplete="off" spellcheck="false">
+      <input id="f-country" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="country (opcional)" autocomplete="off" spellcheck="false">
+      <input id="f-max" class="px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="max_clients (default 2)" inputmode="numeric" autocomplete="off" spellcheck="false">
+      <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input id="f-active" type="checkbox" class="rounded border-slate-300" checked>
+        Ativo
+      </label>
+    </div>
+    <div class="mt-4 flex gap-2">
+      <button id="btn-create" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg">Criar</button>
+      <button id="btn-reload" class="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold rounded-lg">Recarregar</button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+    <h2 class="text-lg font-bold text-slate-800">Perfis</h2>
+    <div class="overflow-x-auto mt-4">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-slate-500 border-b">
+            <th class="py-2 pr-4">Nome</th>
+            <th class="py-2 pr-4">Host</th>
+            <th class="py-2 pr-4">Uso</th>
+            <th class="py-2 pr-4">Último teste</th>
+            <th class="py-2 pr-4">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="text-xs text-slate-500 mt-3">
+      Dica: para vincular/desvincular, use o <strong>cliente_id</strong> (UUID da tabela <code>clientes</code>).
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const statusEl = document.getElementById('status');
+  const rowsEl = document.getElementById('rows');
+  const btnCreate = document.getElementById('btn-create');
+  const btnReload = document.getElementById('btn-reload');
+  function setStatus(t) { statusEl.textContent = t || ''; }
+  function esc(s) { return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  async function load() {
+    setStatus('Carregando…');
+    const r = await fetch('/admin/api/egress');
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.erro || 'Erro'); return; }
+    const profiles = d.profiles || [];
+    rowsEl.innerHTML = profiles.map((p) => {
+      const used = Number(p.used_clients || 0);
+      const mx = Number(p.max_clients || 0);
+      const pct = Number(p.usage_pct || 0);
+      const last = p.last_test_at ? (esc(p.last_test_ip || '—') + ' · ' + esc(p.last_test_latency || '—') + 'ms') : '—';
+      const tenants = Array.isArray(p.tenants) ? p.tenants : [];
+      const tenantsShort = tenants.slice(0, 3).map((t) => esc(String(t).slice(0, 8)) + '…').join(', ');
+      const tenantsMore = tenants.length > 3 ? (' + ' + (tenants.length - 3)) : '';
+      return `
+        <tr class="border-b">
+          <td class="py-2 pr-4 font-semibold text-slate-800">${esc(p.name)}</td>
+          <td class="py-2 pr-4 text-slate-700">${esc(p.host)}:${esc(p.port)}</td>
+          <td class="py-2 pr-4 text-slate-700">${used}/${mx} (${pct}%)</td>
+          <td class="py-2 pr-4 text-slate-600">${last}</td>
+          <td class="py-2 pr-4">
+            <button class="btn-test px-2 py-1 text-xs border border-emerald-200 bg-emerald-50 text-emerald-900 rounded mr-1" data-id="${esc(p.id)}">Testar</button>
+            <button class="btn-edit px-2 py-1 text-xs border border-slate-300 rounded mr-1" data-id="${esc(p.id)}">Editar</button>
+            <button class="btn-assign px-2 py-1 text-xs border border-slate-300 rounded mr-1" data-id="${esc(p.id)}">Vincular</button>
+            <button class="btn-release px-2 py-1 text-xs border border-slate-300 rounded mr-1" data-id="${esc(p.id)}">Desvincular</button>
+            <button class="btn-del px-2 py-1 text-xs border border-slate-300 rounded" data-id="${esc(p.id)}">Deletar</button>
+            <div class="mt-1 text-[11px] text-slate-500">
+              Tenants: ${tenants.length ? (tenantsShort + tenantsMore) : '—'}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    setStatus('');
+    rowsEl.querySelectorAll('.btn-del').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        if (!confirm('Deletar este perfil? (somente se não estiver em uso)')) return;
+        setStatus('Deletando…');
+        const r2 = await fetch('/admin/api/egress/' + encodeURIComponent(id), { method: 'DELETE' });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!d2.ok) { setStatus(d2.erro || 'Erro ao deletar'); return; }
+        await load();
+      });
+    });
+
+    rowsEl.querySelectorAll('.btn-assign').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        const cid = prompt('cliente_id (UUID) para vincular a este profile:');
+        if (!cid) return;
+        setStatus('Vinculando…');
+        const r2 = await fetch('/admin/api/egress/' + encodeURIComponent(id) + '/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cliente_id: String(cid).trim() }),
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!d2.ok) { setStatus(d2.erro || 'Erro ao vincular'); return; }
+        await load();
+      });
+    });
+    rowsEl.querySelectorAll('.btn-release').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        const cid = prompt('cliente_id (UUID) para desvincular (remove assignment do tenant):');
+        if (!cid) return;
+        setStatus('Desvinculando…');
+        const r2 = await fetch('/admin/api/egress/' + encodeURIComponent(id) + '/release', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cliente_id: String(cid).trim() }),
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!d2.ok) { setStatus(d2.erro || 'Erro ao desvincular'); return; }
+        await load();
+      });
+    });
+    rowsEl.querySelectorAll('.btn-test').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        setStatus('Testando conectividade…');
+        const r2 = await fetch('/admin/api/egress/' + encodeURIComponent(id) + '/test', { method: 'POST' });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!d2.ok) { setStatus(d2.erro || 'Falha no teste'); return; }
+        const ip = d2.ip_efetivo || d2.ip || '—';
+        setStatus('OK: IP ' + ip + (d2.latency_ms ? (' · ' + d2.latency_ms + 'ms') : ''));
+        await load();
+      });
+    });
+
+    rowsEl.querySelectorAll('.btn-edit').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        const host = prompt('host (deixe vazio para não alterar):') || '';
+        const port = prompt('port (deixe vazio para não alterar):') || '';
+        const username = prompt('username (deixe vazio para limpar):') || '';
+        const password = prompt('password (deixe vazio para não alterar):') || '';
+        const type = prompt('type (metadata: http/socks5):') || '';
+        const country = prompt('country:') || '';
+        const maxClients = prompt('max_clients (>=1):') || '';
+        const active = confirm('Marcar como ativo? (OK=ativo / Cancel=inativo)');
+        const body = {
+          host,
+          port,
+          username,
+          password,
+          type,
+          country,
+          max_clients: maxClients,
+          is_active: active,
+        };
+        // Remove campos vazios que não devem alterar (exceto username que pode limpar)
+        if (!body.host) delete body.host;
+        if (!body.port) delete body.port;
+        if (!body.type) delete body.type;
+        if (!body.country) delete body.country;
+        if (!body.max_clients) delete body.max_clients;
+        if (!body.password) delete body.password;
+        setStatus('Salvando…');
+        const r2 = await fetch('/admin/api/egress/' + encodeURIComponent(id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!d2.ok) { setStatus(d2.erro || 'Erro ao salvar'); return; }
+        await load();
+      });
+    });
+  }
+  btnReload.addEventListener('click', () => load());
+  btnCreate.addEventListener('click', async () => {
+    const body = {
+      name: document.getElementById('f-name').value,
+      host: document.getElementById('f-host').value,
+      port: document.getElementById('f-port').value,
+      username: document.getElementById('f-username').value,
+      password: document.getElementById('f-password').value,
+      type: document.getElementById('f-type').value,
+      country: document.getElementById('f-country').value,
+      max_clients: document.getElementById('f-max').value || 2,
+      is_active: !!document.getElementById('f-active').checked,
+    };
+    setStatus('Criando…');
+    const r = await fetch('/admin/api/egress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.erro || 'Erro ao criar'); return; }
+    document.getElementById('f-password').value = '';
+    await load();
+  });
+  load();
+})();
+</script>
+{% endblock %}
+

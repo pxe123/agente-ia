@@ -79,7 +79,7 @@
             <button type="button" id="btn-marcar-todas-lidas" class="hidden text-xs text-slate-500 hover:text-slate-700 hover:underline mt-1" title="Limpa notificações de conversas que não aparecem na lista">
                 Marcar todas como lidas
             </button>
-            <input type="text" id="input-busca-contato" placeholder="Buscar contato..." 
+            <input type="text" id="input-busca-contato" placeholder="Buscar contato..." autocomplete="off" spellcheck="false"
                    class="w-full px-4 py-2.5 bg-slate-100 border-0 rounded-xl text-sm outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white transition">
         </div>
         <div id="lista-contatos" class="flex-1 overflow-y-auto">
@@ -148,7 +148,7 @@
                 <button type="button" id="btn-parar-audio" title="Parar e enviar" class="hidden bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
                     Parar e enviar
                 </button>
-                <textarea id="input-msg" rows="1" placeholder="Digite sua mensagem..."
+                <textarea id="input-msg" rows="1" placeholder="Digite sua mensagem..." autocomplete="off" spellcheck="false"
                           class="flex-1 border border-slate-200 rounded-2xl px-4 py-3 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition text-sm leading-5 min-h-[46px] max-h-[150px] resize-none overflow-y-hidden"></textarea>
                 <button onclick="enviarMensagemManual()" id="btn-enviar"
                         class="bg-slate-800 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-slate-900 transition active:scale-95">
