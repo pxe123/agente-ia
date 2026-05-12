@@ -12,7 +12,7 @@ from services.app_settings import get_global_settings
 
 
 def _admin_full_access() -> bool:
-    """Admin mestre (ADMIN_EMAIL): ignora plano, billing e limites de canal em requisição HTTP."""
+    """Admins configurados (.env): ignoram plano, billing e limites de canal em requisição HTTP."""
     try:
         from flask import has_request_context, g
 
