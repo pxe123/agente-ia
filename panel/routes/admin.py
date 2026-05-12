@@ -1,7 +1,7 @@
 # panel/routes/admin.py
 """
 Painel administrativo completo do SaaS.
-Acesso restrito ao usuário com email = ADMIN_EMAIL.
+Acesso restrito aos e-mails admin configurados no .env.
 """
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, Response, current_app
 from flask_login import login_required, current_user

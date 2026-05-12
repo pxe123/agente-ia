@@ -257,36 +257,62 @@ def get_current_cliente_id(user):
 
 
 # 3. Verificadores de Permissão (Baseado no seu terminal.py)
+def _configured_admin_emails(include_super_admin: bool = False) -> set[str]:
+    """
+    E-mails com acesso de admin configurados via .env.
+    - Sempre inclui ADMIN_EMAIL e ADMIN_EMAILS.
+    - Opcionalmente inclui SUPER_ADMIN_EMAILS.
+    """
+    allow: set[str] = set()
+    master = (getattr(settings, "ADMIN_EMAIL", None) or "").strip().casefold()
+    if master:
+        allow.add(master)
+    try:
+        extra = list(getattr(settings, "ADMIN_EMAILS", []) or [])
+    except Exception:
+        extra = []
+    allow.update(
+        str(e or "").strip().casefold()
+        for e in extra
+        if str(e or "").strip()
+    )
+    if include_super_admin:
+        try:
+            super_admin = list(getattr(settings, "SUPER_ADMIN_EMAILS", []) or [])
+        except Exception:
+            super_admin = []
+        allow.update(
+            str(e or "").strip().casefold()
+            for e in super_admin
+            if str(e or "").strip()
+        )
+    allow.discard("")
+    return allow
+
+
 def is_admin(user):
     """
-    Verifica se o utilizador logado é o administrador mestre do sistema.
-    O e-mail do admin é definido centralmente em base.config.Settings.ADMIN_EMAIL.
-    Comparação normalizada (strip + case-insensitive) para coincidir com o cadastro no Supabase.
-    """
-    if not user or not getattr(user, "is_authenticated", False) or not user.is_authenticated:
-        return False
-    email = (getattr(user, "email", None) or "").strip().casefold()
-    master = (getattr(settings, "ADMIN_EMAIL", None) or "").strip().casefold()
-    return bool(email and master and email == master)
-
-
-def is_admin_like(user) -> bool:
-    """
-    Admin-like: acesso total ao sistema (ignora plano/canais/limites).
-    - Inclui o admin mestre (ADMIN_EMAIL)
-    - Inclui e-mails adicionais em ADMIN_EMAILS (lista separada por vírgula no .env)
+    Verifica se o utilizador logado é admin do sistema (aceita múltiplos e-mails).
+    Fontes: ADMIN_EMAIL + ADMIN_EMAILS (+ SUPER_ADMIN_EMAILS, quando configurado).
     """
     if not user or not getattr(user, "is_authenticated", False) or not user.is_authenticated:
         return False
     email = (getattr(user, "email", None) or "").strip().casefold()
     if not email:
         return False
-    master = (getattr(settings, "ADMIN_EMAIL", None) or "").strip().casefold()
-    extra = []
-    try:
-        extra = list(getattr(settings, "ADMIN_EMAILS", []) or [])
-    except Exception:
-        extra = []
-    extra_norm = [str(e or "").strip().casefold() for e in extra if str(e or "").strip()]
-    allow = [e for e in ([master] + extra_norm) if e]
-    return email in set(allow)
+    return email in _configured_admin_emails(include_super_admin=True)
+
+
+
+def is_admin_like(user) -> bool:
+    """
+    Admin-like: acesso total ao sistema (ignora plano/canais/limites).
+    - Inclui ADMIN_EMAIL e ADMIN_EMAILS
+    - Inclui SUPER_ADMIN_EMAILS (quando configurado)
+    """
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_authenticated:
+        return False
+    email = (getattr(user, "email", None) or "").strip().casefold()
+    if not email:
+        return False
+    return email in _configured_admin_emails(include_super_admin=True)
