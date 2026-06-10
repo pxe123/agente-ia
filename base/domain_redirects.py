@@ -39,6 +39,19 @@ PATHS_CANONICAL_ON_PUBLIC_HOST = PUBLIC_MARKETING_PATHS_EXACT
 PUBLIC_MARKETING_PREFIXES = (
     "/landing/",
     "/static/",
+    "/agenda/",
+)
+
+# Ordem estável para sitemap.xml (subset indexável de PUBLIC_MARKETING_PATHS_EXACT).
+SITEMAP_INDEXABLE_PATHS: tuple[str, ...] = (
+    "/",
+    "/precos",
+    "/whatsapp-atendimento",
+    "/cadastro",
+    "/assinatura",
+    "/politica",
+    "/termos",
+    "/exclusao-de-dados",
 )
 
 
@@ -134,6 +147,22 @@ def path_allowed_on_public_host(path: str) -> bool:
     if path in PATHS_CANONICAL_ON_PUBLIC_HOST:
         return True
     return any(path.startswith(p) for p in PUBLIC_MARKETING_PREFIXES)
+
+
+def canonical_public_url(path: str) -> str:
+    """URL absoluta no host público de marketing para um path (ex.: ``/precos``)."""
+    base = public_base_url().rstrip("/")
+    p = (path or "").strip() or "/"
+    if not p.startswith("/"):
+        p = "/" + p
+    if p == "/":
+        return f"{base}/"
+    return f"{base}{p}"
+
+
+for _p in SITEMAP_INDEXABLE_PATHS:
+    if _p not in PUBLIC_MARKETING_PATHS_EXACT:
+        raise RuntimeError(f"SITEMAP_INDEXABLE_PATHS entry {_p!r} must be in PUBLIC_MARKETING_PATHS_EXACT")
 
 
 def auth_cors_allowed_origins():

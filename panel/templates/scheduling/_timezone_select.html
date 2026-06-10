@@ -1,0 +1,13 @@
+{# Espera: selected_tz, timezone_choice_groups #}
+<select name="timezone" required
+        class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 outline-none bg-white">
+  {% for group_name, choices in timezone_choice_groups %}
+  <optgroup label="{{ group_name }}">
+    {% for tz_id, tz_label in choices %}
+    <option value="{{ tz_id }}" {% if (selected_tz or 'America/Sao_Paulo') == tz_id %}selected{% endif %}>
+      {{ tz_label }}
+    </option>
+    {% endfor %}
+  </optgroup>
+  {% endfor %}
+</select>

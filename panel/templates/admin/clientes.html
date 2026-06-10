@@ -28,12 +28,30 @@
       <option value="">Todos os clientes</option>
     </select>
   </div>
+  <div>
+    <label for="filtro-scheduling-engine" class="block text-xs font-semibold text-slate-600 mb-1">Motor agenda</label>
+    <select id="filtro-scheduling-engine" class="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white min-w-[180px]">
+      <option value="">Todos</option>
+      <option value="agendamento_ia">Agenda IA</option>
+      <option value="zapaction_internal">ZapAction interno</option>
+    </select>
+  </div>
+  <div class="flex flex-wrap items-center gap-4 pb-1">
+    <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+      <input type="checkbox" id="filtro-hide-onboarding" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+      <span>Ocultar só onboarding</span>
+    </label>
+    <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+      <input type="checkbox" id="filtro-created-today" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+      <span>Criados hoje</span>
+    </label>
+  </div>
   <p class="text-xs text-slate-500 max-w-xl pb-1">Lista única com cobrança e assinatura. Expanda a linha para configurações, uso e financeiro.</p>
 </div>
 
 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
   <div class="overflow-x-auto -mx-4 sm:mx-0">
-    <table class="w-full text-sm text-left min-w-[960px]">
+    <table class="w-full text-sm text-left min-w-[1100px]">
       <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
         <tr>
           <th class="px-2 w-10 py-2 sm:py-3"></th>
@@ -41,13 +59,14 @@
           <th class="px-3 sm:px-4 py-2 sm:py-3">Conta desde</th>
           <th class="px-3 sm:px-4 py-2 sm:py-3">Plano</th>
           <th class="px-3 sm:px-4 py-2 sm:py-3">Billing</th>
+          <th class="px-3 sm:px-4 py-2 sm:py-3">Motor agenda</th>
           <th class="px-3 sm:px-4 py-2 sm:py-3">Próx. período / MP</th>
           <th class="px-3 sm:px-4 py-2 sm:py-3">Ferramentas</th>
           <th class="px-3 sm:px-4 py-2 sm:py-3">Acessos</th>
         </tr>
       </thead>
       <tbody id="clientes-tbody" class="divide-y divide-slate-100">
-        <tr><td colspan="8" class="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>
+        <tr><td colspan="9" class="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>
       </tbody>
     </table>
   </div>
@@ -55,6 +74,23 @@
 
 <div class="mt-4 text-xs text-slate-500">
   <strong>Acessos:</strong> habilitar ou bloquear canais no painel do cliente. O histórico financeiro reflete webhooks de assinatura (preapproval) processados com sucesso; aplique a migração <code class="bg-slate-100 px-1 rounded">010_billing_events_cliente_id</code> para indexar por cliente.
+</div>
+
+<div id="modal-scheduling-engine" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
+    <h3 class="text-lg font-bold text-slate-900">ATENÇÃO</h3>
+    <p class="text-sm text-slate-600 mt-2">Ao activar o motor <strong>ZapAction interno</strong>, certifique-se de que:</p>
+    <ul class="mt-3 text-sm text-slate-700 space-y-1 list-none">
+      <li>✓ Importação executada</li>
+      <li>✓ Auditoria concluída</li>
+      <li>✓ Histórico sincronizado</li>
+    </ul>
+    <p class="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3">Google Calendar (freebusy) não está disponível no motor interno.</p>
+    <div class="flex justify-end gap-2 mt-6">
+      <button type="button" id="modal-scheduling-cancel" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200">Cancelar</button>
+      <button type="button" id="modal-scheduling-confirm" class="px-4 py-2 rounded-lg text-sm font-semibold bg-teal-700 text-white hover:bg-teal-800">Confirmar</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -69,6 +105,52 @@ const CAMPOS_ACESSO = [
 
 const billingProfileCache = {};
 let openDetailId = null;
+let pendingSchedulingEngineSave = null;
+
+function schedulingEngineLabel(engine) {
+  return engine === 'zapaction_internal' ? 'ZapAction Interno' : 'Agenda IA';
+}
+
+function schedulingEngineBadgeClass(engine) {
+  return engine === 'zapaction_internal'
+    ? 'bg-teal-100 text-teal-800'
+    : 'bg-slate-100 text-slate-700';
+}
+
+function schedulingEngineCellHtml(c) {
+  const eng = c._scheduling_engine || 'agendamento_ia';
+  const changedAt = formatarData(c._scheduling_engine_changed_at);
+  const changedBy = (c._scheduling_engine_changed_by || '').trim();
+  return (
+    '<div><span class="px-2 py-0.5 rounded text-xs font-medium ' + schedulingEngineBadgeClass(eng) + '">' +
+      esc(schedulingEngineLabel(eng)) + '</span></div>' +
+    (changedAt && changedAt !== '—'
+      ? '<div class="text-[10px] text-slate-400 mt-1">Última alteração: ' + esc(changedAt) + '</div>'
+      : '') +
+    (changedBy
+      ? '<div class="text-[10px] text-slate-400">Por: ' + esc(changedBy) + '</div>'
+      : '')
+  );
+}
+
+function schedulingEngineConfigHtml(c) {
+  const id = c.id;
+  const eng = c._scheduling_engine || 'agendamento_ia';
+  return (
+    '<div class="sm:col-span-2 border border-slate-200 rounded-lg p-4 bg-white">' +
+      '<h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Motor de agenda</h4>' +
+      '<p class="text-xs text-slate-500 mb-2">Alteração imediata, sem reiniciar o servidor.</p>' +
+      '<div class="flex flex-wrap items-end gap-2">' +
+        '<select id="sched-engine-' + esc(id) + '" class="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[200px]">' +
+          '<option value="agendamento_ia"' + (eng === 'agendamento_ia' ? ' selected' : '') + '>Agenda IA (externo)</option>' +
+          '<option value="zapaction_internal"' + (eng === 'zapaction_internal' ? ' selected' : '') + '>ZapAction interno</option>' +
+        '</select>' +
+        '<button type="button" class="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-700 text-white hover:bg-teal-800" ' +
+          'onclick="salvarSchedulingEngine(\'' + esc(id) + '\', \'' + esc(eng) + '\')">Guardar motor</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
 
 function esc(s) {
   if (s == null || s === '') return '';
@@ -208,6 +290,7 @@ function detailPanelHtml(c) {
           '<div class="sm:col-span-2"><h4 class="text-xs font-bold text-slate-500 uppercase mb-2">Token / chave do widget (site)</h4>' +
             '<p class="text-sm font-mono text-slate-700">' + esc(maskEmbedKey(c.embed_key || c.website_chat_embed_key)) + '</p>' +
             '<p class="text-[11px] text-slate-400 mt-1">Valor sensível; só máscara na UI. O cliente vê a chave completa no painel.</p></div>' +
+          schedulingEngineConfigHtml(c) +
         '</div>' +
       '</div>' +
       '<div data-tab-panel="uso" data-cid="' + esc(id) + '" class="tab-panel hidden">' +
@@ -221,7 +304,6 @@ function detailPanelHtml(c) {
       '<div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-slate-200">' +
         '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 text-slate-800 hover:bg-slate-300" onclick="acaoResetTrial(\'' + esc(id) + '\')">Resetar trial</button>' +
         '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200" onclick="acaoPausar(\'' + esc(id) + '\')">Pausar assinatura</button>' +
-        '<button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-800 hover:bg-indigo-200" onclick="acaoSyncMp(\'' + esc(id) + '\')">Sincronizar com MP</button>' +
       '</div>' +
     '</div>'
   );
@@ -279,9 +361,10 @@ function renderFinanceiroBody(el, d, clienteId) {
   const cli = d.cliente || {};
   const st = cli.billing_status || '—';
   const last = formatarDataHora(d.last_payment_event_at);
-  const url = d.mp_receipt_url;
+  const stripeUrl = d.stripe_subscription_url;
+  const mpUrl = d.mp_receipt_url;
   const events = d.payment_history || [];
-  let hist = '<table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden"><thead class="bg-slate-100"><tr><th class="px-2 py-2">Processado em</th><th class="px-2 py-2">Tipo</th><th class="px-2 py-2">MP status</th><th class="px-2 py-2">data_id</th><th class="px-2 py-2">Valor</th><th class="px-2 py-2">Próx. pagto</th></tr></thead><tbody>';
+  let hist = '<table class="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden"><thead class="bg-slate-100"><tr><th class="px-2 py-2">Processado em</th><th class="px-2 py-2">Tipo</th><th class="px-2 py-2">Status</th><th class="px-2 py-2">data_id</th><th class="px-2 py-2">Valor</th><th class="px-2 py-2">Próx. pagto</th></tr></thead><tbody>';
   if (!events.length) hist += '<tr><td colspan="6" class="px-2 py-3 text-slate-400">Nenhum evento processado ainda.</td></tr>';
   else {
     events.slice(0, 25).forEach(function (e) {
@@ -303,14 +386,19 @@ function renderFinanceiroBody(el, d, clienteId) {
     });
   }
   hist += '</tbody></table>';
-  const linkRow = url
-    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="text-indigo-600 hover:underline text-sm font-medium">Abrir assinatura no Mercado Pago (comprovante / gestão)</a>'
-    : '<span class="text-slate-400 text-sm">Sem preapproval vinculado — link indisponível.</span>';
+  const linkParts = [];
+  if (stripeUrl) linkParts.push('<a href="' + esc(stripeUrl) + '" target="_blank" rel="noopener" class="text-indigo-600 hover:underline text-sm font-medium">Abrir assinatura no Stripe</a>');
+  if (mpUrl) linkParts.push('<a href="' + esc(mpUrl) + '" target="_blank" rel="noopener" class="text-slate-600 hover:underline text-sm font-medium">Assinatura legado MP</a>');
+  const linkRow = linkParts.length ? linkParts.join(' · ') : '<span class="text-slate-400 text-sm">Sem assinatura Stripe/MP vinculada.</span>';
+  const subId = cli.stripe_subscription_id ? String(cli.stripe_subscription_id).slice(0, 14) + '…' : '—';
+  const mpLegacy = cli.mp_preapproval_id ? String(cli.mp_preapproval_id).slice(0, 10) + '… (legado)' : '';
   const extratoUrl = '/admin/api/clientes/' + encodeURIComponent(clienteId) + '/extrato';
   el.innerHTML =
     '<div class="grid sm:grid-cols-2 gap-4">' +
-      '<div><span class="text-xs text-slate-500">Status (MP / sistema)</span><p class="text-lg font-semibold text-slate-800">' + esc(st) + '</p></div>' +
+      '<div><span class="text-xs text-slate-500">Status (sistema)</span><p class="text-lg font-semibold text-slate-800">' + esc(st) + '</p></div>' +
       '<div><span class="text-xs text-slate-500">Último processamento (webhook)</span><p class="text-lg font-semibold text-slate-800">' + esc(last) + '</p></div>' +
+      '<div class="sm:col-span-2"><span class="text-xs text-slate-500">Stripe subscription</span><p class="font-mono text-sm text-slate-700">' + esc(subId) + '</p>' +
+      (mpLegacy ? '<p class="font-mono text-xs text-slate-400 mt-1">' + esc(mpLegacy) + '</p>' : '') + '</div>' +
       '<div class="sm:col-span-2"><span class="text-xs text-slate-500">Próximo fim de período (cadastro)</span><p class="text-slate-700">' + esc(formatarDataHora(cli.billing_current_period_end)) + '</p></div>' +
       '<div class="sm:col-span-2">' + linkRow + '</div>' +
     '</div>' +
@@ -330,23 +418,12 @@ window.acaoResetTrial = async function (id) {
 };
 
 window.acaoPausar = async function (id) {
-  if (!confirm('Pausar/cancelar assinatura? Será chamado o cancelamento no Mercado Pago (se houver preapproval) e o status local ficará "Cancelada".')) return;
+  if (!confirm('Pausar/cancelar assinatura localmente? O cancelamento definitivo no Stripe deve ser feito no portal Stripe.')) return;
   try {
     const r = await fetch('/admin/api/clientes/' + encodeURIComponent(id) + '/pausar-assinatura', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const d = await r.json();
     if (!d.ok) { alert((d.erro || 'Falha') + (d.detalhe ? '\n' + JSON.stringify(d.detalhe).slice(0, 400) : '')); return; }
     delete billingProfileCache[id];
-    await carregarClientes();
-  } catch (e) { alert('Erro de rede'); }
-};
-
-window.acaoSyncMp = async function (id) {
-  try {
-    const r = await fetch('/admin/api/cobranca/reconciliar/' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-    const d = await r.json();
-    if (!d.ok) { alert(d.erro || 'Falha ao reconciliar'); return; }
-    delete billingProfileCache[id];
-    alert('Sincronização enfileirada ou concluída. Recarregue o painel financeiro reabrindo a linha.');
     await carregarClientes();
   } catch (e) { alert('Erro de rede'); }
 };
@@ -376,7 +453,7 @@ function toggleDetailRow(id) {
 function renderizarClientes(lista) {
   const tbody = document.getElementById('clientes-tbody');
   if (!lista || !lista.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">Nenhum cliente encontrado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-slate-500">Nenhum cliente encontrado.</td></tr>';
     return;
   }
   const rows = [];
@@ -413,7 +490,8 @@ function renderizarClientes(lista) {
     const planoNome = (c._plan_display_name || c.plano || '—');
     const planKey = (c.billing_plan_key || c.plano || '—');
     const periodo = formatarDataHora(c.billing_current_period_end);
-    const mpShort = c.mp_preapproval_id ? String(c.mp_preapproval_id).slice(0, 10) + '…' : '—';
+    const stripeId = c.stripe_subscription_id ? String(c.stripe_subscription_id).slice(0, 12) + '…' : '—';
+    const mpLegacy = c.mp_preapproval_id ? String(c.mp_preapproval_id).slice(0, 10) + '…' : '';
     rows.push(
       '<tr class="hover:bg-slate-50">' +
         '<td class="px-2 py-2 sm:py-3 text-center">' +
@@ -423,12 +501,14 @@ function renderizarClientes(lista) {
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><span title="' + esc(contaDesde) + '">' + esc(tempoConta) + '</span><div class="text-xs text-slate-500">' + esc(contaDesde) + '</div></td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><div class="font-medium text-slate-800">' + esc(planoNome) + '</div><div class="text-[10px] text-slate-400 mt-1">' + esc(planKey) + '</div></td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><span class="px-2 py-0.5 rounded text-xs ' + billingBadge + '">' + esc(billingLabel(billing)) + '</span>' + (trialEnds ? '<div class="text-[10px] text-slate-400 mt-1">teste até: ' + esc(trialEnds) + '</div>' : '') + '</td>' +
-        '<td class="px-3 sm:px-4 py-2 sm:py-3 text-slate-700 text-xs"><div>' + esc(periodo) + '</div><div class="text-[10px] text-slate-400 mt-1 font-mono">' + esc(mpShort) + '</div></td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3 text-xs">' + schedulingEngineCellHtml(c) + '</td>' +
+        '<td class="px-3 sm:px-4 py-2 sm:py-3 text-slate-700 text-xs"><div>' + esc(periodo) + '</div><div class="text-[10px] text-slate-400 mt-1 font-mono">' + esc(stripeId) + '</div>' +
+          (mpLegacy ? '<div class="text-[10px] text-slate-300 font-mono">' + esc(mpLegacy) + '</div>' : '') + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3">' + ferramentasEmUso(c) + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-1">' + acessos + '</td>' +
       '</tr>' +
       '<tr id="detail-row-' + esc(id) + '" class="hidden bg-slate-50/50">' +
-        '<td colspan="8" class="p-0">' + detailPanelHtml(c) + '</td></tr>'
+        '<td colspan="9" class="p-0">' + detailPanelHtml(c) + '</td></tr>'
     );
   });
   tbody.innerHTML = rows.join('');
@@ -484,36 +564,123 @@ async function carregarOpcoesPlano() {
   } catch (e) { console.error(e); }
 }
 
-async function carregarClientes() {
-  const tbody = document.getElementById('clientes-tbody');
+async function patchSchedulingEngine(clienteId, engine, confirm) {
+  const r = await fetch('/admin/api/clientes/' + encodeURIComponent(clienteId) + '/scheduling-engine', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scheduling_engine: engine, confirm: !!confirm }),
+  });
+  const d = await r.json();
+  if (!r.ok || !d.ok) {
+    const err = d.erro || d.detail || 'Erro ao guardar';
+    throw new Error(err);
+  }
+  return d;
+}
+
+function salvarSchedulingEngine(clienteId, currentEngine) {
+  const sel = document.getElementById('sched-engine-' + clienteId);
+  if (!sel) return;
+  const next = sel.value;
+  if (next === currentEngine) return;
+  if (next === 'zapaction_internal') {
+    pendingSchedulingEngineSave = { clienteId: clienteId, engine: next };
+    document.getElementById('modal-scheduling-engine').classList.remove('hidden');
+    return;
+  }
+  patchSchedulingEngine(clienteId, next, false)
+    .then(function () { openDetailId = clienteId; return carregarClientes(); })
+    .catch(function (e) { alert(e.message || 'Erro'); });
+}
+
+function clientesQueryString() {
+  const params = new URLSearchParams();
   const sel = document.getElementById('filtro-plano');
   const plano = sel && sel.value ? sel.value.trim() : '';
-  tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>';
+  if (plano) params.set('plano', plano);
+  const engSel = document.getElementById('filtro-scheduling-engine');
+  const eng = engSel && engSel.value ? engSel.value.trim() : '';
+  if (eng) params.set('scheduling_engine', eng);
+  const hideOb = document.getElementById('filtro-hide-onboarding');
+  if (hideOb && hideOb.checked) params.set('hide_onboarding', '1');
+  const today = document.getElementById('filtro-created-today');
+  if (today && today.checked) params.set('created_today', '1');
+  const s = params.toString();
+  return s ? ('?' + s) : '';
+}
+
+async function carregarClientes() {
+  const tbody = document.getElementById('clientes-tbody');
+  tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>';
   try {
-    const q = plano ? ('?plano=' + encodeURIComponent(plano)) : '';
-    const r = await fetch('/admin/api/clientes' + q);
+    const r = await fetch('/admin/api/clientes' + clientesQueryString());
     const data = await r.json();
     if (data.erro) {
-      tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-600">' + esc(data.erro) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-600">' + esc(data.erro) + '</td></tr>';
       return;
     }
     renderizarClientes(Array.isArray(data) ? data : []);
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-600">Erro ao carregar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-600">Erro ao carregar.</td></tr>';
   }
 }
 
+function syncFiltrosUrl() {
+  const u = new URL(window.location.href);
+  const sel = document.getElementById('filtro-plano');
+  const v = sel && sel.value ? sel.value.trim() : '';
+  if (v) u.searchParams.set('plano', v); else u.searchParams.delete('plano');
+  const hideOb = document.getElementById('filtro-hide-onboarding');
+  if (hideOb && hideOb.checked) u.searchParams.set('hide_onboarding', '1'); else u.searchParams.delete('hide_onboarding');
+  const today = document.getElementById('filtro-created-today');
+  if (today && today.checked) u.searchParams.set('created_today', '1'); else u.searchParams.delete('created_today');
+  const engSel = document.getElementById('filtro-scheduling-engine');
+  const eng = engSel && engSel.value ? engSel.value.trim() : '';
+  if (eng) u.searchParams.set('scheduling_engine', eng); else u.searchParams.delete('scheduling_engine');
+  window.history.replaceState({}, '', u.pathname + (u.search || ''));
+}
+
 (function init() {
+  const params = new URLSearchParams(window.location.search);
+  const hideOb = document.getElementById('filtro-hide-onboarding');
+  if (hideOb && params.get('hide_onboarding') === '1') hideOb.checked = true;
+  const today = document.getElementById('filtro-created-today');
+  if (today && params.get('created_today') === '1') today.checked = true;
+  const engSel = document.getElementById('filtro-scheduling-engine');
+  if (engSel && params.get('scheduling_engine')) engSel.value = params.get('scheduling_engine');
+
+  const modal = document.getElementById('modal-scheduling-engine');
+  const btnCancel = document.getElementById('modal-scheduling-cancel');
+  const btnConfirm = document.getElementById('modal-scheduling-confirm');
+  if (btnCancel) {
+    btnCancel.addEventListener('click', function () {
+      pendingSchedulingEngineSave = null;
+      modal.classList.add('hidden');
+    });
+  }
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', function () {
+      if (!pendingSchedulingEngineSave) return;
+      const p = pendingSchedulingEngineSave;
+      pendingSchedulingEngineSave = null;
+      modal.classList.add('hidden');
+      patchSchedulingEngine(p.clienteId, p.engine, true)
+        .then(function () { openDetailId = p.clienteId; return carregarClientes(); })
+        .catch(function (e) { alert(e.message || 'Erro'); });
+    });
+  }
+
   const sel = document.getElementById('filtro-plano');
   if (sel) {
     sel.addEventListener('change', function () {
-      const v = sel.value || '';
-      const u = new URL(window.location.href);
-      if (v) u.searchParams.set('plano', v); else u.searchParams.delete('plano');
-      window.history.replaceState({}, '', u.pathname + (u.search || ''));
+      syncFiltrosUrl();
       carregarClientes();
     });
   }
+  if (hideOb) hideOb.addEventListener('change', function () { syncFiltrosUrl(); carregarClientes(); });
+  if (today) today.addEventListener('change', function () { syncFiltrosUrl(); carregarClientes(); });
+  if (engSel) engSel.addEventListener('change', function () { syncFiltrosUrl(); carregarClientes(); });
+
   carregarKpis();
   carregarOpcoesPlano().then(function () { return carregarClientes(); });
 })();

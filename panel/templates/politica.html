@@ -2,12 +2,12 @@
 {% block title %}Política de Privacidade{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold text-slate-900 mb-6">Política de Privacidade</h1>
-<p class="text-sm text-slate-500 mb-8">Última atualização: fevereiro de 2025.</p>
+<p class="text-sm text-slate-500 mb-8">Última atualização: junho de 2026.</p>
 
 <div class="prose prose-slate max-w-none space-y-6 text-slate-700">
     <section>
         <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">1. Quem somos / Identificação do responsável</h2>
-        <p>Up Digital Brasil (&quot;nós&quot;, &quot;nosso&quot;) opera a plataforma de atendimento multicanal com inteligência artificial acessível em <strong>updigitalbrasil.com.br</strong> e via API em <strong>api.updigitalbrasil.com.br</strong>. Esta política descreve como tratamos os dados dos usuários do nosso serviço e dos usuários finais que interagem com nossos clientes via WhatsApp, Instagram, Messenger e chat no site.</p>
+        <p>Up Digital Brasil (&quot;nós&quot;, &quot;nosso&quot;) opera a plataforma <strong>ZapAction</strong> — atendimento multicanal com inteligência artificial e agendamento — acessível em <strong>zapaction.com.br</strong>, <strong>updigitalbrasil.com.br</strong> e via API em <strong>api.updigitalbrasil.com.br</strong>. Esta política descreve como tratamos os dados dos usuários do nosso serviço e dos usuários finais que interagem com nossos clientes via WhatsApp, Instagram, Messenger, chat no site e integrações opcionais como Google Calendar.</p>
         <p class="mt-3 text-slate-600">Para cumprimento da LGPD e das políticas das plataformas que utilizamos (Meta), informamos o contato do responsável pelo tratamento de dados: <strong>contato@updigitalbrasil.com.br</strong>. Caso a Meta ou autoridades solicitem a identificação legal da empresa (razão social, endereço, CNPJ), ela será fornecida mediante solicitação ao mesmo e-mail ou através do App Dashboard da Meta quando aplicável.</p>
     </section>
 
@@ -17,40 +17,65 @@
             <li><strong>Conta do cliente:</strong> e-mail, nome (quando informado), senha (armazenada de forma criptografada) e dados de conexão com canais (ex.: tokens e IDs da Meta para WhatsApp, Instagram e Messenger).</li>
             <li><strong>Mensagens e histórico:</strong> conteúdo das conversas processadas pela plataforma (WhatsApp, Instagram, Messenger, chat do site) para atendimento e melhoria do serviço de IA.</li>
             <li><strong>Dados técnicos:</strong> endereço IP, tipo de navegador e de dispositivo, data e hora de acesso, quando necessário para segurança e operação do serviço.</li>
+            <li><strong>Agendamento (opcional):</strong> nome da clínica, profissionais, serviços, horários e marcações configurados no módulo Agenda.</li>
         </ul>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">3. Finalidade do tratamento</h2>
-        <p>Utilizamos os dados para: (a) prestar o serviço de atendimento multicanal e resposta por IA; (b) conectar e gerenciar integrações com WhatsApp, Instagram e Messenger conforme autorizado pelo cliente; (c) melhorar a qualidade das respostas e do produto; (d) cumprir obrigações legais e (e) comunicar-nos com você sobre o serviço quando necessário.</p>
+        <h2 id="google-calendar" class="text-lg font-semibold text-slate-900 mt-6 mb-2">3. Google Calendar (integração opcional)</h2>
+        <p>Se você ou um profissional da sua equipe clicar em <strong>Conectar Google</strong> no painel ZapAction (Agenda → Profissionais), solicitamos autorização OAuth do Google com escopos limitados para agendamento. Esta secção cumpre a exigência do Google de divulgar como acessamos, usamos, armazenamos e compartilhamos dados de utilizadores Google.</p>
+        <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">3.1 Dados Google que acessamos</h3>
+        <ul class="list-disc pl-6 space-y-1">
+            <li><strong>Disponibilidade (free/busy):</strong> intervalos de tempo ocupados ou livres no calendário ligado, para calcular horários disponíveis na agenda pública e no atendimento por WhatsApp. Não lemos títulos nem descrições de eventos de terceiros para essa consulta.</li>
+            <li><strong>Eventos criados pelo ZapAction:</strong> ao confirmar uma marcação, criamos um evento no Google Calendar do profissional; ao cancelar, removemos o evento correspondente.</li>
+            <li><strong>Identificação OAuth:</strong> tokens de autorização (incluindo refresh token) necessários para manter a ligação ativa.</li>
+        </ul>
+        <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">3.2 Como usamos esses dados</h3>
+        <ul class="list-disc pl-6 space-y-1">
+            <li>Exibir slots disponíveis e evitar conflitos de horário.</li>
+            <li>Sincronizar marcações entre o ZapAction e o Google Calendar do profissional.</li>
+            <li>Operar o serviço de agendamento contratado pelo cliente (execução de contrato e consentimento OAuth).</li>
+        </ul>
+        <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">3.3 Armazenamento e segurança</h3>
+        <p>Os tokens OAuth são armazenados de forma segura nos nossos servidores (serviço de agendamento associado à sua conta), não no navegador do utilizador final. Mantemos os tokens enquanto a ligação Google estiver ativa ou até você desligar a integração.</p>
+        <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">3.4 Compartilhamento</h3>
+        <p>Não vendemos nem alugamos dados obtidos via Google APIs. O acesso ocorre apenas entre o ZapAction, o serviço de agendamento que operamos e as APIs do Google necessárias à funcionalidade. Não compartilhamos dados Google com anunciantes ou terceiros não essenciais ao serviço.</p>
+        <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">3.5 Revogação e exclusão</h3>
+        <p>Você pode <strong>desligar o Google Calendar</strong> a qualquer momento em Agenda → Profissionais → Desligar Google, e revogar o acesso em <a href="https://myaccount.google.com/permissions" class="text-emerald-600 hover:underline" rel="noopener noreferrer" target="_blank">Conta Google → Segurança → Acesso de terceiros</a>. Para exclusão de dados da conta ZapAction, use a página <a href="{{ url_for('legal.exclusao_de_dados') }}" class="text-emerald-600 hover:underline">Exclusão de Dados</a> ou contato@updigitalbrasil.com.br.</p>
+        <p class="mt-2 text-sm text-slate-600">O uso das APIs Google está sujeito à <a href="https://developers.google.com/terms/api-services-user-data-policy" class="text-emerald-600 hover:underline" rel="noopener noreferrer" target="_blank">Google API Services User Data Policy</a>.</p>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">4. Base legal e compartilhamento</h2>
-        <p>O tratamento é baseado em execução de contrato, consentimento quando aplicável e legítimo interesse. Podemos compartilhar dados apenas com: prestadores que nos auxiliam na operação (hospedagem, e-mail, análise), autoridades quando exigido por lei, e plataformas da Meta (Facebook/WhatsApp/Instagram) na medida necessária para as integrações que você ativa. Não vendemos seus dados pessoais.</p>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">4. Finalidade do tratamento</h2>
+        <p>Utilizamos os dados para: (a) prestar o serviço de atendimento multicanal e resposta por IA; (b) conectar e gerenciar integrações com WhatsApp, Instagram e Messenger conforme autorizado pelo cliente; (c) operar agendamento e sincronização opcional com Google Calendar; (d) melhorar a qualidade das respostas e do produto; (e) cumprir obrigações legais e (f) comunicar-nos com você sobre o serviço quando necessário.</p>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">5. Retenção</h2>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">5. Base legal e compartilhamento</h2>
+        <p>O tratamento é baseado em execução de contrato, consentimento quando aplicável e legítimo interesse. Podemos compartilhar dados apenas com: prestadores que nos auxiliam na operação (hospedagem, e-mail, análise), autoridades quando exigido por lei, plataformas da Meta (Facebook/WhatsApp/Instagram) na medida necessária para as integrações que você ativa, e Google quando você autoriza a ligação ao Google Calendar. Não vendemos seus dados pessoais.</p>
+    </section>
+
+    <section>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">6. Retenção</h2>
         <p>Mantemos os dados enquanto sua conta estiver ativa e conforme necessário para cumprimento legal e resolução de disputas. Histórico de mensagens pode ser mantido pelo período configurado ou exigido pela operação do serviço.</p>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">6. Seus direitos (LGPD e usuários Meta)</h2>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">7. Seus direitos (LGPD e usuários Meta)</h2>
         <p>Você pode acessar, corrigir, portar e solicitar a exclusão dos seus dados. Para <strong>solicitar a exclusão de dados</strong>, utilize o canal descrito na nossa página <a href="{{ url_for('legal.exclusao_de_dados') }}" class="text-emerald-600 hover:underline">Exclusão de Dados</a> ou envie um e-mail para o contato indicado nesta política. Atendemos pedidos de exclusão em conformidade com nossa política e com os requisitos das plataformas que utilizamos (incluindo Meta).</p>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">7. Segurança</h2>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">8. Segurança</h2>
         <p>Adotamos medidas técnicas e organizacionais para proteger os dados contra acesso não autorizado, perda ou alteração indevida, em conformidade com as boas práticas de mercado.</p>
     </section>
 
     <section>
-        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">8. Contato</h2>
+        <h2 class="text-lg font-semibold text-slate-900 mt-6 mb-2">9. Contato</h2>
         <p>Para dúvidas, pedidos de acesso ou exclusão de dados, entre em contato com o responsável pelo tratamento:</p>
         <ul class="list-disc pl-6 mt-2 space-y-1">
             <li><strong>E-mail:</strong> contato@updigitalbrasil.com.br (ou o e-mail oficial divulgado no site)</li>
-            <li><strong>Site:</strong> updigitalbrasil.com.br</li>
+            <li><strong>Site:</strong> zapaction.com.br / updigitalbrasil.com.br</li>
         </ul>
         <p class="mt-3">Respondemos em prazo razoável, em geral em até 15 dias. Se você for usuário de uma plataforma Meta (Facebook, Instagram, WhatsApp) e tiver solicitações relacionadas ao uso do nosso app nessas plataformas, utilize o mesmo canal; em casos em que a Meta exija informações adicionais da empresa, podemos fornecê-las mediante solicitação formal.</p>
     </section>

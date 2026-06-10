@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block title %}Agendamentos{% endblock %}
+{% block page_title %}Agenda — Agendamentos{% endblock %}
+{% block content %}
+<div class="p-6 max-w-4xl mx-auto space-y-6">
+  <a href="{{ url_for('scheduling.home') }}" class="text-sm text-teal-700 hover:underline">← Agenda</a>
+  <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase">
+        <tr>
+          <th class="px-3 py-2">Início</th>
+          <th class="px-3 py-2">Estado</th>
+          <th class="px-3 py-2">Contacto</th>
+          <th class="px-3 py-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y">
+        {% for a in appointments %}
+        <tr>
+          <td class="px-3 py-2 whitespace-nowrap">{{ a.starts_at_display or (a.starts_at|format_scheduling_datetime(settings.timezone)) }}</td>
+          <td class="px-3 py-2">{{ a.status }}</td>
+          <td class="px-3 py-2 text-slate-500 truncate max-w-[200px]">{{ a.remote_id or a.contact_phone or '—' }}</td>
+          <td class="px-3 py-2 text-right">
+            {% if a.status != 'cancelled' %}
+            <form method="post" class="inline" onsubmit="return confirm('Cancelar este agendamento?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+              <input type="hidden" name="appointment_id" value="{{ a.id }}">
+              <button class="text-red-600 text-xs font-medium">Cancelar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="px-3 py-6 text-center text-slate-500">Sem agendamentos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

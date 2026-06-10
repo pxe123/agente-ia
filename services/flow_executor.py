@@ -34,14 +34,92 @@ from services.flow_helpers import (
 )
 from services.flow_state import get_flow, get_state, set_state, clear_state
 from services.agendamento_ia_bridge import (
+    HISTORY_LIMIT,
+    agendamento_use_internal_scheduling,
     build_request_body,
+    call_agendamento_motor,
     call_webhook,
     parse_api_response,
-    HISTORY_LIMIT,
+)
+from services.agendamento_ia_contact import (
+    contact_hints_from_collected,
+    enrich_collected_from_lead,
+    has_contact_fields,
+    normalize_collected_for_agendamento,
 )
 from services.agendamento_ia_actions import apply_agendamento_action, pick_or_derive_action
-from services.agendamento_ia_message_templates import format_agendamento_user_message
+from services.agendamento_ia_message_templates import (
+    booking_via_public_link_only,
+    format_agendamento_user_message,
+    format_link_only_booking_message,
+)
 from base.config import settings
+
+
+def _agenda_public_booking_url(
+    cliente_id: str,
+    *,
+    remote_id: str = "",
+    canal: str = "whatsapp",
+    node_id: str | None = None,
+    contact_name: str = "",
+    contact_phone: str = "",
+    prefer_token_link: bool = False,
+) -> str:
+    """URL de agendamento: /v1/book (prod), link tokenizado ou /agenda/<slug> (dev)."""
+    try:
+        from services.agendamento_ia_link import resolve_booking_url_for_contact
+
+        url, _src = resolve_booking_url_for_contact(
+            cliente_id=str(cliente_id),
+            remote_id=remote_id or "",
+            canal=canal,
+            node_id=node_id,
+            contact_name=contact_name or "",
+            contact_phone=contact_phone or "",
+            prefer_token_link=prefer_token_link,
+        )
+        return url or ""
+    except Exception:
+        return ""
+
+
+def _collected_contact_hints(collected: dict | None) -> dict[str, str]:
+    """Campos tipo lead → extras no contexto aceites pelo motor Agendamento IA."""
+    return contact_hints_from_collected(collected)
+
+
+def _append_agenda_public_link_reply(
+    cliente_id: str,
+    node_data: dict,
+    reply: str,
+    *,
+    remote_id: str = "",
+    canal: str = "whatsapp",
+    node_id: str | None = None,
+    contact_name: str = "",
+    contact_phone: str = "",
+) -> str:
+    if not (reply or "").strip():
+        return reply
+    raw = node_data.get("show_agenda_link")
+    if raw is False or str(raw).lower() in ("0", "false", "no", "off"):
+        return reply
+    prefer_token = node_data.get("prefer_token_link") in (True, "true", "1")
+    url = _agenda_public_booking_url(
+        cliente_id,
+        remote_id=remote_id,
+        canal=canal,
+        node_id=node_id,
+        contact_name=contact_name,
+        contact_phone=contact_phone,
+        prefer_token_link=prefer_token,
+    )
+    if not url:
+        return reply
+    if _text_has_equivalent_url(reply, url):
+        return reply
+    return f"{reply.rstrip()}\n\nMarcar também aqui: {url}"
 
 
 def _norm_url_for_compare(url: str | None) -> str:
@@ -378,6 +456,54 @@ def get_existing_lead_with_data(
         return None
     except Exception as e:
         print(f"[FlowExecutor] get_existing_lead_with_data: {e}", flush=True)
+        return None
+
+
+def get_latest_lead_contact(
+    cliente_id: str,
+    canal: str,
+    remote_id: str,
+    contact_id: str | None = None,
+) -> dict | None:
+    """
+    Lead mais recente do contato com pelo menos nome, e-mail ou telefone.
+    Usado para enriquecer collected_data no nó agendamento_ia.
+    """
+    if not supabase or not cliente_id:
+        return None
+    try:
+        q = (
+            supabase.table(Tables.LEADS)
+            .select("*")
+            .eq(LeadModel.CLIENTE_ID, cliente_id)
+            .eq(LeadModel.CANAL, canal)
+        )
+        if contact_id:
+            q = q.eq(LeadModel.CONTACT_ID, contact_id)
+        else:
+            q = q.eq(LeadModel.REMOTE_ID, remote_id)
+        res = q.order(LeadModel.CREATED_AT, desc=True).limit(1).execute()
+        row = (res.data or [{}])[0] if res.data else None
+        if not row or not isinstance(row, dict):
+            return None
+        nome = (row.get(LeadModel.NOME) or "").strip()
+        email = (row.get(LeadModel.EMAIL) or "").strip()
+        telefone = (row.get(LeadModel.TELEFONE) or "").strip()
+        dados = row.get(LeadModel.DADOS)
+        if isinstance(dados, dict):
+            if not nome:
+                nome = str(dados.get("nome") or dados.get("name") or "").strip()
+            if not email:
+                email = str(dados.get("email") or dados.get("e-mail") or "").strip()
+            if not telefone:
+                telefone = str(
+                    dados.get("telefone") or dados.get("phone") or dados.get("celular") or ""
+                ).strip()
+        if nome or email or telefone:
+            return row
+        return None
+    except Exception as e:
+        print(f"[FlowExecutor] get_latest_lead_contact: {e}", flush=True)
         return None
 
 
@@ -742,6 +868,14 @@ def _agendamento_process_turn(
         for k, v in (collected_now or {}).items()
         if not str(k).startswith("__")
     }
+    collected_for_ctx = normalize_collected_for_agendamento(collected_for_ctx)
+    if not has_contact_fields(collected_for_ctx):
+        lead_row = get_latest_lead_contact(
+            cliente_id, canal, remote_id, contact_id=contact_id
+        )
+        collected_for_ctx = enrich_collected_from_lead(collected_for_ctx, lead_row)
+    contact_hints = _collected_contact_hints(collected_for_ctx)
+    contact_name = (contact_hints.get("contact_name") or "").strip()
     context = {
         "cliente_id": cliente_id,
         "canal": canal,
@@ -752,7 +886,89 @@ def _agendamento_process_turn(
         "node_data": node_data,
         "collected_data": collected_for_ctx,
         "history": history,
+        **contact_hints,
     }
+    if booking_via_public_link_only(node_data):
+        reply = format_link_only_booking_message(node_data)
+        url = _agenda_public_booking_url(
+            cliente_id,
+            remote_id=remote_id,
+            canal=canal,
+            node_id=agendamento_node_id,
+            contact_name=contact_name,
+            contact_phone=(contact_hints.get("contact_phone") or "").strip(),
+        )
+        if url and not _text_has_equivalent_url(reply, url):
+            reply = f"{reply.rstrip()}\n\nMarcar aqui: {url}"
+        else:
+            reply = _append_agenda_public_link_reply(
+                cliente_id,
+                node_data,
+                reply,
+                remote_id=remote_id,
+                canal=canal,
+                node_id=agendamento_node_id,
+                contact_name=contact_name,
+                contact_phone=(contact_hints.get("contact_phone") or "").strip(),
+            )
+        if not (reply or "").strip():
+            reply = _append_agenda_public_link_reply(
+                cliente_id,
+                node_data,
+                "Para marcar, use o link abaixo (página de agendamento).",
+                remote_id=remote_id,
+                canal=canal,
+                node_id=agendamento_node_id,
+                contact_name=contact_name,
+                contact_phone=(contact_hints.get("contact_phone") or "").strip(),
+            )
+        _send_plain_assistant_text(
+            cliente_id,
+            canal,
+            remote_id,
+            instancia,
+            reply,
+            socketio=socketio,
+            website_room=website_room,
+            embed_reply_store=embed_reply_store,
+        )
+        new_collected2 = dict(collected_now or {})
+        new_collected2.pop(AGENDAMENTO_IA_STATE_KEY, None)
+        next_id = next_node_after(agendamento_node_id, edges)
+        print(
+            f"[agendamento_ia] advance (link_only) node={agendamento_node_id!r} next={next_id!r}",
+            flush=True,
+        )
+        if not next_id:
+            set_state(
+                cliente_id, canal, remote_id, flow_id, None, new_collected2, contact_id=contact_id
+            )
+            return True
+        set_state(
+            cliente_id,
+            canal,
+            remote_id,
+            flow_id,
+            next_id,
+            new_collected2,
+            contact_id=contact_id,
+        )
+        return _flow_apply_next_id(
+            next_id,
+            cliente_id=cliente_id,
+            canal=canal,
+            remote_id=remote_id,
+            instancia=instancia,
+            flow_id=flow_id,
+            contact_id=contact_id,
+            nodes=nodes,
+            edges=edges,
+            message_meta=message_meta,
+            socketio=socketio,
+            website_room=website_room,
+            embed_reply_store=embed_reply_store,
+            user_text_for_agendamento="",
+        )
     session = ag.get("session")
     if not isinstance(session, dict):
         session = None
@@ -763,14 +979,20 @@ def _agendamento_process_turn(
         zapaction_turn_id=turn_id,
         inbound_user_message_id=inbound,
     )
-    wh = call_webhook(body)
+    wh = (
+        call_agendamento_motor(body)
+        if agendamento_use_internal_scheduling(cliente_id)
+        else call_webhook(body)
+    )
     fallback = (getattr(settings, "AGENDAMENTO_IA_FALLBACK_MESSAGE", None) or "").strip()
     if not fallback:
         fallback = (
             "Não consegui concluir o agendamento agora. Tente de novo em instantes."
         )
-    if wh.get("ok") and (wh.get("text") is not None):
-        parsed = wh.get("parsed") or parse_api_response(wh.get("text") or "")
+    if wh.get("ok"):
+        parsed = wh.get("parsed")
+        if parsed is None:
+            parsed = parse_api_response(wh.get("text") or "")
     else:
         parsed = {
             "reply": "",
@@ -810,6 +1032,16 @@ def _agendamento_process_turn(
         reply = format_agendamento_user_message(node_data, parsed if isinstance(parsed, dict) else None)
     if not (reply or "").strip():
         reply = fallback
+    reply = _append_agenda_public_link_reply(
+        cliente_id,
+        node_data,
+        reply,
+        remote_id=remote_id,
+        canal=canal,
+        node_id=agendamento_node_id,
+        contact_name=contact_name,
+        contact_phone=(contact_hints.get("contact_phone") or "").strip(),
+    )
     _send_plain_assistant_text(
         cliente_id,
         canal,

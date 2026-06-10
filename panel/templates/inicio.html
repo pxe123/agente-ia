@@ -1,20 +1,18 @@
 {% extends "layout_public.html" %}
 {% block title %}ZapAction – Cada demora no WhatsApp é uma venda perdida{% endblock %}
 {% block head %}
-<meta name="description" content="Pare de perder vendas: respostas automáticas 24h, mais vendas no WhatsApp e visibilidade de onde você perde dinheiro. ZapAction.">
-<link rel="canonical" href="{{ PUBLIC_BASE_URL }}/">
+<meta name="description" content="ZapAction: atendimento no WhatsApp, agendamento online e integração com Google Agenda. Respostas automáticas 24h, link público de reservas e painel completo.">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ZapAction">
 <meta property="og:title" content="ZapAction – Cada demora no WhatsApp é uma venda perdida">
-<meta property="og:description" content="Pare de perder vendas. Respostas automáticas 24h, mais vendas no WhatsApp e saiba onde perde dinheiro.">
-<meta property="og:url" content="{{ PUBLIC_BASE_URL }}/">
+<meta property="og:description" content="WhatsApp, agendamento online e Google Agenda integrado. Automatize atendimento, marque horários pelo chat e sincronize sua agenda.">
 <meta property="og:image" content="{{ PUBLIC_BASE_URL }}/static/images/logo.png">
 <meta property="og:image:alt" content="ZapAction — Pare de perder vendas no WhatsApp">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ZapAction – Cada demora no WhatsApp é uma venda perdida">
-<meta name="twitter:description" content="Pare de perder vendas. Respostas automáticas 24h, mais vendas no WhatsApp e veja onde perde dinheiro.">
+<meta name="twitter:description" content="WhatsApp, agendamento online e Google Agenda. Respostas automáticas 24h e link público de reservas com ZapAction.">
 <meta name="twitter:image" content="{{ PUBLIC_BASE_URL }}/static/images/logo.png">
 <meta name="twitter:image:alt" content="ZapAction — Pare de perder vendas no WhatsApp">
 
@@ -26,7 +24,7 @@
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web",
   "url": "{{ PUBLIC_BASE_URL }}/",
-  "description": "Pare de perder vendas no WhatsApp: respostas automáticas 24h, automação multicanal, chatbot, filas por setor e indicadores para ver onde perde dinheiro.",
+  "description": "Atendimento no WhatsApp, agendamento online e Google Agenda integrado. Respostas automáticas 24h, link público de reservas, chatbot e painel multicanal.",
   "offers": {
     "@type": "AggregateOffer",
     "priceCurrency": "BRL",
@@ -39,6 +37,14 @@
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "O ZapAction funciona com Google Agenda?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sim. Você pode conectar sua conta Google Agenda para sincronizar compromissos, consultar disponibilidade, criar eventos automaticamente e evitar conflitos de horário."
+      }
+    },
     {
       "@type": "Question",
       "name": "O ZapAction é oficial do WhatsApp?",
@@ -245,8 +251,8 @@
 
       <div class="mt-6 flex flex-wrap gap-2 text-[12px] text-slate-600">
         <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Respostas automáticas 24h</span>
-        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Mais vendas no WhatsApp</span>
-        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Veja onde perde dinheiro</span>
+        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Agendamento no WhatsApp</span>
+        <span class="px-3 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-sm">Google Agenda integrado</span>
       </div>
     </div>
 
@@ -552,6 +558,99 @@
           </div>
           <p class="mt-4 text-center text-[11px] text-slate-500">Demonstração do Flow Builder — reprodução contínua, sem som.</p>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Agendamento inteligente -->
+<section id="agendamento" class="py-10 sm:py-14">
+  <div class="reveal rounded-[32px] border border-slate-200 bg-white p-6 sm:p-10 overflow-hidden relative shadow-sm">
+    <div class="absolute -top-32 left-0 w-[480px] h-[480px] bg-emerald-500/10 blur-3xl rounded-full"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center relative">
+      <div class="max-w-xl">
+        <div class="text-[12px] uppercase tracking-wider text-slate-500 font-semibold">Agendamento inteligente</div>
+        <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Marque horários no WhatsApp — sem planilha e sem troca infinita de mensagens</h2>
+        <p class="mt-4 text-slate-600 leading-relaxed">
+          Cliente escolhe dia e hora no chat ou no link público. Painel + Google Agenda.
+        </p>
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 leading-relaxed">
+          <p>
+            Ao conectar o <strong>Google Calendar</strong> no painel (opcional), o ZapAction solicita autorização para consultar <strong>disponibilidade (horários livres/ocupados)</strong> e para <strong>criar ou remover eventos</strong> gerados pelas marcações feitas na plataforma — apenas para operar o agendamento e evitar conflitos de horário.
+          </p>
+          <p class="mt-2">
+            Não vendemos dados do Google nem os usamos para publicidade. Você pode revogar o acesso a qualquer momento no painel ou na sua Conta Google.
+            <a href="{{ PUBLIC_BASE_URL }}/politica#google-calendar" class="text-blue-700 font-medium hover:underline">Saiba mais na Política de Privacidade</a>.
+          </p>
+        </div>
+        <ul class="mt-6 space-y-2.5 text-sm text-slate-700">
+          <li class="flex items-center gap-2.5"><i class="fas fa-check text-emerald-600"></i> Agendamento pelo WhatsApp</li>
+          <li class="flex items-center gap-2.5"><i class="fas fa-check text-emerald-600"></i> Link público de reservas</li>
+          <li class="flex items-center gap-2.5"><i class="fas fa-check text-emerald-600"></i> Google Calendar integrado</li>
+          <li class="flex items-center gap-2.5"><i class="fas fa-check text-emerald-600"></i> Confirmações automáticas</li>
+        </ul>
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 shadow-sm">
+            <div class="text-slate-900 font-semibold text-sm">WhatsApp automático</div>
+            <div class="text-xs text-slate-600 mt-1">Chatbot envia link ou conduz a marcação no fluxo</div>
+          </div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 shadow-sm">
+            <div class="text-slate-900 font-semibold text-sm">Agenda no painel</div>
+            <div class="text-xs text-slate-600 mt-1">Profissionais, serviços, horários e marcações</div>
+          </div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 shadow-sm">
+            <div class="text-slate-900 font-semibold text-sm">Google Calendar Integrado</div>
+            <div class="text-xs text-slate-600 mt-1">Disponibilidade real e eventos sincronizados</div>
+          </div>
+        </div>
+        <div class="mt-8 flex flex-col sm:flex-row gap-3">
+          <a href="{{ url_for('public.cadastro_get') }}" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/20">
+            Começar com agenda incluída
+            <i class="fas fa-arrow-right text-sm"></i>
+          </a>
+          <a href="#planos" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-800 font-semibold hover:bg-slate-50 transition shadow-sm">
+            Ver planos
+            <i class="fas fa-tags text-sm"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="absolute -inset-2 rounded-[28px] bg-gradient-to-tr from-emerald-500/10 via-sky-500/10 to-indigo-500/10 blur-2xl"></div>
+        <div class="relative rounded-[28px] border border-slate-200 bg-[#e5ddd5] shadow-xl overflow-hidden">
+          <div class="px-4 py-3 bg-[#075e54] flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">Z</div>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-white truncate">ZapAction · Agendamento</div>
+              <div class="text-[11px] text-emerald-100/90">online agora</div>
+            </div>
+          </div>
+          <div class="p-4 space-y-3 min-h-[280px]">
+            <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-sm">
+              Olá! Quer marcar um horário? Escolha um dos slots disponíveis:
+            </div>
+            <div class="flex flex-wrap gap-2 max-w-[90%]">
+              <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-emerald-200 text-xs font-semibold text-emerald-800 shadow-sm">Ter 14:00</span>
+              <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-emerald-200 text-xs font-semibold text-emerald-800 shadow-sm">Ter 15:30</span>
+              <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-emerald-200 text-xs font-semibold text-emerald-800 shadow-sm">Qua 10:00</span>
+            </div>
+            <div class="ml-auto max-w-[75%] rounded-2xl rounded-tr-sm bg-[#dcf8c6] px-3.5 py-2.5 text-sm text-slate-800 shadow-sm">
+              Qua 10:00, por favor.
+            </div>
+            <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-sm">
+              Perfeito! ✅ Agendado para quarta às 10:00. Enviamos a confirmação por aqui.
+            </div>
+          </div>
+          <div class="px-4 pb-4 flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-sm">
+              <i class="fab fa-google text-blue-600"></i> Google Calendar conectado
+            </span>
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-sm">
+              <i class="fas fa-link text-emerald-600"></i> Link público ativo
+            </span>
+          </div>
+        </div>
+        <p class="mt-3 text-center text-[11px] text-slate-500">Ilustração de agendamento pelo WhatsApp com sincronização de agenda.</p>
       </div>
     </div>
   </div>
@@ -870,6 +969,13 @@
   <div class="mt-8 max-w-3xl mx-auto space-y-3">
     <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
       <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+        <span class="font-semibold text-slate-900">O ZapAction funciona com Google Agenda?</span>
+        <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-slate-600">Sim. Você pode conectar sua conta Google Agenda para sincronizar compromissos, consultar disponibilidade, criar eventos automaticamente e evitar conflitos de horário.</p>
+    </details>
+    <details class="reveal group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+      <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
         <span class="font-semibold text-slate-900">O ZapAction é oficial do WhatsApp?</span>
         <i class="fas fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform"></i>
       </summary>
@@ -967,6 +1073,12 @@
     </details>
   </div>
 </section>
+
+<nav class="mt-10 pt-6 border-t border-slate-200 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm" aria-label="Informações legais">
+  <a href="{{ PUBLIC_BASE_URL }}/politica" class="text-blue-700 hover:underline">Política de Privacidade</a>
+  <a href="{{ PUBLIC_BASE_URL }}/termos" class="text-blue-700 hover:underline">Termos de Uso</a>
+  <a href="{{ PUBLIC_BASE_URL }}/exclusao-de-dados" class="text-blue-700 hover:underline">Exclusão de Dados</a>
+</nav>
 
 <p class="text-center text-slate-500 text-xs pt-6">
   ZapAction é uma plataforma da Up Digital Brasil. Conecte seus canais em <strong>Conexões</strong> e ative o chatbot no painel.

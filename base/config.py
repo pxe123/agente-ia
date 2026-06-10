@@ -7,18 +7,42 @@ from dotenv import load_dotenv
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _env_path = os.path.join(_root, ".env")
 load_dotenv(_env_path, override=True)
+# Exposto para diagnóstico (scripts/verify_supabase_env.py)
+ENV_FILE_PATH = _env_path
+
+
+def _first_env(*names: str) -> str:
+    """Primeira variável de ambiente não vazia (aliases para deploy)."""
+    for name in names:
+        val = (os.getenv(name) or "").strip()
+        if val:
+            return val
+    return ""
+
 
 class Settings:
     """
     Centraliza todas as configurações do SaaS. 
     Se mudar uma chave no .env, todo o sistema atualiza automaticamente aqui.
     """
-    
+
+    ENV_FILE_PATH = _env_path
+
     # --- SUPABASE ---
-    SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "").strip()
-    # Chave anon (pública) para o frontend fazer login com Supabase Auth. NUNCA use SUPABASE_KEY aqui.
-    SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
+    SUPABASE_URL = _first_env("SUPABASE_URL")
+    # Service role (server-side). Aliases comuns em deploy/Docker.
+    SUPABASE_KEY = _first_env(
+        "SUPABASE_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_SECRET_KEY",
+    )
+    # Chave anon (pública): login Auth, nova senha no browser. NUNCA use SUPABASE_KEY aqui.
+    SUPABASE_ANON_KEY = _first_env(
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "VITE_SUPABASE_ANON_KEY",
+    )
     # JWT Secret do projeto (Supabase: Settings → API → JWT Secret) para validar o token no backend
     SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "").strip()
     
@@ -83,6 +107,15 @@ class Settings:
         "on",
     )
 
+    # Feature flag: onboarding/signup com funil (plano -> cadastro -> checkout/cartão -> pending -> trialing -> active).
+    # Por padrão, desativado para não quebrar clientes existentes.
+    USE_ONBOARDING_FUNNEL = (os.getenv("USE_ONBOARDING_FUNNEL") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
     # --- CORS / ORIGENS PERMITIDAS ---
     # Ex.: CORS_ORIGINS="https://meupainel.com,https://app.cliente.com"
     CORS_ORIGINS = [
@@ -104,28 +137,63 @@ class Settings:
     VAPID_PRIVATE_KEY = (os.getenv("VAPID_PRIVATE_KEY") or "").strip().replace("\\n", "\n")
     VAPID_PUBLIC_KEY = (os.getenv("VAPID_PUBLIC_KEY") or "").strip().replace("\\n", "\n")
 
-    # --- BILLING (Mercado Pago) ---
-    # Access token (server-side). Ex.: APP_USR-... (prod) ou TEST-... (sandbox)
-    MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or "").strip()
-    # Secret de assinatura de webhooks (configurado no painel "Suas integrações" → Webhooks → Assinatura secreta)
-    MERCADOPAGO_WEBHOOK_SECRET = (os.getenv("MERCADOPAGO_WEBHOOK_SECRET") or "").strip()
-    # URLs de retorno do checkout/assinatura (usadas no preapproval)
-    MERCADOPAGO_BACK_URL = (os.getenv("MERCADOPAGO_BACK_URL") or "").strip()
-    MERCADOPAGO_SUCCESS_URL = (os.getenv("MERCADOPAGO_SUCCESS_URL") or "").strip()
-    MERCADOPAGO_FAILURE_URL = (os.getenv("MERCADOPAGO_FAILURE_URL") or "").strip()
-    MERCADOPAGO_PENDING_URL = (os.getenv("MERCADOPAGO_PENDING_URL") or "").strip()
+    # --- BILLING (Stripe) ---
+    STRIPE_SECRET_KEY = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    STRIPE_PUBLISHABLE_KEY = (os.getenv("STRIPE_PUBLISHABLE_KEY") or "").strip()
+    STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
+    # Preços: fonte de verdade em plans (Supabase). stripe_price_id sincronizado via admin/API Stripe.
+    # Checkout/Portal URLs
+    STRIPE_SUCCESS_URL = (os.getenv("STRIPE_SUCCESS_URL") or "").strip()
+    STRIPE_CANCEL_URL = (os.getenv("STRIPE_CANCEL_URL") or "").strip()
+    STRIPE_PORTAL_RETURN_URL = (os.getenv("STRIPE_PORTAL_RETURN_URL") or "").strip()
 
-    # Enforce billing/entitlements
+    # Enforce billing/entitlements (legacy MP grace até period_end)
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "5") or "5")
 
-    # --- AGENDAMENTO IA (nó agendamento_ia: webhook externo) ---
+    # --- AGENDAMENTO IA (serviço FastAPI externo: motor + link tokenizado) ---
+    # Base canónica (ex.: https://agenda.zapaction.com.br). Deriva /v1/agendamento, /v1/link/generate, tenant-snapshot.
+    AGENDAMENTO_IA_BASE_URL = (os.getenv("AGENDAMENTO_IA_BASE_URL") or "").strip().rstrip("/")
+    # Host público nos links gerados (opcional; default = BASE_URL).
+    AGENDAMENTO_IA_PUBLIC_BASE_URL = (os.getenv("AGENDAMENTO_IA_PUBLIC_BASE_URL") or "").strip().rstrip("/")
     AGENDAMENTO_IA_WEBHOOK_URL = (os.getenv("AGENDAMENTO_IA_WEBHOOK_URL") or "").strip()
+    AGENDAMENTO_IA_LINK_GENERATE_URL = (os.getenv("AGENDAMENTO_IA_LINK_GENERATE_URL") or "").strip()
     AGENDAMENTO_IA_API_KEY = (os.getenv("AGENDAMENTO_IA_API_KEY") or "").strip()
     AGENDAMENTO_IA_TIMEOUT_SEC = int(os.getenv("AGENDAMENTO_IA_TIMEOUT_SEC", "25") or "25")
     AGENDAMENTO_IA_FALLBACK_MESSAGE = (
         os.getenv("AGENDAMENTO_IA_FALLBACK_MESSAGE")
         or "Não consegui concluir o agendamento agora. Tente de novo em instantes."
     ).strip() or "Não consegui concluir o agendamento agora. Tente de novo em instantes."
+    # Painel → Agendamento IA: POST JSON ao guardar agenda (criar/atualizar clínica lá). Opcional.
+    AGENDAMENTO_IA_CLINIC_SYNC_URL = (os.getenv("AGENDAMENTO_IA_CLINIC_SYNC_URL") or "").strip()
+    AGENDAMENTO_IA_CLINIC_SYNC_API_KEY = (os.getenv("AGENDAMENTO_IA_CLINIC_SYNC_API_KEY") or "").strip()
+    AGENDAMENTO_IA_CLINIC_SYNC_TIMEOUT_SEC = int(
+        os.getenv("AGENDAMENTO_IA_CLINIC_SYNC_TIMEOUT_SEC", "30") or "30"
+    )
+    # Webhook reverso: Agendamento IA → ZapAction (POST /webhook/agendamento-ia/appointments).
+    # Mesmo valor que ZAPACTION_WEBHOOK_SECRET no serviço Agendamento IA (HMAC §5.3 do plano técnico).
+    ZAPACTION_WEBHOOK_SECRET = (os.getenv("ZAPACTION_WEBHOOK_SECRET") or "").strip()
+    # Força motor interno de agenda (ignora webhook). Se false: interno só quando AGENDAMENTO_IA_WEBHOOK_URL vazio.
+    USE_INTERNAL_SCHEDULING = (os.getenv("USE_INTERNAL_SCHEDULING") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    # Rollout motor interno por tenant (UUIDs separados por vírgula). Ver docs/scheduling_internal_rollout_runbook.md
+    SCHEDULING_INTERNAL_CLIENTE_IDS = (os.getenv("SCHEDULING_INTERNAL_CLIENTE_IDS") or "").strip()
+    SCHEDULING_FORCE_AGENDA_CLIENTE_IDS = (os.getenv("SCHEDULING_FORCE_AGENDA_CLIENTE_IDS") or "").strip()
+    SCHEDULING_REMINDERS_ENABLED = (os.getenv("SCHEDULING_REMINDERS_ENABLED") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    SCHEDULING_REMINDER_HOURS_BEFORE = (os.getenv("SCHEDULING_REMINDER_HOURS_BEFORE") or "24").strip()
+
+    # Google Calendar OAuth no painel ZapAction (login direto; tokens enviados ao Agenda via API)
+    GOOGLE_CLIENT_ID = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+    GOOGLE_CLIENT_SECRET = (os.getenv("GOOGLE_CLIENT_SECRET") or "").strip()
+    GOOGLE_OAUTH_REDIRECT_URI = (os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
 
     # --- JOBS / FILA ---
     REDIS_URL = (os.getenv("REDIS_URL") or "").strip()
@@ -133,6 +201,16 @@ class Settings:
     # --- OBSERVABILIDADE ---
     SENTRY_DSN = (os.getenv("SENTRY_DSN") or "").strip()
     ENVIRONMENT = (os.getenv("ENVIRONMENT") or os.getenv("FLASK_ENV") or "").strip() or "development"
+
+    # --- CADASTRO PÚBLICO (anti-bot) ---
+    TURNSTILE_SITE_KEY = (os.getenv("TURNSTILE_SITE_KEY") or "").strip()
+    TURNSTILE_SECRET_KEY = (os.getenv("TURNSTILE_SECRET_KEY") or "").strip()
+    PUBLIC_SIGNUP_DISABLED = (os.getenv("PUBLIC_SIGNUP_DISABLED") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     # --- HARDENING ---
     # Em produção, exigir assinaturas válidas em webhooks (Meta + Mercado Pago).

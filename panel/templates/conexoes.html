@@ -98,7 +98,7 @@
                 {% if not meta_oauth_available %}
                 <p class="text-sm text-slate-500">Entre em contato com o administrador para ativar a conexão com a Meta.</p>
                 {% endif %}
-                {% if is_admin(current_user) %}
+                {% if is_admin_like(current_user) %}
                 <details class="mt-4 border border-slate-200 rounded-xl overflow-hidden">
                     <summary class="p-3 bg-slate-50 cursor-pointer text-sm font-medium text-slate-700 hover:bg-slate-100">Configuração manual (apenas admin)</summary>
                     <div class="p-4 bg-white border-t border-slate-200 space-y-3">
@@ -168,7 +168,7 @@
                 {% if not meta_oauth_available %}
                 <p class="text-sm text-slate-500">Entre em contato com o administrador para ativar a conexão com a Meta.</p>
                 {% endif %}
-                {% if is_admin(current_user) %}
+                {% if is_admin_like(current_user) %}
                 <details class="mt-4 border border-slate-200 rounded-xl overflow-hidden">
                     <summary class="p-3 bg-slate-50 cursor-pointer text-sm font-medium text-slate-700 hover:bg-slate-100">Configuração manual (apenas admin)</summary>
                     <div class="p-4 bg-white border-t border-slate-200 space-y-3">

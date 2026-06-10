@@ -25,6 +25,9 @@
           <h1 class="text-xl sm:text-2xl font-bold text-slate-800">Conta criada com sucesso</h1>
           <p class="text-sm text-slate-500 mt-1">
             Falta só confirmar seu e-mail para liberar o acesso.
+            {% if use_onboarding_funnel %}
+              Depois disso, adicione o cartão para iniciar o trial.
+            {% endif %}
             {% if plan %}
               <span class="text-slate-400">Plano:</span>
               <span class="font-semibold text-slate-700">{{ plan.name }}</span>

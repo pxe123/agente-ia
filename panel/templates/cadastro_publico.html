@@ -10,8 +10,12 @@
       </p>
     </div>
 
-    <form method="post" action="{{ url_for('public.cadastro_post') }}" class="p-6 space-y-4" autocomplete="off">
+    <form method="post" action="{{ PUBLIC_BASE_URL }}/cadastro" class="p-6 space-y-4" autocomplete="off">
       <input type="hidden" name="plano" value="{{ plan_key }}">
+      <div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
+        <label for="website">Website</label>
+        <input type="text" name="website" id="website" tabindex="-1" autocomplete="off" value="">
+      </div>
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Nome (opcional)</label>
         <input name="nome" value="{{ nome or '' }}" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Seu nome" autocomplete="off" spellcheck="false">
@@ -45,8 +49,12 @@
       </div>
       {% endif %}
 
-      <button type="submit" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition">
-        Criar conta e iniciar teste
+      {% if turnstile_site_key %}
+      <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+      {% endif %}
+
+      <button type="submit" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed" {% if signup_disabled %}disabled{% endif %}>
+        {% if signup_disabled %}Cadastro indisponível{% elif use_onboarding_funnel %}Criar conta e seguir para checkout{% else %}Criar conta e iniciar teste{% endif %}
       </button>
       <div class="text-xs text-slate-500 text-center">
         Ao criar a conta, você aceita os <a class="underline" href="{{ url_for('legal.termos') }}">Termos</a> e a <a class="underline" href="{{ url_for('legal.politica') }}">Política</a>.
@@ -54,5 +62,11 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block head %}
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 {% endblock %}
 

@@ -73,3 +73,8 @@ fpdf2==2.7.9
 rq==2.6.0
 redis==6.4.0
 sentry-sdk==2.21.0
+stripe==15.1.0
+google-api-python-client>=2.120,<3
+google-auth>=2.29,<3
+google-auth-oauthlib>=1.2,<2
+google-auth-httplib2>=0.2,<1

@@ -8,7 +8,8 @@ import time
 from flask import Blueprint, request, jsonify, current_app, url_for
 from flask_login import login_user
 
-from database.supabase_sq import supabase, supabase_public
+from base.config import settings
+from database.supabase_sq import supabase, supabase_public, supabase_config_diagnostics
 from database.models import Tables, ClienteModel
 from base.auth import _load_cliente_as_user_by_auth_id
 from base.domain_redirects import app_base_url, public_base_url, use_split_public_app_routing
@@ -128,18 +129,82 @@ def _ensure_cliente_auth_id(cliente_pk, email: str) -> str | None:
     return None
 
 
+_AUTH_ANON_MISSING_MSG = (
+    "Autenticação indisponível: configure SUPABASE_ANON_KEY no servidor "
+    "(Supabase → Settings → API → anon public)."
+)
+
+
+def _is_auth_config_error(message: str | None) -> bool:
+    m = (message or "").lower()
+    return (
+        "autenticação indisponível" in m
+        or "supabase_anon" in m
+        or "supabase não configurado" in m
+        or "no api key" in m
+        or "apikey" in m and "found" in m
+    )
+
+
+def _is_supabase_quota_error(message: str | None) -> bool:
+    m = (message or "").lower()
+    return (
+        "402" in m
+        or "quota" in m
+        or "egress" in m
+        or "exceeded" in m
+        or "bandwidth" in m
+        or "spend cap" in m
+    )
+
+
+def _login_error_status_and_code(err: str | None) -> tuple[int, str]:
+    if _is_auth_config_error(err):
+        return 503, "auth_config"
+    if _is_supabase_quota_error(err):
+        return 503, "supabase_quota"
+    return 401, "invalid_credentials"
+
+
+@auth_bp.route("/health", methods=["GET"])
+def auth_health():
+    """Diagnóstico público (sem chaves): clientes Supabase carregados no processo."""
+    diag = supabase_config_diagnostics()
+    return jsonify(
+        {
+            "ok": bool(supabase and supabase_public),
+            "supabase_service_client": supabase is not None,
+            "supabase_anon_client": supabase_public is not None,
+            "url_set": diag.get("url_set"),
+            "url_host": diag.get("url_host") or "",
+            "anon_key_set": diag.get("anon_key_set"),
+            "service_key_set": diag.get("service_key_set"),
+        }
+    )
+
+
 def _sign_in_with_password(email: str, password: str):
-    # Para login público devemos usar a chave ANON (SUPABASE_ANON_KEY), não service_role.
-    client = supabase_public or supabase
-    if client is None:
-        return None, "Supabase não configurado."
+    # Login público: somente chave anon (apikey na Auth API). Não usar service_role.
+    if supabase_public is None:
+        return None, _AUTH_ANON_MISSING_MSG
     try:
-        res = client.auth.sign_in_with_password({"email": email.strip(), "password": password})
+        res = supabase_public.auth.sign_in_with_password({"email": email.strip(), "password": password})
     except Exception as e:
         current_app.logger.warning("sign_in_with_password: %s", e)
         msg = str(e).lower()
+        if "api key" in msg or "apikey" in msg:
+            current_app.logger.error(
+                "sign_in_with_password: Supabase respondeu sem apikey — "
+                "SUPABASE_ANON_KEY definida no processo=%s (len=%s), SUPABASE_KEY=%s",
+                bool((settings.SUPABASE_ANON_KEY or "").strip()),
+                len((settings.SUPABASE_ANON_KEY or "").strip()),
+                bool((settings.SUPABASE_KEY or "").strip()),
+            )
+            return None, _AUTH_ANON_MISSING_MSG
         if "email not confirmed" in msg or "not confirmed" in msg or "email_not_confirmed" in msg:
-            return {"unconfirmed": True}, "Confirme seu e-mail antes de entrar. Se não recebeu, reenvie a confirmação."
+            return {"unconfirmed": True, "is_confirmed": False}, None
+        if _is_supabase_quota_error(str(e)):
+            return None, "Serviço temporariamente indisponível: limite de uso do Supabase atingido. Aguarde o ciclo ou faça upgrade do plano."
         return None, "E-mail ou senha incorretos."
     u = getattr(res, "user", None)
     if u is None and hasattr(res, "session") and res.session is not None:
@@ -169,8 +234,7 @@ def resend_confirmation():
     Reenvia e-mail de confirmação de cadastro (signup).
     Resposta sempre genérica (evita enumeração de e-mails).
     """
-    client = supabase_public or supabase
-    if client is None:
+    if supabase_public is None:
         return jsonify({"success": False, "message": "Serviço indisponível."}), 503
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
@@ -185,9 +249,9 @@ def resend_confirmation():
     try:
         # supabase-py: tenta assinaturas possíveis (variam por versão)
         try:
-            client.auth.resend({"type": "signup", "email": email, "options": {"email_redirect_to": redirect_to}})
+            supabase_public.auth.resend({"type": "signup", "email": email, "options": {"email_redirect_to": redirect_to}})
         except Exception:
-            client.auth.resend(email=email, type="signup", options={"email_redirect_to": redirect_to})
+            supabase_public.auth.resend(email=email, type="signup", options={"email_redirect_to": redirect_to})
     except Exception as e:
         current_app.logger.warning("resend_confirmation: %s", e)
         return jsonify(generic), 200
@@ -245,6 +309,8 @@ _LOGIN_ERRO_GENERICO = "E-mail ou senha incorretos."
 def login_auth():
     if supabase is None:
         return jsonify({"ok": False, "erro": "Supabase não configurado."}), 503
+    if supabase_public is None:
+        return jsonify({"ok": False, "erro": _AUTH_ANON_MISSING_MSG}), 503
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
@@ -255,8 +321,15 @@ def login_auth():
         return jsonify({"ok": False, "erro": "Muitas tentativas. Aguarde alguns minutos."}), 429
 
     uauth, err = _sign_in_with_password(email, password)
-    if err or not uauth:
-        return jsonify({"ok": False, "erro": err or _LOGIN_ERRO_GENERICO}), 401
+    if not uauth:
+        status, code = _login_error_status_and_code(err)
+        return jsonify(
+            {
+                "ok": False,
+                "erro": err or _LOGIN_ERRO_GENERICO,
+                "code": code,
+            }
+        ), status
 
     if uauth.get("unconfirmed") is True or uauth.get("is_confirmed") is False:
         return jsonify({"ok": False, "erro": "Confirme seu e-mail antes de entrar. Se não recebeu, reenvie a confirmação.", "code": "email_unconfirmed"}), 403

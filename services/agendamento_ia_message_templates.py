@@ -8,6 +8,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+# Textos por defeito quando o nó não define JSON (Flow Builder simplificado).
+_DEFAULT_MESSAGE_TEMPLATES: dict[str, str] = {
+    "default": "Para marcar, responda com 1, 2 ou 3 para escolher um horário.\n\n{{slot_list}}",
+    "needs_input": "Horários disponíveis:\n{{slot_list}}\n\nResponda com o número (1, 2 ou 3) ou diga *sim* para confirmar.",
+    "ok": "Marcação confirmada. Início: {{start}} — fim: {{end}}.",
+    "error": "Não foi possível concluir o agendamento ({{error_code}}). Tente de novo em instantes.",
+}
+
 
 def _as_str(d: Any, *keys: str) -> str:
     cur: Any = d
@@ -63,6 +71,9 @@ def _get_templates(node_data: dict[str, Any]) -> dict[str, str]:
         m = (node_data.get("message_template") or "").strip()
         if m:
             out["default"] = m
+    for k, v in _DEFAULT_MESSAGE_TEMPLATES.items():
+        if k not in out or not (out.get(k) or "").strip():
+            out[k] = v
     return out
 
 
@@ -102,6 +113,28 @@ def _apply_template(tpl: str, ph: dict[str, str]) -> str:
     for k, v in ph.items():
         out = out.replace("{{" + k + "}}", v)
     return out
+
+
+def booking_via_public_link_only(node_data: dict[str, Any]) -> bool:
+    """True quando o nó deve só enviar o link da agenda pública (sem chamar o motor no WhatsApp)."""
+    if not isinstance(node_data, dict):
+        return False
+    v = node_data.get("booking_via_link")
+    return v is True or str(v).lower() == "true"
+
+
+def format_link_only_booking_message(node_data: dict[str, Any]) -> str:
+    """Mensagem única no modo só-link: usa `message_template` ou texto curto por defeito."""
+    if not isinstance(node_data, dict):
+        return ""
+    parsed: dict[str, Any] = {"api_status": "ok", "done": False, "data": {}, "error": None}
+    mt = (node_data.get("message_template") or "").strip()
+    ph = _placeholders(node_data, "ok", parsed)
+    if mt:
+        return _apply_template(mt, ph).strip()
+    return _apply_template(
+        "Para marcar, use o link abaixo (página de agendamento).", ph
+    ).strip()
 
 
 def format_agendamento_user_message(

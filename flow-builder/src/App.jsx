@@ -512,16 +512,9 @@ function FlowBuilderInner() {
           label: 'Agendamento (IA)',
           notes: '',
           context_extra: '',
-          message_template: 'Escolha: {{slot_list}} / digite 1, 2 ou 3. Confirme com sim para marcar.',
-          message_templates: JSON.stringify({
-            default: 'Siga as instruções. {{slot_list}}',
-            needs_input: 'Opções: {{slot_list}}',
-            ok: 'Concluído. Data: {{start}} — fim: {{end}}. ID: {{appointment_id}}',
-            error: 'Não foi possível: {{error_code}}',
-            error_NO_APPOINTMENT: 'Não há agendamento para cancelar.',
-            error_SLOT_TAKEN: 'O horário já foi ocupado.',
-            error_NO_SLOTS: 'Sem horários livres. Tente mais tarde.',
-          }, null, 0),
+          booking_via_link: true,
+          show_agenda_link: true,
+          message_template: 'Pode escolher o horário pela página no link abaixo.',
         },
       };
 
@@ -744,6 +737,41 @@ function FlowBuilderInner() {
             )}
           </div>
         </header>
+
+        {isChatbotMode && (
+          <div className="flow-chatbot-blocks" role="toolbar" aria-label="Adicionar blocos ao fluxo">
+            <span className="flow-chatbot-blocks-label">Blocos:</span>
+            <button type="button" onClick={() => addNode('start')} className="flow-block-btn flow-block-btn--start" title="Início">
+              Início
+            </button>
+            <button type="button" onClick={() => addNode('message')} className="flow-block-btn flow-block-btn--message" title="Mensagem">
+              Mensagem
+            </button>
+            <button type="button" onClick={() => addNode('questionnaire')} className="flow-block-btn flow-block-btn--questionnaire" title="Questionário">
+              Questionário
+            </button>
+            <button type="button" onClick={() => addNode('condition')} className="flow-block-btn flow-block-btn--condition" title="Condição">
+              Condição
+            </button>
+            <button type="button" onClick={() => addNode('lead')} className="flow-block-btn flow-block-btn--lead" title="Salvar lead">
+              Lead
+            </button>
+            <button type="button" onClick={() => addNode('action')} className="flow-block-btn flow-block-btn--action" title="Ação">
+              Ação
+            </button>
+            <button
+              type="button"
+              onClick={() => addNode('agendamento_ia')}
+              className="flow-block-btn flow-block-btn--agendamento_ia"
+              title="Agendamento com API externa (multi-turn)"
+            >
+              Agendamento IA
+            </button>
+            <button type="button" onClick={() => addNode('end')} className="flow-block-btn flow-block-btn--end" title="Finalizar">
+              Finalizar
+            </button>
+          </div>
+        )}
 
         <div className="flow-canvas-wrap" role="region" aria-label="Área do diagrama">
           <div

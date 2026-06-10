@@ -26,7 +26,13 @@
   </style>
   <div class="text-center mb-10 max-w-2xl mx-auto">
     <h1 class="text-3xl font-bold text-slate-800">Escolha seu plano</h1>
-    <p class="text-slate-500 mt-2">Teste por alguns dias e ative a assinatura quando estiver pronto.</p>
+    {% if use_onboarding_funnel %}
+      <p class="text-slate-500 mt-2">
+        Adicione um cartão para iniciar o trial após a confirmação do checkout.
+      </p>
+    {% else %}
+      <p class="text-slate-500 mt-2">Teste por alguns dias e ative a assinatura quando estiver pronto.</p>
+    {% endif %}
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8 items-stretch">
@@ -82,7 +88,7 @@
       </ul>
       <a href="{{ url_for('public.cadastro_get') }}?plano={{ p.plan_key }}"
          class="mt-6 inline-flex w-full min-h-[48px] items-center justify-center gap-2 px-4 py-3 rounded-xl {{ 'plan-featured-cta' if is_featured else 'bg-emerald-600 hover:bg-emerald-700 text-white' }} font-semibold transition">
-        Começar teste
+        {% if use_onboarding_funnel %}Começar cadastro{% else %}Começar teste{% endif %}
         <i class="fas fa-arrow-right"></i>
       </a>
     </div>

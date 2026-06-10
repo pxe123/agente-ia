@@ -20,6 +20,10 @@
         html { scroll-behavior: smooth; }
         body { font-family: 'Inter', system-ui, sans-serif; }
     </style>
+    {% if CANONICAL_PAGE_URL %}
+    <link rel="canonical" href="{{ CANONICAL_PAGE_URL }}">
+    <meta property="og:url" content="{{ CANONICAL_PAGE_URL }}">
+    {% endif %}
     {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-800 antialiased">
@@ -33,7 +37,12 @@
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="ZapAction" class="h-10 w-10 object-contain">
                 <span class="font-bold text-lg tracking-tight">Zap<span class="text-emerald-400">Action</span></span>
             </a>
-            <div class="flex items-center justify-end gap-2">
+            <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+                <nav class="hidden sm:flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300" aria-label="Informações legais">
+                    <a href="{{ PUBLIC_BASE_URL }}/politica" class="hover:text-white transition">Política de Privacidade</a>
+                    <a href="{{ PUBLIC_BASE_URL }}/termos" class="hover:text-white transition">Termos de Uso</a>
+                    <a href="{{ PUBLIC_BASE_URL }}/exclusao-de-dados" class="hover:text-white transition">Exclusão de Dados</a>
+                </nav>
                 <a href="{{ PUBLIC_BASE_URL }}/login" class="inline-flex items-center justify-center px-4 py-2 rounded-2xl text-sm font-semibold text-white hover:text-white hover:bg-slate-700 border border-slate-600 transition">
                     Entrar
                 </a>
@@ -60,11 +69,11 @@
                 <p>Avaré — Rua Grécia — CEP 18707-290</p>
                 <p>D&amp;T SERVIÇOS DE ASSESSORIA E COMÉRCIO LTDA / CNPJ: 49.301.742/0001-46</p>
             </div>
-            <nav class="mt-8 flex flex-wrap justify-end gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-500" aria-label="Links institucionais">
-                <a href="{{ url_for('public.whatsapp_atendimento') }}" class="hover:text-slate-800">WhatsApp para empresas</a>
-                <a href="{{ url_for('legal.politica') }}" class="hover:text-slate-800">Política de Privacidade</a>
-                <a href="{{ url_for('legal.termos') }}" class="hover:text-slate-800">Termos de Uso</a>
-                <a href="{{ url_for('legal.exclusao_de_dados') }}" class="hover:text-slate-800">Exclusão de Dados</a>
+            <nav class="mt-8 flex flex-wrap justify-center gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-500" aria-label="Links institucionais">
+                <a href="{{ PUBLIC_BASE_URL }}/whatsapp-atendimento" class="hover:text-slate-800">WhatsApp para empresas</a>
+                <a href="{{ PUBLIC_BASE_URL }}/politica" class="hover:text-slate-800">Política de Privacidade</a>
+                <a href="{{ PUBLIC_BASE_URL }}/termos" class="hover:text-slate-800">Termos de Uso</a>
+                <a href="{{ PUBLIC_BASE_URL }}/exclusao-de-dados" class="hover:text-slate-800">Exclusão de Dados</a>
             </nav>
         </div>
     </footer>

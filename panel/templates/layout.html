@@ -32,15 +32,23 @@
     {% if billing_paywall and billing_paywall.required %}
     <div id="billing-paywall" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-5xl bg-white rounded-[28px] border border-slate-200 shadow-xl overflow-hidden">
+        <div id="billing-paywall-sheet" class="relative w-full transition-[max-width] duration-300 ease-out {{ 'max-w-lg' if (billing_paywall.onboarding_checkout_only and billing_paywall.selected_plan) else 'max-w-5xl' }} bg-white rounded-[28px] border border-slate-200 shadow-xl overflow-hidden">
             <div class="p-6 sm:p-7 border-b border-slate-100 flex items-start justify-between gap-4">
                 <div class="min-w-0">
-                    <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">Assinatura necessária</h3>
+                    <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+                        {% if billing_paywall.onboarding_checkout_only and billing_paywall.selected_plan %}
+                            Concluir ativação
+                        {% else %}
+                            Assinatura necessária
+                        {% endif %}
+                    </h3>
                     <p class="text-sm text-slate-600 mt-1 leading-relaxed">
                         {% if billing_paywall.reason == 'trial_expirado' %}
                             Seu período de teste terminou. Escolha um plano para continuar usando o ZapAction.
                         {% elif billing_paywall.reason == 'assinatura_em_atraso' %}
                             Sua assinatura está em atraso. Escolha um plano para regularizar e liberar o acesso.
+                        {% elif billing_paywall.reason == 'conta_em_onboarding' %}
+                            Falta confirmar o pagamento no Mercado Pago para iniciar o trial e liberar o produto.
                         {% else %}
                             Sua assinatura está inativa. Escolha um plano para reativar o acesso.
                         {% endif %}
@@ -54,7 +62,116 @@
             <div class="p-6 sm:p-7">
                 <div id="billing-paywall-msg" class="text-sm text-slate-600"></div>
 
-                {# Layout estilo cards (Start / Pro destacado / Master) #}
+                {% if billing_paywall.onboarding_checkout_only and billing_paywall.selected_plan %}
+                {% set p = billing_paywall.selected_plan %}
+                {% set ent = p.get('entitlements_json') or {} %}
+                <div class="mt-6 paywall-card p-6 sm:p-7 flex flex-col">
+                    <div class="text-xs font-semibold tracking-wider uppercase paywall-muted">Seu plano</div>
+                    <div class="text-xl font-extrabold mt-1 text-slate-900">{{ p.get('name') or p.get('plan_key') }}</div>
+                    <p class="text-sm text-slate-600 mt-2">O trial só começa após autorizar o cartão no Mercado Pago.</p>
+                    <div class="mt-5 flex items-end gap-2">
+                        <div class="text-3xl font-extrabold tracking-tight text-slate-900">
+                            R$ {{ '%.2f'|format((p.get('price') or 0)|float) }}
+                        </div>
+                        <div class="text-sm font-semibold pb-1 paywall-muted">/mês</div>
+                        <span class="ml-auto paywall-chip">{{ (p.get('currency') or 'BRL') }}</span>
+                    </div>
+                    {% if (p.get('trial_days') or 0) %}
+                    <p class="mt-3 text-sm text-slate-600">Inclui <span class="font-semibold text-slate-800">{{ p.get('trial_days') }} dias</span> de trial após a confirmação.</p>
+                    {% endif %}
+                    <ul class="mt-5 space-y-2 text-sm text-slate-700">
+                        {% if ent.get('whatsapp') %}
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i>WhatsApp</li>
+                        {% endif %}
+                        {% if ent.get('site') %}
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i>Chat no site</li>
+                        {% endif %}
+                        {% if ent.get('exports') %}
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i>Exportações</li>
+                        {% endif %}
+                        {% if ent.get('max_chatbots') %}
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i>Chatbots: {{ ent.get('max_chatbots') }}</li>
+                        {% endif %}
+                        {% if ent.get('max_usuarios_internos') %}
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i>Sub-logins: {{ ent.get('max_usuarios_internos') }}</li>
+                        {% endif %}
+                    </ul>
+                    <div class="mt-8">
+                        <button
+                            type="button"
+                            class="billing-plan-btn w-full py-3.5 rounded-2xl font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition"
+                            data-plan-key="{{ p.get('plan_key') }}"
+                        >
+                            Ir para checkout no Mercado Pago
+                            <i class="fa-solid fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+                {% if (billing_paywall.plans or [])|length > 0 %}
+                <button type="button" id="billing-paywall-toggle-plans" class="mt-5 w-full text-center text-sm font-semibold text-slate-600 hover:text-slate-900 py-2 rounded-xl hover:bg-slate-50 transition">
+                    Alterar plano
+                </button>
+                <div id="billing-paywall-plans-grid" class="hidden mt-2 border-t border-slate-100 pt-6">
+                    <p class="text-sm font-medium text-slate-800 mb-4">Outros planos — o checkout usará o plano do botão que escolher.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
+                        {% for p in (billing_paywall.plans or []) %}
+                        {% set key = (p.get('plan_key') or '')|lower %}
+                        {% set is_featured = key in ('pro','profissional') or (loop.index == 2) %}
+                        <div class="paywall-card {{ 'paywall-card--featured' if is_featured else '' }} p-5 sm:p-6 flex flex-col">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <div class="text-xs font-semibold tracking-wider uppercase {{ 'paywall-muted-featured' if is_featured else 'paywall-muted' }}">Plano</div>
+                                    <div class="text-lg font-extrabold mt-1">{{ p.get('name') or p.get('plan_key') }}</div>
+                                    <div class="text-sm mt-1 {{ 'paywall-muted-featured' if is_featured else 'paywall-muted' }}">Cartão obrigatório</div>
+                                </div>
+                                <span class="paywall-chip {{ 'paywall-chip--featured' if is_featured else '' }}">{{ (p.get('currency') or 'BRL') }}</span>
+                            </div>
+                            {% if is_featured %}
+                            <div class="mt-3 paywall-badge w-fit">
+                                <i class="fa-solid fa-star"></i>
+                                Mais vantajoso
+                            </div>
+                            {% endif %}
+                            <div class="mt-5 flex items-end gap-2">
+                                <div class="text-3xl sm:text-4xl font-extrabold tracking-tight">R$ {{ '%.2f'|format((p.get('price') or 0)|float) }}</div>
+                                <div class="text-sm font-semibold pb-1 {{ 'paywall-muted-featured' if is_featured else 'paywall-muted' }}">/mês</div>
+                            </div>
+                            <ul class="mt-5 space-y-2.5 text-sm">
+                                {% set ent = p.get('entitlements_json') or {} %}
+                                {% if ent.get('whatsapp') %}
+                                <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>WhatsApp</li>
+                                {% endif %}
+                                {% if ent.get('site') %}
+                                <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>Chat no site</li>
+                                {% endif %}
+                                {% if ent.get('exports') %}
+                                <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>Exportações</li>
+                                {% endif %}
+                                {% if ent.get('max_chatbots') %}
+                                <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>Chatbots: {{ ent.get('max_chatbots') }}</li>
+                                {% endif %}
+                                {% if ent.get('max_usuarios_internos') %}
+                                <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>Sub-logins: {{ ent.get('max_usuarios_internos') }}</li>
+                                {% endif %}
+                            </ul>
+                            <div class="mt-auto pt-6">
+                                <button type="button" class="billing-plan-btn w-full py-3 rounded-2xl font-semibold transition {{ 'bg-emerald-600 hover:bg-emerald-700 text-white' if is_featured else 'bg-emerald-600 hover:bg-emerald-700 text-white' }}" data-plan-key="{{ p.get('plan_key') }}">
+                                    Checkout com este plano
+                                    <i class="fa-solid fa-arrow-right ml-2"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% elif billing_paywall.onboarding_checkout_only %}
+                <div class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+                    Não encontrámos o plano associado à sua conta. Volte à página de planos ou contacte o suporte.
+                    <a href="{{ PUBLIC_BASE_URL }}/precos" class="mt-3 inline-flex font-semibold text-emerald-800 underline">Ver planos</a>
+                </div>
+                {% else %}
+                {# Layout estilo cards (Start / Pro destacado / Master) — reativação / trial expirado #}
                 <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
                     {% for p in (billing_paywall.plans or []) %}
                     {% set key = (p.get('plan_key') or '')|lower %}
@@ -93,7 +210,6 @@
                         </div>
 
                         <ul class="mt-5 space-y-2.5 text-sm">
-                            {# lista simples baseada em entitlements_json quando existir #}
                             {% set ent = p.get('entitlements_json') or {} %}
                             {% if ent.get('whatsapp') %}
                             <li class="flex items-center gap-2 {{ 'text-slate-200' if is_featured else 'text-slate-700' }}"><i class="fa-solid fa-check text-emerald-500"></i>WhatsApp</li>
@@ -125,6 +241,7 @@
                     </div>
                     {% endfor %}
                 </div>
+                {% endif %}
 
                 <p class="mt-4 text-xs text-slate-500">
                     O pagamento é processado com segurança via Mercado Pago. Após concluir, volte ao painel.
@@ -152,18 +269,21 @@
             try {
                 setMsg("Abrindo checkout…");
                 var email = "{{ (billing_paywall.email or '')|e }}";
-                var r = await fetch("/api/billing/mp/checkout", {
+                var r = await fetch("/api/billing/stripe/create-checkout-session", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
                     credentials: "same-origin",
-                    body: JSON.stringify({ plan_key: (planKey || "default"), payer_email: (email || "") })
+                    body: JSON.stringify({ plan_key: (planKey || "default") })
                 });
                 var j = await r.json().catch(function() { return null; });
-                if (!r.ok || !j || !j.ok || !j.init_point) {
-                    var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
+                if (!r.ok || !j || !j.ok || !j.checkout_url) {
+                    var detalhe = (j && (j.detail || j.erro || j.detalhe)) ? (" " + toText(j.detail || j.erro || j.detalhe)) : "";
+                    if (!detalhe && !r.ok) {
+                        detalhe = " (HTTP " + r.status + ")";
+                    }
                     throw new Error("Não foi possível iniciar o checkout." + detalhe);
                 }
-                window.location.href = j.init_point;
+                window.location.href = j.checkout_url;
             } catch (e) {
                 setMsg(String(e && e.message ? e.message : e), true);
             }
@@ -174,6 +294,25 @@
                 checkout(planKey);
             });
         });
+        var togglePlans = document.getElementById("billing-paywall-toggle-plans");
+        var plansGrid = document.getElementById("billing-paywall-plans-grid");
+        var sheet = document.getElementById("billing-paywall-sheet");
+        if (togglePlans && plansGrid && sheet) {
+            togglePlans.addEventListener("click", function() {
+                var open = !plansGrid.classList.contains("hidden");
+                if (open) {
+                    plansGrid.classList.add("hidden");
+                    sheet.classList.remove("max-w-5xl");
+                    sheet.classList.add("max-w-lg");
+                    togglePlans.textContent = "Alterar plano";
+                } else {
+                    plansGrid.classList.remove("hidden");
+                    sheet.classList.remove("max-w-lg");
+                    sheet.classList.add("max-w-5xl");
+                    togglePlans.textContent = "Ocultar outros planos";
+                }
+            });
+        }
     })();
     </script>
     {% endif %}

@@ -14,38 +14,21 @@ import os
 
 from flask import Blueprint, Response
 
+from base.domain_redirects import SITEMAP_INDEXABLE_PATHS, public_base_url
+
 seo_bp = Blueprint("seo", __name__)
-
-
-def _public_base_url() -> str:
-    from base.domain_redirects import public_base_url
-
-    return public_base_url()
-
-
-# Apenas paths públicos canônicos (alinha com redirect api → público em app.py)
-_SITEMAP_PATHS = (
-    "/",
-    "/precos",
-    "/whatsapp-atendimento",
-    "/cadastro",
-    "/assinatura",
-    "/politica",
-    "/termos",
-    "/exclusao-de-dados",
-)
 
 
 @seo_bp.route("/sitemap.xml")
 def sitemap_xml():
     """Lista URLs canônicas do site público (sempre PUBLIC_BASE_URL)."""
-    base = _public_base_url()
+    base = public_base_url()
     lastmod = (os.getenv("SITEMAP_LASTMOD") or "").strip()
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
-    for path in _SITEMAP_PATHS:
+    for path in SITEMAP_INDEXABLE_PATHS:
         loc = f"{base}/" if path == "/" else f"{base}{path}"
         parts.append("  <url>")
         parts.append(f"    <loc>{loc}</loc>")
@@ -60,7 +43,7 @@ def sitemap_xml():
 @seo_bp.route("/robots.txt")
 def robots_txt():
     """Orienta rastreadores e aponta o sitemap do domínio público."""
-    base = _public_base_url()
+    base = public_base_url()
     body = f"""User-agent: *
 Allow: /
 

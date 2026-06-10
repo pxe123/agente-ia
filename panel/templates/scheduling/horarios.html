@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}Horários{% endblock %}
+{% block page_title %}Agenda — Horários de trabalho{% endblock %}
+{% block content %}
+<div class="p-6 max-w-3xl mx-auto space-y-6">
+  <a href="{{ url_for('scheduling.home') }}" class="text-sm text-teal-700 hover:underline">← Agenda</a>
+  <p class="text-sm text-slate-600">Dia: 0=Segunda … 6=Domingo. Deixe profissional vazio para horário da clínica (todos).</p>
+  <form method="post" class="grid sm:grid-cols-2 gap-3 bg-white p-4 rounded-xl border border-slate-200">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <div>
+      <label class="text-xs text-slate-500">Profissional</label>
+      <select name="professional_id" class="w-full border rounded-lg px-3 py-2 text-sm">
+        <option value="">— Clínica (todos) —</option>
+        {% for p in professionals %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-slate-500">Dia</label>
+      <select name="day_of_week" class="w-full border rounded-lg px-3 py-2 text-sm">
+        {% for dn in dias %}
+        <option value="{{ loop.index0 }}">{{ dn }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-slate-500">Início</label>
+      <input name="start_time" value="09:00" class="w-full border rounded-lg px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs text-slate-500">Fim</label>
+      <input name="end_time" value="18:00" class="w-full border rounded-lg px-3 py-2 text-sm">
+    </div>
+    <div class="sm:col-span-2">
+      <button class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium">Adicionar</button>
+    </div>
+  </form>
+  <div class="bg-white rounded-xl border border-slate-200 divide-y text-sm">
+    {% for h in working_hours %}
+    <div class="p-3 flex justify-between items-center">
+      <span>
+        {% if h.professional_id %}Prof {{ h.professional_id[:8] }}…{% else %}Clínica{% endif %}
+        — dia {{ h.day_of_week }} — {{ h.start_time }}–{{ h.end_time }}
+      </span>
+      <form method="post" onsubmit="return confirm('Remover?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="id" value="{{ h.id }}">
+        <button class="text-red-600 text-xs font-medium">Remover</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="p-4 text-slate-500">Nenhum horário. Sem horários não há slots no WhatsApp.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

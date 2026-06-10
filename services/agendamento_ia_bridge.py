@@ -18,6 +18,8 @@ from typing import Any
 import requests
 
 from base.config import settings
+from services.agendamento_ia_contact import prepare_agendamento_context
+from services.agendamento_ia_urls import resolved_agendamento_webhook_url
 
 REQUEST_SCHEMA_VERSION = 1
 HISTORY_LIMIT = 15
@@ -34,7 +36,7 @@ def build_request_body(
     return {
         "request_schema_version": REQUEST_SCHEMA_VERSION,
         "user_message": user_message,
-        "context": context,
+        "context": prepare_agendamento_context(context),
         "session": session,
         "zapaction_turn_id": zapaction_turn_id,
         "inbound_user_message_id": inbound_user_message_id,
@@ -147,7 +149,7 @@ def call_webhook(body: dict[str, Any]) -> dict[str, Any]:
       "duration_ms": int
     }
     """
-    url = (getattr(settings, "AGENDAMENTO_IA_WEBHOOK_URL", None) or "").strip()
+    url = resolved_agendamento_webhook_url()
     t0 = time.perf_counter()
     out: dict[str, Any] = {
         "ok": False,
@@ -187,4 +189,52 @@ def call_webhook(body: dict[str, Any]) -> dict[str, Any]:
     out["duration_ms"] = int((time.perf_counter() - t0) * 1000)
     if out.get("ok") and out.get("text") is not None:
         out["parsed"] = parse_api_response(out["text"])
+    return out
+
+
+def scheduling_uses_internal_motor(cliente_id: str | None) -> bool:
+    """
+    True: nó agendamento_ia usa SchedulingService interno (Supabase).
+    False: POST para Agendamento IA (/v1/agendamento).
+
+    Implementação: services.scheduling.engine (BD + fallback env).
+    """
+    from services.scheduling.engine import scheduling_uses_internal_motor as _resolve
+
+    return _resolve(cliente_id)
+
+
+def agendamento_use_internal_scheduling(cliente_id: str | None = None) -> bool:
+    """Compat: sem cliente_id usa regras globais/dev (sem allowlist)."""
+    return scheduling_uses_internal_motor(cliente_id)
+
+
+def call_agendamento_motor(body: dict[str, Any]) -> dict[str, Any]:
+    """
+    Mesma forma de retorno que `call_webhook` (parsed compatível com parse_api_response).
+    """
+    t0 = time.perf_counter()
+    out: dict[str, Any] = {
+        "ok": False,
+        "http_status": 200,
+        "text": "",
+        "parsed": None,
+        "error": None,
+        "duration_ms": 0,
+    }
+    try:
+        from services.scheduling.service import handle_turn
+
+        parsed = handle_turn(body)
+        out["parsed"] = parsed
+        out["ok"] = True
+        try:
+            out["text"] = json.dumps(parsed, ensure_ascii=False, default=str)
+        except Exception:
+            out["text"] = ""
+    except Exception as e:
+        out["ok"] = False
+        out["error"] = f"internal_scheduling:{e!s}"
+        out["http_status"] = None
+    out["duration_ms"] = int((time.perf_counter() - t0) * 1000)
     return out

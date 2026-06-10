@@ -30,23 +30,6 @@
 </div>
 <script>
 (function() {
-    var iframe = document.getElementById('flow-iframe');
-    if (iframe) {
-        iframe.addEventListener('load', function hideFlowSidebar() {
-            try {
-                var doc = iframe.contentDocument;
-                if (doc && doc.head) {
-                    var style = doc.createElement('style');
-                    style.textContent = '.flow-sidebar { display: none !important; }';
-                    doc.head.appendChild(style);
-                }
-            } catch (e) {}
-        });
-    }
-})();
-</script>
-<script>
-(function() {
     var chatbotId = "{{ chatbot_id }}";
     var currentChannels = {{ channels | tojson }};
     var checkboxes = document.querySelectorAll('.chatbot-canal-cb');

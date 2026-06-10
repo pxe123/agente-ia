@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}Agenda{% endblock %}
+{% block page_title %}Agenda{% endblock %}
+{% block content %}
+<div class="p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-4">
+    <h3 class="font-semibold text-teal-900">Agenda integrada</h3>
+    <p class="text-slate-600 text-sm mt-1">Configure profissionais, serviços e horários. O nó <strong>agendamento_ia</strong> usa este módulo quando o webhook externo não está definido.</p>
+  </div>
+  <div class="flex flex-wrap gap-3 text-sm">
+    <a href="{{ url_for('scheduling.profissionais') }}" class="px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">Profissionais</a>
+    <a href="{{ url_for('scheduling.servicos') }}" class="px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">Serviços</a>
+    <a href="{{ url_for('scheduling.horarios') }}" class="px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">Horários</a>
+    <a href="{{ url_for('scheduling.agendamentos') }}" class="px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">Agendamentos</a>
+    <a href="{{ url_for('scheduling.config') }}" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-800 hover:bg-slate-50">Página pública / fuso</a>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5 card-shadow">
+    <h4 class="font-semibold text-slate-800 mb-3">Próximos agendamentos</h4>
+    {% if not upcoming %}
+    <p class="text-slate-500 text-sm">Nenhum agendamento futuro.</p>
+    {% else %}
+    <ul class="divide-y divide-slate-100">
+      {% for a in upcoming %}
+      <li class="py-2 text-sm flex justify-between gap-2">
+        <span>{{ a.starts_at_display or (a.starts_at|format_scheduling_datetime(settings.timezone)) }} — {{ a.status }}</span>
+        <span class="text-slate-500 truncate">{{ a.remote_id or '' }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% if settings.get('public_slug') %}
+  <p class="text-sm text-slate-600">Link público: <code class="bg-slate-100 px-2 py-1 rounded">/agenda/{{ settings.public_slug }}</code></p>
+  {% endif %}
+</div>
+{% endblock %}

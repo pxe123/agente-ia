@@ -163,21 +163,24 @@ from panel.routes.embed import embed_bp
 from panel.routes.meta_oauth import meta_oauth_bp
 from panel.routes.legal import legal_bp
 from panel.routes.exports import exports_bp
-from panel.routes.billing import billing_bp
+from billing.routes import billing_bp, stripe_billing_bp
 from panel.routes.public import public_bp
 from panel.routes.seo import seo_bp
+from panel.routes.scheduling import scheduling_bp
 from panel.routes.auth_routes import auth_bp
 from webhooks.meta_cloud import meta_bp
 from webhooks.waha_webhook import waha_webhook_bp
-from webhooks.mercadopago_webhook import mercadopago_bp
+from webhooks.agendamento_ia_appointments import agendamento_ia_appointments_bp
 
 # Registrar rotas
 app.register_blueprint(customer_bp)                      # Raiz: /
+app.register_blueprint(scheduling_bp, url_prefix="/painel/agenda")
 app.register_blueprint(admin_bp, url_prefix='/admin')    # Ex: /admin/dashboard
 app.register_blueprint(meta_oauth_bp, url_prefix='/meta')  # GET /meta/connect, /meta/oauth/callback, /meta/status
 app.register_blueprint(legal_bp)                         # /politica, /termos, /exclusao-de-dados (páginas legais Meta)
 app.register_blueprint(exports_bp)                       # /painel/export/*
 app.register_blueprint(billing_bp)                       # /api/billing/*
+app.register_blueprint(stripe_billing_bp)                # /api/billing/stripe/*
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(public_bp)                        # /precos, /cadastro, /assinatura
 app.register_blueprint(seo_bp)                           # /sitemap.xml, /robots.txt
@@ -185,6 +188,15 @@ app.register_blueprint(seo_bp)                           # /sitemap.xml, /robots
 from base.auth import is_admin, is_admin_like, get_current_cliente_id
 
 app.jinja_env.globals["getattr"] = getattr
+
+
+@app.template_filter("format_scheduling_datetime")
+def _format_scheduling_datetime(value, tz_name=None):
+    """Data/hora pt-BR no fuso da clínica (ex.: 21/05/2026 14:30)."""
+    from services.scheduling.display import format_datetime_br
+
+    return format_datetime_br(value, tz_name or "America/Sao_Paulo")
+
 
 def csrf_token() -> str:
     """
@@ -210,41 +222,50 @@ def inject_domain_urls():
     from flask import request
     from base.domain_redirects import (
         app_base_url,
+        canonical_public_url,
         get_support_whatsapp_url,
         is_local_request,
+        path_allowed_on_public_host,
         public_base_url,
     )
 
+    path = (request.path or "/").strip() or "/"
     if is_local_request(request):
         root = request.url_root.rstrip("/")
         public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
+        canon = None
+        if path_allowed_on_public_host(path):
+            canon = f"{root}/" if path == "/" else f"{root}{path}"
         return {
             "PUBLIC_BASE_URL": root,
             "APP_BASE_URL": root,
             "PUBLIC_CHAT_EMBED_KEY": public_chat_key,
             "support_whatsapp_url": get_support_whatsapp_url(),
+            "CANONICAL_PAGE_URL": canon,
         }
     public_chat_key = (os.getenv("PUBLIC_CHAT_EMBED_KEY") or "").strip()
+    canon = canonical_public_url(path) if path_allowed_on_public_host(path) else None
     return {
         "PUBLIC_BASE_URL": public_base_url(),
         "APP_BASE_URL": app_base_url(),
         "PUBLIC_CHAT_EMBED_KEY": public_chat_key,
         "support_whatsapp_url": get_support_whatsapp_url(),
+        "CANONICAL_PAGE_URL": canon,
     }
 
 @app.context_processor
 def inject_embed_key():
-    """Chave embed do tenant logado (painel cliente). Templates usam {{ embed_key }}; admin mestre não recebe chave."""
+    """Chave embed do tenant logado (painel cliente). Templates usam {{ embed_key }}; administradores da plataforma não recebem chave."""
     try:
         from flask_login import current_user
-        from base.auth import get_current_cliente_id, is_admin
+        from base.auth import get_current_cliente_id, is_admin_like
         from database.supabase_sq import supabase
         from database.models import Tables, ClienteModel
 
         if (
             supabase is None
             or not current_user.is_authenticated
-            or is_admin(current_user)
+            or is_admin_like(current_user)
         ):
             return {"embed_key": None}
         if getattr(current_user, "acesso_site", True) is False:
@@ -274,15 +295,15 @@ def inject_features():
     """
     try:
         from flask_login import current_user
-        from base.auth import get_current_cliente_id, is_admin
+        from base.auth import get_current_cliente_id, is_admin_like
         from services.entitlements import can_access_feature, can_use_channel
 
         def has_feature(feature_key: str) -> bool:
             try:
                 if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
                     return False
-                # Admin master sempre vê tudo no app
-                if is_admin(current_user):
+                # Admins da plataforma sempre veem tudo no app
+                if is_admin_like(current_user):
                     return True
                 cid = get_current_cliente_id(current_user)
                 if not cid:
@@ -298,12 +319,12 @@ def inject_features():
             return c in ("whatsapp", "website", "site", "instagram", "facebook")
 
         def can_use_channel_ui(canal: str) -> bool:
-            """Plano + kill switch global (Instagram/Messenger). Admin mestre ignora plano."""
+            """Plano + kill switch global (Instagram/Messenger). Admins da plataforma ignoram plano."""
             try:
                 if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
                     return False
-                # Não depender só de g.admin_full_access: mostrar redes no painel para o admin mestre
-                if is_admin(current_user):
+                # Não depender só de g.admin_full_access: mostrar redes no painel para admins da plataforma
+                if is_admin_like(current_user):
                     return _canal_ui_conhecido(canal)
                 cid = get_current_cliente_id(current_user)
                 if not cid:
@@ -316,7 +337,7 @@ def inject_features():
             try:
                 if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
                     return False
-                if is_admin(current_user):
+                if is_admin_like(current_user):
                     return True
                 cid = get_current_cliente_id(current_user)
                 if not cid:
@@ -333,7 +354,7 @@ def inject_features():
                 current_user
                 and getattr(current_user, "is_authenticated", False)
                 and current_user.is_authenticated
-                and not is_admin(current_user)
+                and not is_admin_like(current_user)
             ):
                 from services.app_settings import get_global_settings
 
@@ -382,13 +403,13 @@ def inject_billing_paywall():
     """
     try:
         from flask_login import current_user
-        from base.auth import is_admin, get_current_cliente_id
+        from base.auth import is_admin_like, get_current_cliente_id
         from services.entitlements import can_use_product, get_billing_state
-        from services.plans import list_active_plans
+        from services.plans import get_plan_for_cliente, list_active_plans
 
         if not (current_user and getattr(current_user, "is_authenticated", False) and current_user.is_authenticated):
             return {"billing_paywall": None}
-        if is_admin(current_user):
+        if is_admin_like(current_user):
             return {"billing_paywall": None}
 
         cid = get_current_cliente_id(current_user)
@@ -398,7 +419,7 @@ def inject_billing_paywall():
         ent = can_use_product(str(cid))
         if ent.allowed:
             return {"billing_paywall": None}
-        if ent.reason not in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso"):
+        if ent.reason not in ("trial_expirado", "assinatura_inativa", "assinatura_em_atraso", "conta_em_onboarding"):
             return {"billing_paywall": None}
 
         from datetime import datetime, timezone
@@ -406,11 +427,19 @@ def inject_billing_paywall():
         status, period_end, trial_end, plan_key = get_billing_state(str(cid))
         plans = list_active_plans()
 
+        # No funil de onboarding o plano já foi escolhido no cadastro público: não repetir a grelha de planos.
+        selected_plan = None
+        onboarding_checkout_only = ent.reason == "conta_em_onboarding"
+        if onboarding_checkout_only:
+            pk = (plan_key or "").strip()
+            if pk:
+                selected_plan = get_plan_for_cliente(pk, str(cid)) or get_plan_for_cliente(pk)
+
         # Trial deve existir apenas na primeira vez. Depois que `trial_ends_at` existe,
         # não exibimos novo trial no paywall e também não prometemos "dias de teste" nos cards.
         has_used_trial = bool(trial_end)
         show_trial = bool(status == "trialing" and trial_end and datetime.now(timezone.utc) < trial_end)
-        if has_used_trial and plans:
+        if has_used_trial and plans and not onboarding_checkout_only:
             try:
                 for p in plans:
                     if isinstance(p, dict) and (p.get("trial_days") or 0):
@@ -428,10 +457,45 @@ def inject_billing_paywall():
                 "plans": plans,
                 "show_trial": show_trial,
                 "email": (getattr(current_user, "email", "") or "").strip().lower(),
+                "onboarding_checkout_only": onboarding_checkout_only,
+                "selected_plan": selected_plan,
             }
         }
     except Exception:
         return {"billing_paywall": None}
+
+
+def _maybe_log_split_redirect(code: int, target: str, reason: str) -> None:
+    """Amostragem opcional: SPLIT_REDIRECT_LOG_SAMPLE_RATE em ]0,1] (ex.: 0.01 = 1%)."""
+    try:
+        rate = float((os.getenv("SPLIT_REDIRECT_LOG_SAMPLE_RATE") or "0").strip() or "0")
+    except ValueError:
+        return
+    if rate <= 0:
+        return
+    import random
+
+    if random.random() > min(rate, 1.0):
+        return
+    try:
+        from flask import current_app, has_request_context, request as rq
+
+        if not has_request_context():
+            return
+        host = (rq.host or "").split(":", 1)[0].lower()
+        path = rq.path or "/"
+        ua = (rq.headers.get("User-Agent") or "")[:240]
+        current_app.logger.info(
+            "split_host_redirect code=%s reason=%s host=%s path=%s target=%s ua=%s",
+            code,
+            reason,
+            host,
+            path,
+            target,
+            ua,
+        )
+    except Exception:
+        return
 
 
 @app.before_request
@@ -470,6 +534,7 @@ def request_context():
         if qs:
             target = f"{target}?{qs}"
         code = 308 if request.method != "GET" else 301
+        _maybe_log_split_redirect(code, target, "public_host_non_marketing_path")
         return redirect(target, code=code)
 
     # Dois domínios: marketing canónico no domínio de propaganda (SEO).
@@ -484,6 +549,7 @@ def request_context():
         target = f"{public_base}{path}"
         if qs:
             target = f"{target}?{qs}"
+        _maybe_log_split_redirect(301, target, "app_host_marketing_canonical")
         return redirect(target, code=301)
 
     # request_id para logs/diagnóstico
@@ -607,11 +673,13 @@ def request_context():
                 "/cadastro",
                 "/assinatura",
                 "/whatsapp-atendimento",
+                "/agenda",
                 "/login",
                 "/logout",
                 # Páginas do painel: permitimos o dashboard para exibir o paywall,
                 # mas não liberamos navegação livre em /painel/* sem assinatura ok.
                 "/painel",
+                "/perfil",
                 "/static/",
                 "/panel/static/",
                 "/favicon.ico",
@@ -646,9 +714,13 @@ def request_context():
                             pass
                         from flask import jsonify, url_for
                         if p.startswith("/api/"):
+                            if getattr(ent, "status", "") == "onboarding":
+                                erro = "Complete o onboarding adicionando cartão para ativar o trial e liberar o produto."
+                            else:
+                                erro = "Assinatura inativa. Atualize o pagamento para continuar."
                             return jsonify(
                                 {
-                                    "erro": "Assinatura inativa. Atualize o pagamento para continuar.",
+                                    "erro": erro,
                                     "billing_status": ent.status,
                                     "reason": ent.reason,
                                 }
@@ -742,7 +814,9 @@ def inject_admin():
 app.register_blueprint(embed_bp)                         # /api/embed/key, rotate-key, send, message, poll, media
 app.register_blueprint(meta_bp, url_prefix='/webhook')   # GET/POST /webhook/meta (WhatsApp, Instagram, Messenger)
 app.register_blueprint(waha_webhook_bp, url_prefix='/webhook')  # POST /webhook/waha (eventos WAHA)
-app.register_blueprint(mercadopago_bp, url_prefix="/webhook")  # POST /webhook/mercadopago
+app.register_blueprint(
+    agendamento_ia_appointments_bp, url_prefix="/webhook"
+)  # POST /webhook/agendamento-ia/appointments
 
 
 @app.route("/webhook/meta/static/embed/chat-widget.js")
@@ -938,7 +1012,16 @@ if __name__ == '__main__':
         # Em produção (PRODUCTION=1): sem debug/reload para o app não cair sozinho
         use_debug = not _production
         port = int(os.getenv("PORT", "5000"))
-        socketio.run(app, host='0.0.0.0', port=port, debug=use_debug, use_reloader=False)
+        # Execução local via `python app.py` (sem Gunicorn): permitir Werkzeug.
+        # Em produção, o recomendado é iniciar via Gunicorn (gevent/eventlet), não por aqui.
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=port,
+            debug=use_debug,
+            use_reloader=False,
+            allow_unsafe_werkzeug=bool(use_debug) or (os.getenv("ALLOW_UNSAFE_WERKZEUG", "") == "1"),
+        )
         
     except Exception as e:
         print(f"\n[ERRO CRITICO] {e}")

@@ -159,6 +159,22 @@ class MessageService:
                 # #endregion
                 return
 
+            # Guard de onboarding/pagamento: não executar automações/IA/FlowBuilder
+            # enquanto o produto não estiver liberado (onboarding/pending).
+            try:
+                from services.entitlements import can_use_product
+
+                ent = can_use_product(str(cliente_id))
+                if not ent.allowed:
+                    print(
+                        f"[MessageService] Guard entitlements: bloqueando automações (cliente_id={cliente_id} canal={canal} remote_id={remote_id} status={ent.status} reason={ent.reason})",
+                        flush=True,
+                    )
+                    return
+            except Exception:
+                # Melhor esforço: nunca quebrar a ingestão do webhook por causa desse guard.
+                pass
+
             # Proteção defensiva contra loop/eco: se o webhook entregar nossa própria mensagem como "entrada"
             # (ex.: payload inconsistente sem fromMe), não devemos disparar o fluxo novamente.
             try:
@@ -325,11 +341,17 @@ class MessageService:
     def obter_historico(cliente_id, remote_id, limite=10):
         """Busca as últimas mensagens para manter a memória da conversa"""
         try:
-            res = supabase.table(Tables.MENSAGENS).select("*")\
-                .eq(MensagemModel.CLIENTE_ID, cliente_id)\
-                .eq(MensagemModel.REMOTE_ID, remote_id)\
-                .order("created_at", desc=True)\
-                .limit(limite).execute()
+            res = (
+                supabase.table(Tables.MENSAGENS)
+                .select(
+                    f"{MensagemModel.CONTEUDO},{MensagemModel.FUNCAO},{MensagemModel.CRIADO_EM}"
+                )
+                .eq(MensagemModel.CLIENTE_ID, cliente_id)
+                .eq(MensagemModel.REMOTE_ID, remote_id)
+                .order("created_at", desc=True)
+                .limit(limite)
+                .execute()
+            )
             
             # Inverte para que a conversa fique na ordem cronológica correta
             return res.data[::-1] if res.data else []

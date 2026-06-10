@@ -1,7 +1,7 @@
 # panel/routes/admin.py
 """
 Painel administrativo completo do SaaS.
-Acesso restrito ao usuário com email = ADMIN_EMAIL.
+Acesso restrito a e-mails configurados em ADMIN_EMAIL e ADMIN_EMAILS (.env).
 """
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, Response, current_app
 from flask_login import login_required, current_user
@@ -28,15 +28,16 @@ from database.models import (
     ChatbotModel,
     EgressProfileModel,
     EgressAssignmentModel,
+    SchedulingSettingsModel,
 )
-from base.auth import is_admin
+from base.auth import is_admin_like
 from base.request_security import strip_untrusted_tenant_ids
 
 admin_bp = Blueprint("admin", __name__, template_folder="../templates")
 
 
 def _require_admin():
-    if not current_user.is_authenticated or not is_admin(current_user):
+    if not current_user.is_authenticated or not is_admin_like(current_user):
         return None
     return True
 
@@ -54,6 +55,32 @@ def _validate_plan_key_slug(plan_key: str):
             "comece com letra ou número (ex.: social, pro_anual)."
         )
     return True, ""
+
+
+def _scheduling_engine_by_cliente_ids(cliente_ids: list[str]) -> dict[str, dict]:
+    """Mapa cliente_id → metadados do motor de agenda."""
+    out: dict[str, dict] = {}
+    if supabase is None or not cliente_ids:
+        return out
+    try:
+        r = (
+            supabase.table(Tables.SCHEDULING_SETTINGS)
+            .select(
+                f"{SchedulingSettingsModel.CLIENTE_ID},"
+                f"{SchedulingSettingsModel.SCHEDULING_ENGINE},"
+                f"{SchedulingSettingsModel.SCHEDULING_ENGINE_CHANGED_AT},"
+                f"{SchedulingSettingsModel.SCHEDULING_ENGINE_CHANGED_BY}"
+            )
+            .in_(SchedulingSettingsModel.CLIENTE_ID, cliente_ids)
+            .execute()
+        )
+        for row in r.data or []:
+            cid = str(row.get(SchedulingSettingsModel.CLIENTE_ID) or "")
+            if cid:
+                out[cid] = row
+    except Exception:
+        pass
+    return out
 
 
 def _log_admin_action(action: str, target_id: str | None = None) -> None:
@@ -87,7 +114,15 @@ def _validate_plano_filter_param(value: str):
     return True, ""
 
 
+def _stripe_subscription_admin_url(subscription_id: str) -> str | None:
+    sid = (subscription_id or "").strip()
+    if not sid:
+        return None
+    return f"https://dashboard.stripe.com/subscriptions/{sid}"
+
+
 def _mp_subscriptions_admin_url(preapproval_id: str) -> str | None:
+    """Legado Mercado Pago (somente leitura)."""
     pid = (preapproval_id or "").strip()
     if not pid:
         return None
@@ -677,6 +712,23 @@ def api_clientes():
         if not ok_pf:
             return jsonify({"erro": err_pf}), 400
 
+        billing_filtro = (request.args.get("billing_status") or "").strip().lower()
+        hide_onboarding = (request.args.get("hide_onboarding") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        created_today = (request.args.get("created_today") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        engine_filtro = (request.args.get("scheduling_engine") or "").strip().lower()
+        if engine_filtro and engine_filtro not in ("agendamento_ia", "zapaction_internal"):
+            return jsonify({"erro": "scheduling_engine inválido"}), 400
+
         order = request.args.get("order") or "created_at"
         if order not in ("created_at", "email", "plano"):
             order = "created_at"
@@ -688,6 +740,15 @@ def api_clientes():
                 bq = bq.or_(
                     f"{ClienteModel.PLANO}.eq.{plano_filtro},{ClienteModel.BILLING_PLAN_KEY}.eq.{plano_filtro}"
                 )
+            if billing_filtro:
+                bq = bq.eq(ClienteModel.BILLING_STATUS, billing_filtro)
+            if hide_onboarding:
+                bq = bq.neq(ClienteModel.BILLING_STATUS, "onboarding")
+            if created_today:
+                from datetime import date, datetime, timezone
+
+                start = datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc)
+                bq = bq.gte(ClienteModel.CRIADO_EM, start.isoformat())
             return bq
 
         try:
@@ -753,6 +814,10 @@ def api_clientes():
         except Exception:
             pass
 
+        engine_by_cid = _scheduling_engine_by_cliente_ids(
+            [str(c.get("id") or "") for c in data if c.get("id")]
+        )
+
         for c in data:
             c["_tem_whatsapp"] = bool(c.get("whatsapp_instancia"))
             c["_tem_wa_meta"] = bool(c.get(ClienteModel.META_WA_PHONE_NUMBER_ID))
@@ -794,6 +859,21 @@ def api_clientes():
             n_bot = bot_count.get(cid_str, 0)
             c["_chatbots_uso"] = f"{n_bot} / {lim_bots}" if lim_bots is not None else f"{n_bot} / ∞"
             c["_ultima_atividade"] = last_by_c.get(cid_str)
+
+            eng_row = engine_by_cid.get(cid_str) or {}
+            eng = (eng_row.get(SchedulingSettingsModel.SCHEDULING_ENGINE) or "agendamento_ia").strip()
+            if eng not in ("agendamento_ia", "zapaction_internal"):
+                eng = "agendamento_ia"
+            c["_scheduling_engine"] = eng
+            c["_scheduling_engine_changed_at"] = eng_row.get(
+                SchedulingSettingsModel.SCHEDULING_ENGINE_CHANGED_AT
+            )
+            c["_scheduling_engine_changed_by"] = eng_row.get(
+                SchedulingSettingsModel.SCHEDULING_ENGINE_CHANGED_BY
+            )
+
+        if engine_filtro:
+            data = [c for c in data if (c.get("_scheduling_engine") or "") == engine_filtro]
 
         return jsonify(data)
     except Exception as e:
@@ -973,6 +1053,15 @@ def api_plans_create():
         if bool(ent_obj.get("featured")):
             _normalize_featured_plans(plan_key)
         _log_admin_action(f"plan.create {plan_key} name={name} private={is_private}", plan_key)
+        from services.plans import invalidate_plans_cache
+
+        invalidate_plans_cache()
+        try:
+            from billing.stripe_price_sync import ensure_stripe_price_for_plan
+
+            ensure_stripe_price_for_plan(plan_key)
+        except Exception as e:
+            current_app.logger.warning("plan.create stripe sync %s: %s", plan_key, str(e)[:200])
         return jsonify({"ok": True})
     except ValueError as e:
         return jsonify({"ok": False, "erro": str(e)}), 400
@@ -990,6 +1079,10 @@ def api_plans_update(plan_key):
     for k in ("name", "price", "currency", "trial_days", "active", "entitlements_json"):
         if k in data:
             payload[k] = data[k]
+    if "stripe_price_id" in data:
+        payload[PlanModel.STRIPE_PRICE_ID] = (data.get("stripe_price_id") or "").strip() or None
+    if "stripe_product_id" in data:
+        payload[PlanModel.STRIPE_PRODUCT_ID] = (data.get("stripe_product_id") or "").strip() or None
     if "is_private" in data or "private_cliente_id" in data:
         try:
             is_private, private_cliente_id = _plan_private_fields(data)
@@ -1009,6 +1102,7 @@ def api_plans_update(plan_key):
             payload["trial_days"] = 0
     if not payload:
         return jsonify({"ok": False, "erro": "Nenhum campo para atualizar."}), 400
+    price_changed = "price" in payload or "currency" in payload
     try:
         supabase.table(Tables.PLANS).update(payload).eq(PlanModel.PLAN_KEY, plan_key).execute()
         if "entitlements_json" in payload:
@@ -1017,6 +1111,16 @@ def api_plans_update(plan_key):
                 _normalize_featured_plans(plan_key)
         keys = ",".join(sorted(payload.keys()))
         _log_admin_action(f"plan.update {plan_key} fields={keys}", plan_key)
+        from services.plans import invalidate_plans_cache
+
+        invalidate_plans_cache()
+        if price_changed or "name" in payload:
+            try:
+                from billing.stripe_price_sync import sync_stripe_price_for_plan
+
+                sync_stripe_price_for_plan(plan_key, price_changed=price_changed)
+            except Exception as e:
+                current_app.logger.warning("plan.update stripe sync %s: %s", plan_key, str(e)[:200])
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
@@ -1051,12 +1155,89 @@ def api_plans_delete(plan_key):
 
         supabase.table(Tables.PLANS).delete().eq(PlanModel.PLAN_KEY, plan_key).execute()
         _log_admin_action(f"plan.delete {plan_key}", plan_key)
+        from services.plans import invalidate_plans_cache
+
+        invalidate_plans_cache()
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 # --- Cliente billing/plan management ---
+
+@admin_bp.route("/api/clientes/<cliente_id>/scheduling-engine", methods=["GET"])
+@login_required
+def api_get_scheduling_engine(cliente_id):
+    if not _require_admin():
+        return jsonify({"erro": "Não autorizado"}), 403
+    from services.scheduling.engine import (
+        ENGINE_AGENDAMENTO_IA,
+        scheduling_engine_metadata,
+        scheduling_uses_internal_motor,
+    )
+
+    meta = scheduling_engine_metadata(cliente_id)
+    engine = meta.get("scheduling_engine") or ENGINE_AGENDAMENTO_IA
+    return jsonify(
+        {
+            "ok": True,
+            "cliente_id": str(cliente_id),
+            "scheduling_engine": engine,
+            "scheduling_engine_changed_at": meta.get("scheduling_engine_changed_at"),
+            "scheduling_engine_changed_by": meta.get("scheduling_engine_changed_by"),
+            "public_slug": meta.get("public_slug"),
+            "uses_internal_motor": scheduling_uses_internal_motor(cliente_id),
+        }
+    )
+
+
+@admin_bp.route("/api/clientes/<cliente_id>/scheduling-engine", methods=["PATCH"])
+@login_required
+def api_patch_scheduling_engine(cliente_id):
+    if not _require_admin():
+        return jsonify({"erro": "Não autorizado"}), 403
+    data = strip_untrusted_tenant_ids(request.json or {})
+    engine = (data.get("scheduling_engine") or "").strip().lower()
+    confirm = data.get("confirm") is True
+
+    from services.scheduling.engine import (
+        ENGINE_AGENDAMENTO_IA,
+        ENGINE_ZAPACTION_INTERNAL,
+        get_scheduling_engine,
+        set_scheduling_engine,
+        scheduling_uses_internal_motor,
+    )
+
+    if engine not in (ENGINE_AGENDAMENTO_IA, ENGINE_ZAPACTION_INTERNAL):
+        return jsonify({"ok": False, "erro": "scheduling_engine inválido"}), 400
+
+    current = get_scheduling_engine(cliente_id)
+    if engine == ENGINE_ZAPACTION_INTERNAL and current != ENGINE_ZAPACTION_INTERNAL and not confirm:
+        return jsonify(
+            {
+                "ok": False,
+                "erro": "confirmacao_obrigatoria",
+                "detail": "Confirme importação, auditoria e histórico sincronizado.",
+            }
+        ), 400
+
+    admin_id = (
+        (getattr(current_user, "email", None) or str(getattr(current_user, "id", "") or "")).strip()
+        or "admin"
+    )
+    ok, err = set_scheduling_engine(cliente_id, engine, changed_by=admin_id)
+    if not ok:
+        return jsonify({"ok": False, "erro": err or "falha_gravacao"}), 500
+
+    _log_admin_action(f"scheduling_engine_change {engine}", str(cliente_id))
+    return jsonify(
+        {
+            "ok": True,
+            "scheduling_engine": engine,
+            "uses_internal_motor": scheduling_uses_internal_motor(cliente_id),
+        }
+    )
+
 
 @admin_bp.route("/api/clientes/<cliente_id>/set-plano", methods=["POST"])
 @login_required
@@ -1121,6 +1302,26 @@ def api_set_billing_cliente(cliente_id):
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 
+@admin_bp.route("/api/clientes/<cliente_id>/reconcile-stripe", methods=["POST"])
+@login_required
+def api_reconcile_stripe_cliente(cliente_id):
+    """Sincroniza billing do cliente com a Stripe (ex.: pending após pagamento)."""
+    if not _require_admin():
+        return jsonify({"erro": "Não autorizado"}), 403
+    if supabase is None:
+        return jsonify({"ok": False, "erro": "Supabase indisponível."}), 503
+    try:
+        from billing.stripe_service import sync_cliente_billing_from_stripe
+
+        result = sync_cliente_billing_from_stripe(str(cliente_id))
+        if not result.get("ok"):
+            return jsonify({"ok": False, "erro": result.get("erro")}), 400
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        current_app.logger.exception("admin reconcile-stripe cliente_id=%s", cliente_id)
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
 @admin_bp.route("/api/clientes/<cliente_id>/billing-profile", methods=["GET"])
 @login_required
 def api_cliente_billing_profile(cliente_id):
@@ -1141,6 +1342,7 @@ def api_cliente_billing_profile(cliente_id):
                         ClienteModel.BILLING_STATUS,
                         ClienteModel.TRIAL_ENDS_AT,
                         ClienteModel.MP_PREAPPROVAL_ID,
+                        "stripe_subscription_id",
                         ClienteModel.BILLING_CURRENT_PERIOD_END,
                     ]
                 )
@@ -1153,6 +1355,7 @@ def api_cliente_billing_profile(cliente_id):
         if not row.get(ClienteModel.ID):
             return jsonify({"ok": False, "erro": "Cliente não encontrado."}), 404
         pid = (row.get(ClienteModel.MP_PREAPPROVAL_ID) or "").strip() or None
+        sid = (row.get("stripe_subscription_id") or "").strip() or None
         events = _fetch_processed_billing_events(str(cliente_id), pid)
         last_ev = events[0].get(BillingEventModel.PROCESSED_AT) if events else None
         return jsonify(
@@ -1162,11 +1365,13 @@ def api_cliente_billing_profile(cliente_id):
                     "billing_status": row.get(ClienteModel.BILLING_STATUS),
                     "trial_ends_at": row.get(ClienteModel.TRIAL_ENDS_AT),
                     "mp_preapproval_id": pid,
+                    "stripe_subscription_id": sid,
                     "billing_current_period_end": row.get(ClienteModel.BILLING_CURRENT_PERIOD_END),
                     "billing_plan_key": row.get(ClienteModel.BILLING_PLAN_KEY) or row.get(ClienteModel.PLANO),
                     "email": row.get(ClienteModel.EMAIL),
                 },
-                "mp_receipt_url": _mp_subscriptions_admin_url(pid or ""),
+                "stripe_subscription_url": _stripe_subscription_admin_url(sid or ""),
+                "mp_receipt_url": _mp_subscriptions_admin_url(pid or "") if pid else None,
                 "last_payment_event_at": last_ev,
                 "payment_history": events,
             }
@@ -1289,35 +1494,7 @@ def api_cliente_pausar_assinatura(cliente_id):
         return jsonify({"erro": "Não autorizado"}), 403
     if supabase is None:
         return jsonify({"ok": False, "erro": "Supabase indisponível."}), 503
-    from services.billing.mercadopago import cancel_preapproval
 
-    try:
-        r = (
-            supabase.table(Tables.CLIENTES)
-            .select(ClienteModel.MP_PREAPPROVAL_ID)
-            .eq(ClienteModel.ID, cliente_id)
-            .single()
-            .execute()
-        )
-        row = r.data or {}
-    except Exception as e:
-        return jsonify({"ok": False, "erro": str(e)}), 404
-
-    pid = (row.get(ClienteModel.MP_PREAPPROVAL_ID) or "").strip()
-    mp_out = None
-    if pid:
-        ok_mp, mp_out = cancel_preapproval(pid)
-        if not ok_mp:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "erro": "Falha ao cancelar assinatura no Mercado Pago.",
-                        "detalhe": mp_out,
-                    }
-                ),
-                502,
-            )
     try:
         supabase.table(Tables.CLIENTES).update({ClienteModel.BILLING_STATUS: "canceled"}).eq(
             ClienteModel.ID, cliente_id
@@ -1325,7 +1502,7 @@ def api_cliente_pausar_assinatura(cliente_id):
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
     _log_admin_action("cliente.pausar_assinatura", cliente_id)
-    return jsonify({"ok": True, "mp": mp_out})
+    return jsonify({"ok": True, "note": "Status local atualizado. Cancelamento no Stripe deve ser feito no portal Stripe."})
 
 
 @admin_bp.route("/api/billing-events/<cliente_id>", methods=["GET"])
@@ -1400,6 +1577,7 @@ def api_cobranca_clientes():
                     ClienteModel.BILLING_STATUS,
                     ClienteModel.TRIAL_ENDS_AT,
                     ClienteModel.MP_PREAPPROVAL_ID,
+                    "stripe_subscription_id",
                     ClienteModel.BILLING_CURRENT_PERIOD_END,
                 ]
             )
@@ -1409,76 +1587,6 @@ def api_cobranca_clientes():
         res = q.order(ClienteModel.CRIADO_EM, desc=True).limit(500).execute()
         return jsonify({"ok": True, "clientes": res.data or []})
     except Exception as e:
-        return jsonify({"ok": False, "erro": str(e)}), 500
-
-
-@admin_bp.route("/api/cobranca/reconciliar/<cliente_id>", methods=["POST"])
-@login_required
-def api_cobranca_reconciliar(cliente_id):
-    if not _require_admin():
-        return jsonify({"erro": "Não autorizado"}), 403
-    try:
-        from services.queue import enqueue
-        job_id = enqueue("services.jobs.reconcile_mercadopago.reconcile_cliente", str(cliente_id))
-        if job_id:
-            return jsonify({"ok": True, "job_id": job_id})
-        from services.jobs.reconcile_mercadopago import reconcile_cliente
-        out = reconcile_cliente(str(cliente_id))
-        return jsonify(out)
-    except Exception as e:
-        return jsonify({"ok": False, "erro": str(e)}), 500
-
-
-@admin_bp.route("/api/financeiro/mercadopago/reprocess-payment", methods=["POST"])
-@login_required
-def api_financeiro_reprocess_payment():
-    if not _require_admin():
-        return jsonify({"erro": "Não autorizado"}), 403
-    if supabase is None:
-        return jsonify({"ok": False, "erro": "Supabase indisponível."}), 503
-    data = strip_untrusted_tenant_ids(request.json or request.form or {})
-    payment_id = "".join(ch for ch in str(data.get("payment_id") or "").strip() if ch.isdigit())
-    if not payment_id:
-        return jsonify({"ok": False, "erro": "Informe um ID de pagamento válido."}), 400
-
-    request_id = "manual-reconcile"
-    raw_body = json.dumps(
-        {
-            "manual": True,
-            "source": "admin.financeiro",
-            "type": "payment",
-            "data": {"id": payment_id},
-            "requested_by": getattr(current_user, "email", None),
-        },
-        ensure_ascii=False,
-    )
-    event_id = f"payment:{payment_id}:{request_id}"
-    try:
-        from panel.routes.billing import _mark_event_received, process_mercadopago_event
-
-        _mark_event_received(event_id, request_id, "payment", payment_id, raw_body)
-        process_mercadopago_event("payment", payment_id, request_id, raw_body)
-
-        ev = (
-            supabase.table(Tables.BILLING_EVENTS)
-            .select("*")
-            .eq(BillingEventModel.EVENT_ID, event_id)
-            .limit(1)
-            .execute()
-        )
-        row = (ev.data or [None])[0]
-        _log_admin_action("financeiro.reprocess_payment", payment_id)
-        return jsonify(
-            {
-                "ok": True,
-                "payment_id": payment_id,
-                "event_id": event_id,
-                "event": row,
-                "message": "Reprocessamento executado. Confira o status do evento retornado.",
-            }
-        )
-    except Exception as e:
-        current_app.logger.exception("api_financeiro_reprocess_payment")
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 

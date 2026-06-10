@@ -1677,24 +1677,37 @@ async function enviarMensagemManual() {
     }
 }
 
-// Atualização em tempo real: polling a cada 3s (fallback) + SocketIO
+// Atualização em tempo real: SocketIO + polling como fallback (menos egress Supabase)
 let intervaloPolling = null;
 const INTERVALO_POLLING_MS = 3000;
+const INTERVALO_POLLING_SOCKET_MS = 30000;
+
+function intervaloPollingAtual() {
+    return socket.connected ? INTERVALO_POLLING_SOCKET_MS : INTERVALO_POLLING_MS;
+}
+
+function reiniciarIntervaloPolling() {
+    if (!intervaloPolling) return;
+    clearInterval(intervaloPolling);
+    intervaloPolling = setInterval(() => {
+        carregarMensagens(canalAtivo);
+    }, intervaloPollingAtual());
+}
 
 function iniciarPollingMensagens() {
     if (intervaloPolling) return;
     intervaloPolling = setInterval(() => {
         carregarMensagens(canalAtivo);
-    }, INTERVALO_POLLING_MS);
+    }, intervaloPollingAtual());
 }
 
-// Ao reconectar o SocketIO, atualiza a lista na hora
 socket.on("connect", () => {
+    reiniciarIntervaloPolling();
     carregarMensagens(canalAtivo);
 });
 
 socket.on("disconnect", () => {
-    // Polling continua rodando; ao reconectar, "connect" chama carregarMensagens
+    reiniciarIntervaloPolling();
 });
 
 function bindUnlockAudioOnFirstGesture() {

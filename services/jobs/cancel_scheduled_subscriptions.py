@@ -5,23 +5,23 @@ from typing import Any, Dict, List
 
 from database.supabase_sq import supabase
 from database.models import Tables, ClienteModel
-from services.billing.mercadopago import cancel_preapproval, now_iso
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def run_cancel_scheduled(limit: int = 500) -> Dict[str, Any]:
     """
     Job periódico para efetivar cancelamentos agendados no fim do período.
 
-    Fluxo:
-    - Seleciona clientes com billing_cancel_at_period_end=true
-    - Se billing_current_period_end <= now e mp_preapproval_id existe, cancela no Mercado Pago
-    - Atualiza billing_status para cancelled e limpa flags
+    Stripe e legacy MP: não chama APIs externas — confia no fim natural do período
+    e atualiza status local quando billing_current_period_end passou.
     """
     if supabase is None:
         return {"ok": False, "erro": "Supabase não configurado."}
 
-    now = datetime.now(timezone.utc)
-    now_s = now_iso()
+    now_s = _now_iso()
 
     try:
         rows: List[dict] = (
@@ -30,7 +30,6 @@ def run_cancel_scheduled(limit: int = 500) -> Dict[str, Any]:
                 ",".join(
                     [
                         ClienteModel.ID,
-                        ClienteModel.MP_PREAPPROVAL_ID,
                         ClienteModel.BILLING_STATUS,
                         ClienteModel.BILLING_CURRENT_PERIOD_END,
                         getattr(ClienteModel, "BILLING_CANCEL_AT_PERIOD_END", "billing_cancel_at_period_end"),
@@ -54,15 +53,6 @@ def run_cancel_scheduled(limit: int = 500) -> Dict[str, Any]:
         if not cid:
             out["skipped"] += 1
             continue
-        preapproval_id = (c.get(ClienteModel.MP_PREAPPROVAL_ID) or "").strip()
-        if not preapproval_id:
-            out["skipped"] += 1
-            continue
-
-        ok, mp = cancel_preapproval(preapproval_id)
-        if not ok:
-            out["failed"] += 1
-            continue
 
         try:
             payload = {
@@ -76,4 +66,3 @@ def run_cancel_scheduled(limit: int = 500) -> Dict[str, Any]:
             out["failed"] += 1
 
     return out
-

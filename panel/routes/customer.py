@@ -10,7 +10,15 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.supabase_sq import supabase
-from database.models import Tables, ClienteModel, FlowModel, ChatbotModel, FlowUserStateModel, LeadModel
+from database.models import (
+    Tables,
+    ClienteModel,
+    FlowModel,
+    ChatbotModel,
+    FlowUserStateModel,
+    LeadModel,
+    MensagemModel,
+)
 from base.auth import User, get_current_cliente_id, _USER_ID_PREFIX_CLIENTE, _USER_ID_PREFIX_OPERADOR, _CLIENTES_SELECT
 from base.template_helpers import with_embed_template_kwargs
 from base.request_security import strip_untrusted_tenant_ids
@@ -22,6 +30,24 @@ from services.flow_builder_helpers import (
     flow_json_serializable,
     FLOW_CHANNELS,
 )
+
+# Colunas mínimas para listagem/polling (evita select * e reduz egress Supabase).
+_MENSAGEM_LIST_SELECT = ",".join(
+    [
+        MensagemModel.ID,
+        MensagemModel.REMOTE_ID,
+        MensagemModel.CANAL,
+        MensagemModel.FUNCAO,
+        MensagemModel.CONTEUDO,
+        MensagemModel.CRIADO_EM,
+        MensagemModel.ANEXO_URL,
+        MensagemModel.ANEXO_NOME,
+        MensagemModel.ANEXO_TIPO,
+        MensagemModel.ATENDENTE_TIPO,
+        MensagemModel.ATENDENTE_NOME_SNAPSHOT,
+    ]
+)
+
 #region agent debug log helper
 _DEBUG_LOG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "debug-1db042.log"))
 
@@ -193,7 +219,16 @@ def dashboard():
 
     if supabase is not None and cliente_id:
         try:
-            # Mensagens dos últimos 7 dias (apenas do cliente atual)
+            # Mensagens dos últimos 7 dias: count exato + amostra limitada para gráficos (egress)
+            res_count = (
+                supabase.table(Tables.MENSAGENS)
+                .select(MensagemModel.ID, count="exact")
+                .eq(MensagemModel.CLIENTE_ID, cliente_id)
+                .gte(MensagemModel.CRIADO_EM, inicio_7d.isoformat())
+                .execute()
+            )
+            kpis["total_mensagens_7d"] = int(getattr(res_count, "count", None) or 0)
+
             res = (
                 supabase.table(Tables.MENSAGENS)
                 .select(
@@ -208,11 +243,11 @@ def dashboard():
                 )
                 .eq(MensagemModel.CLIENTE_ID, cliente_id)
                 .gte(MensagemModel.CRIADO_EM, inicio_7d.isoformat())
+                .order(MensagemModel.CRIADO_EM, desc=True)
+                .limit(2000)
                 .execute()
             )
             msgs = res.data or []
-
-            kpis["total_mensagens_7d"] = len(msgs)
 
             conversas_set = set()
             canais_contagem = {}
@@ -284,8 +319,8 @@ def dashboard():
 
     billing_banner = None
     try:
-        from base.auth import is_admin
-        if cliente_id and not is_admin(current_user):
+        from base.auth import is_admin_like
+        if cliente_id and not is_admin_like(current_user):
             from services.entitlements import get_billing_state
             st, _, trial_end, _ = get_billing_state(str(cliente_id))
             if st in ("inactive", "past_due", "canceled", "cancelled"):
@@ -313,9 +348,9 @@ def chat():
     if resp is not None:
         return resp
     try:
-        from base.auth import get_current_cliente_id, is_admin
-        # Admin mestre não deve ser bloqueado por plano/canais
-        if is_admin(current_user):
+        from base.auth import get_current_cliente_id, is_admin_like
+        # Admins da plataforma (ADMIN_EMAIL / ADMIN_EMAILS) não devem ser bloqueados por plano/canais
+        if is_admin_like(current_user):
             return render_template('chat.html')
         cid = get_current_cliente_id(current_user)
         # Chat depende do canal; aqui só garantimos que pelo menos 1 canal está habilitado
@@ -838,6 +873,11 @@ def api_salvar_whatsapp():
     data = strip_untrusted_tenant_ids(request.json or request.form or {})
     phone_id = (data.get('meta_wa_phone_number_id') or data.get('phone_number_id') or '').strip()
     token = (data.get('meta_wa_token') or data.get('token') or '').strip()
+
+    cid = str(get_current_cliente_id(current_user) or "")
+    if cid and not can_use_channel(cid, "whatsapp"):
+        return jsonify({"status": "erro", "mensagem": "WhatsApp não está disponível no momento."}), 400
+
     payload = {}
     payload[ClienteModel.META_WA_PHONE_NUMBER_ID] = phone_id or None
     if token:
@@ -1532,6 +1572,63 @@ def api_flows_list():
             pass
         # #endregion
         current_app.logger.exception("api_flows_list")
+        return jsonify({"erro": str(e)}), 500
+
+
+@customer_bp.route("/api/flow-builder/agenda-context", methods=["GET"])
+@login_required
+def api_flow_builder_agenda_context():
+    """Agenda do cliente para o Flow Builder: URL pública /agenda/<slug> e lista de serviços (dropdown no nó)."""
+    if supabase is None:
+        return jsonify({"erro": "Serviço indisponível."}), 503
+    cliente_id = str(get_current_cliente_id(current_user) or "")
+    if not cliente_id:
+        return jsonify({"erro": "Usuário não identificado."}), 401
+    try:
+        from services.agendamento_ia_bridge import scheduling_uses_internal_motor
+        from services.agendamento_ia_link import build_zapaction_public_agenda_url
+        from services.agendamento_ia_urls import (
+            agendamento_ia_base_url,
+            agendamento_ia_configured,
+            build_public_book_page_url,
+            link_generate_available,
+        )
+        from services.scheduling import repository as sched_repo
+
+        st = sched_repo.get_settings(cliente_id) or {}
+        slug = str(st.get("public_slug") or "").strip()
+        uses_internal = scheduling_uses_internal_motor(cliente_id)
+        public_url = build_zapaction_public_agenda_url(slug) if slug else ""
+        if uses_internal:
+            book_page_url = public_url
+        else:
+            book_page_url = (
+                build_public_book_page_url(slug) if agendamento_ia_configured() and slug else ""
+            )
+        agenda_base = agendamento_ia_base_url()
+        link_ok = link_generate_available()
+        services_raw = sched_repo.list_services(cliente_id, active_only=True)
+        services = [
+            {"id": str(s.get("id")), "name": str(s.get("name") or "Serviço")}
+            for s in (services_raw or [])
+            if s.get("id") is not None
+        ]
+        return jsonify(
+            {
+                "slug_configured": bool(slug),
+                "public_slug": slug,
+                "public_url": public_url,
+                "book_page_url": book_page_url or None,
+                "public_name": (str(st.get("public_name") or "").strip() or None),
+                "services": services,
+                "settings_url": "/painel/agenda?tab=clinica",
+                "link_generate_available": link_ok,
+                "agenda_base_url": agenda_base or None,
+                "booking_via_agenda_link": bool(book_page_url or link_ok),
+            }
+        ), 200
+    except Exception as e:
+        current_app.logger.exception("api_flow_builder_agenda_context")
         return jsonify({"erro": str(e)}), 500
 
 
@@ -2295,9 +2392,9 @@ def buscar_mensagens(canal):
         # Regra: escolher as top 300 conversas por recência real (created_at) varrendo historico_mensagens
         # do mais recente para o mais antigo e deduplicando por remote_id normalizado.
         if not remote_id_arg and not before:
-            target_conversations = 300
-            batch_size = 200
-            max_pages = 20  # evita loops infinitos em bases muito grandes
+            target_conversations = 100
+            batch_size = 100
+            max_pages = 5  # máx. 500 linhas lidas (antes: 20×200=4000)
 
             allowed_set = set(allowed) if allowed is not None else None
 
@@ -2308,7 +2405,7 @@ def buscar_mensagens(canal):
             for _page in range(max_pages):
                 q = (
                     supabase.table("historico_mensagens")
-                    .select("*")
+                    .select(_MENSAGEM_LIST_SELECT)
                     .eq("cliente_id", cliente_id)
                     .eq("canal", canal)
                     .order("created_at", desc=True)
@@ -2351,7 +2448,12 @@ def buscar_mensagens(canal):
             )
             return jsonify(data)
 
-        q = supabase.table("historico_mensagens").select("*").eq("cliente_id", cliente_id).eq("canal", canal)
+        q = (
+            supabase.table("historico_mensagens")
+            .select(_MENSAGEM_LIST_SELECT)
+            .eq("cliente_id", cliente_id)
+            .eq("canal", canal)
+        )
         if remote_id_arg:
             q = q.eq("remote_id", remote_id_arg.strip())
         if before:
@@ -2565,15 +2667,20 @@ def contatos_nao_lidos():
     cliente_id = get_current_cliente_id(current_user)
     try:
         from services.setores_helpers import get_allowed_remote_ids_for_canal
-        # Ordenar + paginar: sem order, o PostgREST pode devolver um subconjunto arbitrário e o max por conversa fica errado.
+        # Janela recente + cap de linhas (antes: até 15k sem filtro de data)
+        from datetime import timedelta
+
+        since_unread = datetime.now(timezone.utc) - timedelta(days=30)
         data = []
-        _batch = 2500
-        for _off in range(0, 15000, _batch):
+        _batch = 500
+        _max_rows = 3000
+        for _off in range(0, _max_rows, _batch):
             res = (
                 supabase.table(Tables.MENSAGENS)
                 .select("canal, remote_id, created_at")
                 .eq("cliente_id", cliente_id)
                 .eq("funcao", "user")
+                .gte(MensagemModel.CRIADO_EM, since_unread.isoformat())
                 .order("created_at", desc=True)
                 .range(_off, _off + _batch - 1)
                 .execute()

@@ -33,6 +33,12 @@
             <i class="fas fa-user-check w-5 text-center text-slate-400"></i>
             <span class="font-medium text-sm">Leads (qualificar)</span>
         </a>
+        {% if current_user.is_authenticated and (is_admin_like(current_user) or (has_feature('agenda') and (not current_user.is_operador() or current_user.can_access_menu('agenda')))) %}
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if (request.blueprint or '') == 'scheduling' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('scheduling.home') }}">
+            <i class="fas fa-calendar-check w-5 text-center text-slate-400"></i>
+            <span class="font-medium text-sm">Agenda</span>
+        </a>
+        {% endif %}
         <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors {% if request.endpoint == 'customer.perfil' %}bg-slate-700/50 text-white{% endif %}" href="{{ url_for('customer.perfil') }}">
             <i class="fas fa-user w-5 text-center text-slate-400"></i>
             <span class="font-medium text-sm">Perfil</span>

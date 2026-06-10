@@ -123,6 +123,14 @@ def apply_agendamento_action(
         _act_none(ctx, payload)
 
     ag["last_fingerprint"] = fp
+    if at == ACTION_SCHEDULE and isinstance(payload, dict):
+        appt = payload.get("appointment")
+        if isinstance(appt, dict):
+            ag["last_scheduled_appointment"] = appt
+    elif at == ACTION_CANCEL and isinstance(payload, dict):
+        cid_cancel = payload.get("cancelled_appointment_id")
+        if cid_cancel:
+            ag["last_cancelled_appointment_id"] = str(cid_cancel)
     return {"ag_state": ag, "action_type": at, "skipped_duplicate": False}
 
 
@@ -138,10 +146,15 @@ def _act_none(ctx: dict[str, Any], payload: dict[str, Any]) -> None:
 
 
 def _act_schedule(ctx: dict[str, Any], payload: dict[str, Any]) -> None:
+    """Regista appointment devolvido pelo motor (espelho no Supabase vem via webhook)."""
     try:
         cid = (ctx.get("cliente_id") or "")[-4:]
+        appt = payload.get("appointment")
+        appt_id = None
+        if isinstance(appt, dict):
+            appt_id = appt.get("id") or appt.get("appointment_id")
         print(
-            f"[agendamento_ia] action=schedule (stub) cliente_id=…{cid} payload_keys={list(payload.keys())!r}",
+            f"[agendamento_ia] action=schedule cliente_id=…{cid} appointment_id={appt_id!r}",
             flush=True,
         )
     except Exception:

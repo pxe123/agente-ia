@@ -12,7 +12,7 @@ from services.app_settings import get_global_settings
 
 
 def _admin_full_access() -> bool:
-    """Admin mestre (ADMIN_EMAIL): ignora plano, billing e limites de canal em requisição HTTP."""
+    """Admins da plataforma (g.admin_full_access): ignoram plano, billing e limites de canal em requisição HTTP."""
     try:
         from flask import has_request_context, g
 
@@ -141,6 +141,29 @@ def _is_super_admin_tenant(cliente_id: str | None) -> bool:
     return cid in allow
 
 
+def _get_signup_flow_version(cliente_id: str) -> int:
+    """
+    Versão do funil de signup.
+    Best-effort: se coluna não existir/RLS falhar, assume legado (1).
+    """
+    if not supabase:
+        return 1
+    try:
+        # Evita depender de schema em signatures: usa literal da coluna.
+        r = (
+            supabase.table(Tables.CLIENTES)
+            .select(getattr(ClienteModel, "SIGNUP_FLOW_VERSION", "signup_flow_version"))
+            .eq(ClienteModel.ID, cliente_id)
+            .limit(1)
+            .execute()
+        )
+        row = r.data[0] if r.data else {}
+        v = row.get(getattr(ClienteModel, "SIGNUP_FLOW_VERSION", "signup_flow_version"))
+        return int(v) if v is not None else 1
+    except Exception:
+        return 1
+
+
 def can_use_product(cliente_id: str) -> EntitlementResult:
     if _admin_full_access():
         return EntitlementResult(True, "active", "admin_master")
@@ -150,13 +173,46 @@ def can_use_product(cliente_id: str) -> EntitlementResult:
 
     # Expiração de trial (best-effort). Se expirou, bloqueia.
     if status == "trialing" and trial_end and datetime.now(timezone.utc) > trial_end:
+        # Legacy (v1): trial expirou -> bloqueia.
+        # Onboarding funnel (v2): trial expirou -> ativa automaticamente (pending->trialing->active).
+        flow_v = _get_signup_flow_version(cliente_id)
+        if flow_v != 2:
+            try:
+                supabase.table(Tables.CLIENTES).update(
+                    {getattr(ClienteModel, "BILLING_STATUS", "billing_status"): "inactive"}
+                ).eq(ClienteModel.ID, cliente_id).execute()
+            except Exception:
+                pass
+            return EntitlementResult(False, "inactive", "trial_expirado")
+
+        # v2: promove trial -> active.
         try:
             supabase.table(Tables.CLIENTES).update(
-                {getattr(ClienteModel, "BILLING_STATUS", "billing_status"): "inactive"}
+                {
+                    getattr(ClienteModel, "BILLING_STATUS", "billing_status"): "active",
+                    getattr(ClienteModel, "TRIAL_ENDS_AT", "trial_ends_at"): None,
+                }
             ).eq(ClienteModel.ID, cliente_id).execute()
         except Exception:
             pass
-        return EntitlementResult(False, "inactive", "trial_expirado")
+        try:
+            from database.models import SubscriptionModel
+            supabase.table(Tables.SUBSCRIPTIONS).upsert(
+                {
+                    SubscriptionModel.CLIENTE_ID: str(cliente_id),
+                    SubscriptionModel.PROVIDER: "stripe",
+                    SubscriptionModel.STATUS: "active",
+                    SubscriptionModel.UPDATED_AT: datetime.utcnow().isoformat(),
+                },
+                on_conflict=SubscriptionModel.CLIENTE_ID,
+            ).execute()
+        except Exception:
+            pass
+        return EntitlementResult(True, "active", "ok")
+
+    # Onboarding funnel: sem acesso operacional até checkout Stripe confirmar.
+    if status == "onboarding":
+        return EntitlementResult(False, "onboarding", "conta_em_onboarding")
 
     # Pendente: checkout iniciado ou cobrança ainda não confirmada.
     # Nunca deve liberar acesso (mesmo em ambiente de desenvolvimento).
@@ -164,32 +220,58 @@ def can_use_product(cliente_id: str) -> EntitlementResult:
         return EntitlementResult(False, status, "assinatura_pendente")
 
     # Blindagem: não liberar acesso "ativo" sem assinatura válida referenciada.
-    # Trial interno pode não ter mp_preapproval_id; mas status pago (active/authorized/cancel_scheduled) deve ter.
+    # Stripe (padrão): exige stripe_subscription_id em produção.
+    # Legacy MP (graça read-only): mp_preapproval_id + período ainda válido.
     if status in ("active", "authorized", "cancel_scheduled"):
         try:
+            from services.billing.subscription_service import is_legacy_mercadopago_grace
+
             r = (
                 supabase.table(Tables.CLIENTES)
-                .select(getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id"))
+                .select(
+                    ",".join(
+                        [
+                            getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id"),
+                            "stripe_subscription_id",
+                            getattr(ClienteModel, "BILLING_CURRENT_PERIOD_END", "billing_current_period_end"),
+                        ]
+                    )
+                )
                 .eq(ClienteModel.ID, cliente_id)
                 .limit(1)
                 .execute()
             )
             row = r.data[0] if r.data else {}
             pid = (row.get(getattr(ClienteModel, "MP_PREAPPROVAL_ID", "mp_preapproval_id")) or "").strip()
+            sid = (row.get("stripe_subscription_id") or "").strip()
+            period_end_raw = row.get(getattr(ClienteModel, "BILLING_CURRENT_PERIOD_END", "billing_current_period_end"))
+            period_end_dt = _parse_dt(str(period_end_raw)) if period_end_raw else None
         except Exception:
             pid = ""
-        if not pid:
-            # Em produção, status pago sem referência do MP é inconsistente -> bloquear.
-            if getattr(settings, "ENVIRONMENT", "development") == "production":
-                return EntitlementResult(False, "inactive", "assinatura_inativa")
+            sid = ""
+            period_end_dt = None
 
-    # status normalizados do MP / interno
+        if sid:
+            pass  # Stripe ativo — ok
+        elif pid and is_legacy_mercadopago_grace(str(cliente_id), status, period_end_dt):
+            pass  # graça MP até fim do período
+        elif getattr(settings, "ENVIRONMENT", "development") == "production":
+            return EntitlementResult(False, "inactive", "assinatura_inativa")
+
+    # status normalizados (Stripe / interno)
     # Regras de acesso: pending/past_due/cancel/inactive bloqueiam imediatamente.
     # trialing e cancel_scheduled continuam liberados até o fim do período.
     if status in ("active", "authorized", "trialing", "cancel_scheduled"):
         return EntitlementResult(True, status, "ok")
 
     if status == "past_due":
+        grace_days = int(getattr(settings, "BILLING_GRACE_DAYS", 0) or 0)
+        if grace_days > 0 and period_end:
+            from datetime import timedelta
+
+            grace_until = period_end + timedelta(days=grace_days)
+            if datetime.now(timezone.utc) <= grace_until:
+                return EntitlementResult(True, status, "past_due_grace")
         return EntitlementResult(False, status, "assinatura_em_atraso")
 
     if status in ("canceled", "cancelled", "inactive"):
@@ -204,7 +286,8 @@ def can_use_product(cliente_id: str) -> EntitlementResult:
 def can_access_feature(cliente_id: str, feature_key: str) -> bool:
     """
     Verifica entitlement por feature no plano associado ao cliente.
-    Feature keys: whatsapp, instagram, messenger, site, exports, flow_builder, chatbots, usuarios_setores, etc.
+    Feature keys: whatsapp, instagram, messenger, site, exports, flow_builder, chatbots,
+    usuarios_setores, agenda, etc.
     """
     if _admin_full_access():
         return True

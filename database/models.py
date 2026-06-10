@@ -26,6 +26,13 @@ class Tables:
     ADMIN_LOGS = "admin_logs"
     EGRESS_PROFILES = "egress_profiles"
     EGRESS_ASSIGNMENTS = "egress_assignments"
+    # Agendamento (módulo interno)
+    SCHEDULING_SETTINGS = "scheduling_settings"
+    SCHEDULING_PROFESSIONALS = "scheduling_professionals"
+    SCHEDULING_SERVICES = "scheduling_services"
+    SCHEDULING_WORKING_HOURS = "scheduling_working_hours"
+    SCHEDULING_BLOCKED_TIMES = "scheduling_blocked_times"
+    SCHEDULING_APPOINTMENTS = "scheduling_appointments"
 
 
 class EgressProfileModel:
@@ -122,6 +129,11 @@ class ClienteModel:
     # Data de criação da conta (Supabase pode usar created_at)
     CRIADO_EM = "created_at"
 
+    # Onboarding funnel (v2)
+    SIGNUP_FLOW_VERSION = "signup_flow_version"  # 1=legacy, 2=onboarding funnel
+    ONBOARDING_COMPLETED_AT = "onboarding_completed_at"
+    ACTIVATED_AT = "activated_at"
+
 
 class BillingEventModel:
     """Colunas da tabela billing_events (idempotência e auditoria de webhooks)."""
@@ -146,12 +158,17 @@ class SubscriptionModel:
     """Colunas da tabela subscriptions (histórico/auditoria; opcional)."""
     ID = "id"
     CLIENTE_ID = "cliente_id"
+    USER_ID = "user_id"
     PROVIDER = "provider"  # mercadopago
     PROVIDER_SUBSCRIPTION_ID = "provider_subscription_id"  # preapproval_id
     PLAN_KEY = "plan_key"
     STATUS = "status"
     CURRENT_PERIOD_END = "current_period_end"
     TRIAL_ENDS_AT = "trial_ends_at"
+    STRIPE_CUSTOMER_ID = "stripe_customer_id"
+    STRIPE_SUBSCRIPTION_ID = "stripe_subscription_id"
+    STRIPE_PRICE_ID = "stripe_price_id"
+    CANCEL_AT_PERIOD_END = "cancel_at_period_end"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
 
@@ -167,6 +184,8 @@ class PlanModel:
     ENTITLEMENTS_JSON = "entitlements_json"
     IS_PRIVATE = "is_private"
     PRIVATE_CLIENTE_ID = "private_cliente_id"
+    STRIPE_PRICE_ID = "stripe_price_id"
+    STRIPE_PRODUCT_ID = "stripe_product_id"
 
 class MensagemModel:
     """
@@ -283,5 +302,78 @@ class ConversacaoSetorModel:
     SETOR_ID = "setor_id"  # FK setores.id (área de negócio: Vendas, Suporte, etc.)
     RESPONSAVEL_USUARIO_ID = "responsavel_usuario_id"  # FK usuarios_internos.id
     RESPONSAVEL_NOME_SNAPSHOT = "responsavel_nome_snapshot"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingSettingsModel:
+    CLIENTE_ID = "cliente_id"
+    TIMEZONE = "timezone"
+    PUBLIC_NAME = "public_name"
+    PUBLIC_SLUG = "public_slug"
+    SCHEDULING_ENGINE = "scheduling_engine"
+    SCHEDULING_ENGINE_CHANGED_AT = "scheduling_engine_changed_at"
+    SCHEDULING_ENGINE_CHANGED_BY = "scheduling_engine_changed_by"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingProfessionalModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    NAME = "name"
+    ACTIVE = "active"
+    SORT_ORDER = "sort_order"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingServiceModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    NAME = "name"
+    DURATION_MINUTES = "duration_minutes"
+    PRICE_CENTS = "price_cents"
+    PROFESSIONAL_ID = "professional_id"
+    ACTIVE = "active"
+    SORT_ORDER = "sort_order"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingWorkingHoursModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    PROFESSIONAL_ID = "professional_id"
+    DAY_OF_WEEK = "day_of_week"
+    START_TIME = "start_time"
+    END_TIME = "end_time"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingBlockedTimeModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    PROFESSIONAL_ID = "professional_id"
+    STARTS_AT = "starts_at"
+    ENDS_AT = "ends_at"
+    REASON = "reason"
+    CREATED_AT = "created_at"
+
+
+class SchedulingAppointmentModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    EXTERNAL_AGENDA_APPOINTMENT_ID = "external_agenda_appointment_id"
+    SERVICE_ID = "service_id"
+    PROFESSIONAL_ID = "professional_id"
+    STARTS_AT = "starts_at"
+    ENDS_AT = "ends_at"
+    STATUS = "status"
+    REMOTE_ID = "remote_id"
+    CONTACT_PHONE = "contact_phone"
+    NOTES = "notes"
+    META = "meta"
+    CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
 

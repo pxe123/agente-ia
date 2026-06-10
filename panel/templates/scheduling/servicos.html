@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block title %}Serviços{% endblock %}
+{% block page_title %}Agenda — Serviços{% endblock %}
+{% block content %}
+<div class="p-6 max-w-3xl mx-auto space-y-6">
+  <a href="{{ url_for('scheduling.home') }}" class="text-sm text-teal-700 hover:underline">← Agenda</a>
+  <form method="post" class="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <div>
+      <label class="text-xs text-slate-500">Nome do serviço</label>
+      <input name="name" class="w-full border rounded-lg px-3 py-2 text-sm" required>
+    </div>
+    <div class="flex gap-3">
+      <div>
+        <label class="text-xs text-slate-500">Duração (min)</label>
+        <input type="number" name="duration_minutes" value="30" min="5" class="w-24 border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div class="flex-1">
+        <label class="text-xs text-slate-500">Profissional (opcional)</label>
+        <select name="professional_id" class="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">— Qualquer / todos —</option>
+          {% for p in professionals %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium">Adicionar</button>
+  </form>
+  <div class="bg-white rounded-xl border border-slate-200 divide-y text-sm">
+    {% for s in services %}
+    <div class="p-3 flex justify-between items-center">
+      <div>
+        <div class="font-medium">{{ s.name }}</div>
+        <div class="text-slate-500 text-xs">{{ s.duration_minutes }} min</div>
+      </div>
+      <form method="post" onsubmit="return confirm('Remover?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="id" value="{{ s.id }}">
+        <button class="text-red-600 text-xs font-medium">Remover</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="p-4 text-slate-500">Nenhum serviço.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ nome_pub }} — Agendar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400;6..144,500;6..144,600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --g-blue: #1a73e8;
+      --g-blue-hover: #1765cc;
+      --g-blue-light: #e8f0fe;
+      --g-text: #3c4043;
+      --g-text-secondary: #70757a;
+      --g-border: #dadce0;
+      --g-surface: #f8f9fa;
+      --g-today-ring: #1a73e8;
+    }
+    body.gcal-page {
+      font-family: "Google Sans Flex", Roboto, Arial, sans-serif;
+      background: #fff;
+      color: var(--g-text);
+    }
+    .gcal-shell { max-width: 920px; margin: 0 auto; padding: 24px 16px 40px; }
+    .gcal-title { font-size: 1.375rem; font-weight: 500; color: #202124; letter-spacing: -0.01em; }
+    .gcal-field label { display: block; font-size: 0.75rem; font-weight: 500; color: var(--g-text-secondary); margin-bottom: 6px; }
+    .gcal-field select, .gcal-field input {
+      width: 100%; border: 1px solid var(--g-border); border-radius: 8px;
+      padding: 10px 12px; font-size: 0.875rem; color: var(--g-text); background: #fff;
+    }
+    .gcal-field select:focus, .gcal-field input:focus {
+      outline: none; border-color: var(--g-blue); box-shadow: 0 0 0 1px var(--g-blue);
+    }
+    .gcal-setup { display: grid; gap: 14px; margin-top: 20px; }
+    @media (min-width: 640px) { .gcal-setup { grid-template-columns: 1fr 1fr; } }
+
+    .gcal-layout { display: grid; gap: 24px; margin-top: 28px; }
+    @media (min-width: 768px) {
+      .gcal-layout { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); align-items: start; }
+    }
+
+    .gcal-cal { border: 1px solid var(--g-border); border-radius: 12px; overflow: hidden; background: #fff; }
+    .gcal-cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 12px; border-bottom: 1px solid var(--g-border);
+    }
+    .gcal-cal-header h2 { font-size: 0.9375rem; font-weight: 500; color: #202124; margin: 0; }
+    .gcal-nav { display: flex; align-items: center; gap: 4px; }
+    .gcal-icon-btn {
+      width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: 50%; color: var(--g-text-secondary);
+      cursor: pointer; text-decoration: none; font-size: 1.125rem; line-height: 1;
+    }
+    .gcal-icon-btn:hover { background: var(--g-surface); color: var(--g-text); }
+    .gcal-today-btn {
+      margin-left: 4px; padding: 0 14px; height: 36px; border: 1px solid var(--g-border);
+      border-radius: 18px; background: #fff; font-size: 0.8125rem; font-weight: 500;
+      color: var(--g-blue); text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .gcal-today-btn:hover { background: var(--g-blue-light); }
+
+    .gcal-weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      padding: 8px 8px 4px; text-align: center;
+      font-size: 0.6875rem; font-weight: 500; color: var(--g-text-secondary);
+      text-transform: lowercase;
+    }
+    .gcal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      padding: 0 8px 12px; gap: 2px 0;
+    }
+    .gcal-day {
+      aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      position: relative; min-height: 44px; border-radius: 50%; margin: 2px auto;
+      width: 40px; text-decoration: none; color: inherit; border: none; background: transparent;
+      font-family: inherit; cursor: default; padding: 0;
+    }
+    .gcal-day-num { font-size: 0.8125rem; line-height: 1; font-weight: 400; }
+    .gcal-day-dot {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--g-blue);
+      margin-top: 3px; flex-shrink: 0;
+    }
+    .gcal-day.outside .gcal-day-num { color: #bdc1c6; }
+    .gcal-day.past .gcal-day-num { color: #dadce0; }
+    .gcal-day.available { cursor: pointer; }
+    .gcal-day.available:hover { background: var(--g-surface); }
+    .gcal-day.today:not(.selected) .gcal-day-num {
+      color: var(--g-blue); font-weight: 500;
+      box-shadow: inset 0 0 0 1px var(--g-today-ring); border-radius: 50%;
+      width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .gcal-day.selected {
+      background: var(--g-blue); color: #fff;
+    }
+    .gcal-day.selected .gcal-day-num { color: #fff; font-weight: 500; }
+    .gcal-day.selected .gcal-day-dot { background: #fff; }
+
+    .gcal-times {
+      border: 1px solid var(--g-border); border-radius: 12px; background: #fff;
+      min-height: 200px; display: flex; flex-direction: column;
+    }
+    .gcal-times-header {
+      padding: 16px 16px 12px; border-bottom: 1px solid var(--g-border);
+    }
+    .gcal-times-header h3 {
+      margin: 0; font-size: 0.875rem; font-weight: 500; color: #202124;
+      text-transform: capitalize;
+    }
+    .gcal-times-header p { margin: 4px 0 0; font-size: 0.75rem; color: var(--g-text-secondary); }
+    .gcal-times-body { padding: 12px; flex: 1; overflow-y: auto; max-height: 360px; }
+    .gcal-times-empty {
+      padding: 24px 16px; text-align: center; font-size: 0.875rem; color: var(--g-text-secondary);
+    }
+    .gcal-slot-list { display: flex; flex-direction: column; gap: 8px; }
+    .gcal-slot-btn {
+      width: 100%; padding: 12px 16px; border: 1px solid var(--g-border); border-radius: 8px;
+      background: #fff; font-size: 0.875rem; font-weight: 500; color: var(--g-blue);
+      cursor: pointer; text-align: center; transition: background .15s, border-color .15s;
+    }
+    .gcal-slot-btn:hover { background: var(--g-blue-light); border-color: #c6dafc; }
+    .gcal-slot-btn.active {
+      background: var(--g-blue); border-color: var(--g-blue); color: #fff;
+    }
+    .gcal-confirm {
+      margin: 0 12px 12px; padding: 12px 16px; border: none; border-radius: 8px;
+      background: var(--g-blue); color: #fff; font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; width: calc(100% - 24px);
+    }
+    .gcal-confirm:hover:not(:disabled) { background: var(--g-blue-hover); }
+    .gcal-confirm:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    .gcal-alert { margin-top: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.875rem; }
+    .gcal-alert-error { background: #fce8e6; color: #c5221f; }
+    .gcal-alert-ok { background: #e6f4ea; color: #137333; }
+  </style>
+</head>
+<body class="gcal-page min-h-screen">
+  <div class="gcal-shell">
+    <h1 class="gcal-title">{{ nome_pub }}</h1>
+
+    {% if erro %}
+    <div class="gcal-alert gcal-alert-error">{{ erro }}</div>
+    {% endif %}
+    {% if ok %}
+    <div class="gcal-alert gcal-alert-ok">Agendamento registado. Obrigado!</div>
+    {% endif %}
+
+    {% if not services or not professionals %}
+    <p class="mt-4 text-sm" style="color: var(--g-text-secondary)">Esta agenda ainda não está configurada.</p>
+    {% elif not ok %}
+
+    <form method="get" action="{{ url_for('public.agenda_publica', slug=slug) }}" id="agenda-pick-form">
+      {% if selected_date %}<input type="hidden" name="date" value="{{ selected_date }}">{% endif %}
+      {% if booking_calendar %}<input type="hidden" name="month" value="{{ booking_calendar.month_key }}">{% endif %}
+      <div class="gcal-setup">
+        <div class="gcal-field">
+          <label>Serviço</label>
+          <select name="service_id" onchange="this.form.submit()">
+            {% for s in services %}
+            <option value="{{ s.id }}" {% if selected_service_id|string == s.id|string %}selected{% endif %}>
+              {{ s.name }} · {{ s.duration_minutes }} min
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="gcal-field">
+          <label>Profissional</label>
+          <select name="professional_id" onchange="this.form.submit()">
+            {% for p in eligible_professionals %}
+            <option value="{{ p.id }}" {% if selected_professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="gcal-field">
+          <label>Nome <span style="color:#d93025">*</span></label>
+          <input name="name" id="contact-name" value="{{ contact_name or '' }}" placeholder="Seu nome completo" required minlength="2" maxlength="120" autocomplete="name"
+                 {% if selected_date and day_slots %}form="book-form"{% endif %}>
+        </div>
+        <div class="gcal-field">
+          <label>Telefone / WhatsApp <span style="color:#d93025">*</span></label>
+          <input name="phone" id="contact-phone" value="{{ contact_phone_display or '' }}" placeholder="(11) 99999-9999" inputmode="numeric" autocomplete="tel" required
+                 pattern="\([0-9]{2}\) [0-9]{4,5}-[0-9]{4}" title="Use (11) 99999-9999"
+                 {% if selected_date and day_slots %}form="book-form"{% endif %}>
+          <p class="text-xs mt-1" style="color: var(--g-text-secondary)">Digite DDD + número. A formatação é automática.</p>
+        </div>
+      </div>
+    </form>
+
+    {% if booking_calendar %}
+    <div class="gcal-layout">
+      <div class="gcal-cal">
+        <div class="gcal-cal-header">
+          <h2>{{ booking_calendar.month_label }}</h2>
+          <div class="gcal-nav">
+            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.prev_month, date=selected_date or none) }}" aria-label="Mês anterior">‹</a>
+            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.next_month, date=selected_date or none) }}" aria-label="Mês seguinte">›</a>
+            <a class="gcal-today-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.today_month, date=booking_calendar.today_date) }}">Hoje</a>
+          </div>
+        </div>
+        <div class="gcal-weekdays">
+          {% for wd in booking_calendar.weekday_short %}
+          <div>{{ wd }}</div>
+          {% endfor %}
+        </div>
+        <div class="gcal-grid">
+          {% for week in booking_calendar.weeks %}
+            {% for cell in week %}
+              {% if cell.clickable %}
+              <a href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.month_key, date=cell.date) }}"
+                 class="gcal-day available{% if cell.is_today %} today{% endif %}{% if cell.is_selected %} selected{% endif %}">
+                <span class="gcal-day-num">{{ cell.day }}</span>
+                {% if cell.has_slots and not cell.is_selected %}<span class="gcal-day-dot"></span>{% endif %}
+              </a>
+              {% else %}
+              <div class="gcal-day{% if not cell.in_month %} outside{% endif %}{% if cell.is_past %} past{% endif %}{% if cell.is_today %} today{% endif %}{% if cell.is_selected %} selected{% endif %}">
+                <span class="gcal-day-num">{{ cell.day }}</span>
+              </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="gcal-times">
+        {% if selected_date and day_slots %}
+        <form method="post" id="book-form">
+          <input type="hidden" name="service_id" value="{{ selected_service_id }}">
+          <input type="hidden" name="professional_id" value="{{ selected_professional_id }}">
+          <input type="hidden" name="slot_iso" id="slot_iso" value="">
+          <div class="gcal-times-header">
+            <h3>{{ selected_date_long }}</h3>
+            <p>{{ day_slots|length }} horário(s) disponível(is)</p>
+          </div>
+          <div class="gcal-times-body">
+            <div class="gcal-slot-list" id="time-slots">
+              {% for slot in day_slots %}
+              <button type="button" class="gcal-slot-btn time-btn" data-iso="{{ slot.iso }}">{{ slot.time }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <button type="submit" id="confirm-btn" class="gcal-confirm" disabled>Agendar</button>
+        </form>
+        {% elif selected_date %}
+        <div class="gcal-times-header">
+          <h3>{{ selected_date_long }}</h3>
+        </div>
+        <div class="gcal-times-empty">Sem horários neste dia. Escolha outra data.</div>
+        {% else %}
+        <div class="gcal-times-header">
+          <h3>Horários</h3>
+          <p>Selecione um dia no calendário</p>
+        </div>
+        <div class="gcal-times-empty">Os horários disponíveis aparecem aqui.</div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p class="mt-6 text-sm" style="color: var(--g-text-secondary)">Sem horários neste mês. Tente outro mês ou profissional.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+  <script>
+  (function () {
+    function digitsOnly(v) {
+      return (v || '').replace(/\D/g, '');
+    }
+    function maskBrPhone(el) {
+      if (!el) return;
+      function apply() {
+        var d = digitsOnly(el.value).slice(0, 11);
+        if (!d) { el.value = ''; return; }
+        if (d.length <= 2) el.value = '(' + d;
+        else if (d.length <= 6) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2);
+        else if (d.length <= 10) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+        else el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7, 11);
+      }
+      el.addEventListener('input', apply);
+      el.addEventListener('blur', apply);
+      apply();
+    }
+    function contactValid() {
+      var nameEl = document.getElementById('contact-name');
+      var phoneEl = document.getElementById('contact-phone');
+      var name = nameEl ? nameEl.value.trim() : '';
+      var phoneDigits = digitsOnly(phoneEl ? phoneEl.value : '');
+      if (nameEl && !nameEl.checkValidity()) {
+        nameEl.reportValidity();
+        return false;
+      }
+      if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+        if (phoneEl) phoneEl.setCustomValidity('Use o formato (11) 99999-9999');
+        phoneEl && phoneEl.reportValidity();
+        return false;
+      }
+      if (phoneEl) phoneEl.setCustomValidity('');
+      return true;
+    }
+    function contactParams() {
+      var phoneEl = document.getElementById('contact-phone');
+      var nameEl = document.getElementById('contact-name');
+      return {
+        phone: phoneEl ? phoneEl.value.trim() : '',
+        name: nameEl ? nameEl.value.trim() : '',
+      };
+    }
+
+    maskBrPhone(document.getElementById('contact-phone'));
+
+    var pickForm = document.getElementById('agenda-pick-form');
+    if (pickForm) {
+      document.querySelectorAll('a.gcal-day.available, a.gcal-icon-btn, a.gcal-today-btn').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          if (!contactValid()) {
+            e.preventDefault();
+            return;
+          }
+          var c = contactParams();
+          try {
+            var u = new URL(a.href, window.location.origin);
+            u.searchParams.set('phone', c.phone);
+            u.searchParams.set('name', c.name);
+            a.href = u.pathname + u.search;
+          } catch (_) {}
+        });
+      });
+    }
+
+    var form = document.getElementById('book-form');
+    if (!form) return;
+    var hidden = document.getElementById('slot_iso');
+    var confirmBtn = document.getElementById('confirm-btn');
+    document.querySelectorAll('.time-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!contactValid()) return;
+        hidden.value = btn.getAttribute('data-iso') || '';
+        document.querySelectorAll('.time-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        confirmBtn.disabled = !hidden.value;
+      });
+    });
+    form.addEventListener('submit', function (e) {
+      if (!hidden.value || !contactValid()) {
+        e.preventDefault();
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

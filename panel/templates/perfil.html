@@ -284,49 +284,82 @@
     planButtons.forEach(function(btn) { btn.disabled = !!disabled; });
   }
 
+  async function openStripePortal() {
+    var r = await fetch("/api/billing/stripe/customer-portal", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || "").trim()
+      },
+      credentials: "same-origin",
+      body: bodyJson({})
+    });
+    var j = await r.json().catch(function() { return null; });
+    if (r.status === 400 && j && j.erro && String(j.erro).indexOf("Stripe") >= 0) {
+      return { legacy: true };
+    }
+    if (!r.ok || !j || !j.ok || !j.url) {
+      var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
+      throw new Error("Não foi possível abrir o portal de assinatura." + detalhe);
+    }
+    window.location.href = j.url;
+    return { legacy: false };
+  }
+
+  async function scheduleLegacyCancel() {
+    var r = await fetch("/api/billing/cancel-at-period-end", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || "").trim()
+      },
+      credentials: "same-origin",
+      body: bodyJson({})
+    });
+    var j = await r.json().catch(function() { return null; });
+    if (!r.ok || !j || !j.ok) {
+      var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
+      throw new Error("Não foi possível agendar o cancelamento." + detalhe);
+    }
+    window.location.reload();
+  }
+
   async function doPlanChange(btn) {
     var action = (btn && btn.getAttribute("data-plan-action") || "").trim();
     var toPlanKey = (btn && btn.getAttribute("data-plan-key") || "").trim();
     if (!action || !toPlanKey) return;
-    if (action === "downgrade" && !confirm("Agendar downgrade para o fim do período atual? Seus acessos atuais continuam até lá.")) {
+    if (action === "downgrade" && !confirm("Alterar plano no portal Stripe? Você pode agendar downgrade para o fim do período atual.")) {
       return;
     }
     try {
-      setMsg(action === "downgrade" ? "Agendando downgrade…" : "Abrindo checkout…");
       setPlanButtonsDisabled(true);
-      var email = (card.getAttribute("data-email") || "").trim();
-      var url = "/api/billing/mp/checkout";
-      var payload = { plan_key: toPlanKey, payer_email: email };
-      if (action === "upgrade") {
-        url = "/api/billing/mp/prorata-checkout";
-        payload = { to_plan_key: toPlanKey, payer_email: email };
-      } else if (action === "downgrade") {
-        url = "/api/billing/mp/schedule-downgrade";
-        payload = { to_plan_key: toPlanKey };
+      if (action === "downgrade") {
+        setMsg("Abrindo portal Stripe…");
+        var portal = await openStripePortal();
+        if (portal && portal.legacy) {
+          setMsg("Para alterar plano, assine via Stripe (checkout) ou aguarde o fim do período legado MP.", true);
+        }
+        return;
       }
-      var r = await fetch(url, {
+      setMsg("Abrindo checkout…");
+      var r = await fetch("/api/billing/stripe/create-checkout-session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || "").trim()
         },
         credentials: "same-origin",
-        body: bodyJson(payload)
+        body: bodyJson({ plan_key: toPlanKey })
       });
       var j = await r.json().catch(function() { return null; });
       if (!r.ok || !j || !j.ok) {
-        var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
+        var detalhe = (j && (j.detail || j.erro || j.detalhe)) ? (" " + toText(j.detail || j.erro || j.detalhe)) : "";
         throw new Error("Não foi possível trocar o plano." + detalhe);
       }
-      if (action === "downgrade") {
-        setMsg("Downgrade agendado para " + (j.change_at || "o fim do período atual") + ".");
-        window.location.reload();
-        return;
-      }
-      if (!j.init_point) {
+      if (!j.checkout_url) {
         throw new Error("Checkout criado sem URL de pagamento.");
       }
-      window.location.href = j.init_point;
+      window.location.href = j.checkout_url;
     } catch (e) {
       setMsg(String(e && e.message ? e.message : e), true);
     } finally {
@@ -337,19 +370,13 @@
   async function doCancel() {
     if (!confirm("Tem certeza que deseja cancelar a assinatura? Você manterá o acesso até o fim do período atual.")) return;
     try {
-      setMsg("Agendando cancelamento…");
       btnCancelar.disabled = true;
-      var r = await fetch("/api/billing/mp/cancel", {
-        method: "POST",
-        headers: { "X-CSRF-Token": ((document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').getAttribute('content')) || window.CSRF_TOKEN || "").trim() },
-        credentials: "same-origin"
-      });
-      var j = await r.json().catch(function() { return null; });
-      if (!r.ok || !j || !j.ok) {
-        var detalhe = (j && (j.erro || j.detalhe)) ? (" " + toText(j.erro || j.detalhe)) : "";
-        throw new Error("Não foi possível agendar o cancelamento." + detalhe);
+      setMsg("Processando cancelamento…");
+      var portal = await openStripePortal();
+      if (portal && portal.legacy) {
+        await scheduleLegacyCancel();
+        return;
       }
-      window.location.reload();
     } catch (e) {
       setMsg(String(e && e.message ? e.message : e), true);
       btnCancelar.disabled = false;
