@@ -53,7 +53,7 @@
       <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
       {% endif %}
 
-      <button type="submit" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed" {% if signup_disabled %}disabled{% endif %}>
+      <button type="submit" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition btn-safe-disabled disabled:cursor-not-allowed" {% if signup_disabled %}disabled{% endif %}>
         {% if signup_disabled %}Cadastro indisponível{% elif use_onboarding_funnel %}Criar conta e seguir para checkout{% else %}Criar conta e iniciar teste{% endif %}
       </button>
       <div class="text-xs text-slate-500 text-center">

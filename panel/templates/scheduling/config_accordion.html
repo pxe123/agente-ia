@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+{% block title %}Agenda — Configuração{% endblock %}
+{% block page_title %}Agenda{% endblock %}
+{% block content %}
+{% set btn_excluir = 'inline-flex items-center px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors shrink-0' %}
+{% set section_map = {'clinica': 'clinica', 'profissionais': 'equipe', 'servicos': 'servicos', 'horarios': 'horarios'} %}
+{% set open_section = section_map.get(tab, 'clinica') %}
+<div class="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
+  {% set agenda_nav_active = 'config' %}
+  {% include 'scheduling/_agenda_nav.html' %}
+
+  <div>
+    <h2 class="text-lg font-bold text-slate-900">Configure a sua agenda</h2>
+    <p class="text-sm text-slate-600 mt-1">Leva cerca de 3 minutos na primeira vez.</p>
+  </div>
+
+  {% include 'scheduling/_setup_progress.html' %}
+
+  <div class="space-y-3">
+    <details class="rounded-xl border border-slate-200 bg-white card-shadow group" {% if open_section == 'clinica' %}open{% endif %}>
+      <summary class="px-4 py-4 flex items-center justify-between gap-2 cursor-pointer list-none select-none">
+        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+          Dados da clínica
+        </span>
+        {% if (settings.get('public_name') or '')|trim %}
+        <span class="text-xs text-emerald-700 font-medium">✓ configurado</span>
+        {% else %}
+        <span class="text-xs text-amber-700 font-medium">⚠ pendente</span>
+        {% endif %}
+      </summary>
+      <div class="px-4 pb-5 border-t border-slate-100 pt-4">
+        {% include 'scheduling/_section_clinica.html' %}
+      </div>
+    </details>
+
+    <details class="rounded-xl border border-slate-200 bg-white card-shadow group" {% if open_section == 'equipe' %}open{% endif %}>
+      <summary class="px-4 py-4 flex items-center justify-between gap-2 cursor-pointer list-none select-none">
+        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+          Equipe
+        </span>
+        {% if professionals|length > 0 %}
+        <span class="text-xs text-emerald-700 font-medium">✓ {{ professionals|length }} pessoa(s)</span>
+        {% else %}
+        <span class="text-xs text-amber-700 font-medium">⚠ adicione 1</span>
+        {% endif %}
+      </summary>
+      <div class="px-4 pb-5 border-t border-slate-100 pt-4">
+        {% include 'scheduling/_section_equipe.html' %}
+      </div>
+    </details>
+
+    <details class="rounded-xl border border-slate-200 bg-white card-shadow group" {% if open_section == 'servicos' %}open{% endif %}>
+      <summary class="px-4 py-4 flex items-center justify-between gap-2 cursor-pointer list-none select-none">
+        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+          Serviços
+        </span>
+        {% if services|length > 0 %}
+        <span class="text-xs text-emerald-700 font-medium">✓ {{ services|length }} serviço(s)</span>
+        {% else %}
+        <span class="text-xs text-amber-700 font-medium">⚠ adicione 1</span>
+        {% endif %}
+      </summary>
+      <div class="px-4 pb-5 border-t border-slate-100 pt-4">
+        {% include 'scheduling/_section_servicos.html' %}
+      </div>
+    </details>
+
+    <details class="rounded-xl border border-slate-200 bg-white card-shadow group" {% if open_section == 'horarios' %}open{% endif %}>
+      <summary class="px-4 py-4 flex items-center justify-between gap-2 cursor-pointer list-none select-none">
+        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+          Horários
+        </span>
+        {% if clinic_hours|length > 0 or prof_hours|length > 0 %}
+        <span class="text-xs text-emerald-700 font-medium">✓ definido</span>
+        {% else %}
+        <span class="text-xs text-amber-700 font-medium">⚠ defina dias</span>
+        {% endif %}
+      </summary>
+      <div class="px-4 pb-5 border-t border-slate-100 pt-4">
+        {% include 'scheduling/_section_horarios.html' %}
+      </div>
+    </details>
+
+    <details class="rounded-xl border border-slate-200 bg-white card-shadow group">
+      <summary class="px-4 py-4 flex items-center justify-between gap-2 cursor-pointer list-none select-none">
+        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+          Recursos avançados
+        </span>
+        <span class="text-xs text-slate-500">opcional</span>
+      </summary>
+      <div class="px-4 pb-5 border-t border-slate-100 pt-4">
+        {% include 'scheduling/_section_avancado.html' %}
+      </div>
+    </details>
+  </div>
+</div>
+{% endblock %}

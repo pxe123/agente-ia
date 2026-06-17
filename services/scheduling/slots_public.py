@@ -4,21 +4,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from services.scheduling import repository as scheduling_repository
+from services.scheduling.eligible import eligible_professionals
 from services.scheduling.slot_engine import slot_starts_in_range, _get_tz
 
-
-def eligible_professionals(
-    services: list[dict],
-    professionals: list[dict],
-    service_id: str,
-) -> list[dict]:
-    svc = next((x for x in services if str(x.get("id")) == str(service_id)), None)
-    if not svc:
-        return []
-    pid = svc.get("professional_id")
-    if pid:
-        return [p for p in professionals if str(p.get("id")) == str(pid)]
-    return list(professionals)
+__all__ = ["eligible_professionals", "compute_available_slot_isos"]
 
 
 def compute_available_slot_isos(

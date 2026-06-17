@@ -189,6 +189,13 @@ class Settings:
         "on",
     )
     SCHEDULING_REMINDER_HOURS_BEFORE = (os.getenv("SCHEDULING_REMINDER_HOURS_BEFORE") or "24").strip()
+    # Convite de calendário ao cliente por WhatsApp (link genérico; sem OAuth do cliente).
+    ENABLE_CLIENT_CALENDAR_INVITE = (os.getenv("ENABLE_CLIENT_CALENDAR_INVITE") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     # Google Calendar OAuth no painel ZapAction (login direto; tokens enviados ao Agenda via API)
     GOOGLE_CLIENT_ID = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()

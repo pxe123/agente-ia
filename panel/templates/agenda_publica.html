@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ nome_pub }} — Agendar</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/zapaction-theme.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ui-contrast.css') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400;6..144,500;6..144,600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
@@ -126,15 +128,24 @@
     }
     .gcal-confirm {
       margin: 0 12px 12px; padding: 12px 16px; border: none; border-radius: 8px;
-      background: var(--g-blue); color: #fff; font-size: 0.875rem; font-weight: 500;
+      background-color: #1a73e8 !important;
+      color: #ffffff !important;
+      font-size: 0.875rem; font-weight: 500;
       cursor: pointer; width: calc(100% - 24px);
+      -webkit-appearance: none;
+      appearance: none;
     }
-    .gcal-confirm:hover:not(:disabled) { background: var(--g-blue-hover); }
-    .gcal-confirm:disabled { opacity: 0.38; cursor: not-allowed; }
+    .gcal-confirm:hover:not(:disabled) { background-color: #1765cc !important; }
+    .gcal-confirm:disabled {
+      background-color: #dadce0 !important;
+      color: #5f6368 !important;
+      opacity: 1;
+      cursor: not-allowed;
+    }
 
-    .gcal-alert { margin-top: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.875rem; }
-    .gcal-alert-error { background: #fce8e6; color: #c5221f; }
-    .gcal-alert-ok { background: #e6f4ea; color: #137333; }
+    .gcal-alert { margin-top: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.875rem; border-width: 1px; border-style: solid; }
+    .gcal-alert-error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .gcal-alert-ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
   </style>
 </head>
 <body class="gcal-page min-h-screen">
@@ -144,7 +155,9 @@
     {% if erro %}
     <div class="gcal-alert gcal-alert-error">{{ erro }}</div>
     {% endif %}
-    {% if ok %}
+    {% if ok and booking_pending %}
+    <div class="gcal-alert gcal-alert-ok">Pedido enviado. Aguardando confirmação da clínica.</div>
+    {% elif ok %}
     <div class="gcal-alert gcal-alert-ok">Agendamento registado. Obrigado!</div>
     {% endif %}
 
@@ -166,6 +179,7 @@
             {% endfor %}
           </select>
         </div>
+        {% if not auto_distribution %}
         <div class="gcal-field">
           <label>Profissional</label>
           <select name="professional_id" onchange="this.form.submit()">
@@ -174,6 +188,7 @@
             {% endfor %}
           </select>
         </div>
+        {% endif %}
         <div class="gcal-field">
           <label>Nome <span style="color:#d93025">*</span></label>
           <input name="name" id="contact-name" value="{{ contact_name or '' }}" placeholder="Seu nome completo" required minlength="2" maxlength="120" autocomplete="name"
@@ -195,9 +210,9 @@
         <div class="gcal-cal-header">
           <h2>{{ booking_calendar.month_label }}</h2>
           <div class="gcal-nav">
-            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.prev_month, date=selected_date or none) }}" aria-label="Mês anterior">‹</a>
-            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.next_month, date=selected_date or none) }}" aria-label="Mês seguinte">›</a>
-            <a class="gcal-today-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.today_month, date=booking_calendar.today_date) }}">Hoje</a>
+            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=(none if auto_distribution else selected_professional_id), phone=contact_phone or none, name=contact_name or none, month=booking_calendar.prev_month, date=selected_date or none) }}" aria-label="Mês anterior">‹</a>
+            <a class="gcal-icon-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=(none if auto_distribution else selected_professional_id), phone=contact_phone or none, name=contact_name or none, month=booking_calendar.next_month, date=selected_date or none) }}" aria-label="Mês seguinte">›</a>
+            <a class="gcal-today-btn" href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=(none if auto_distribution else selected_professional_id), phone=contact_phone or none, name=contact_name or none, month=booking_calendar.today_month, date=booking_calendar.today_date) }}">Hoje</a>
           </div>
         </div>
         <div class="gcal-weekdays">
@@ -209,7 +224,7 @@
           {% for week in booking_calendar.weeks %}
             {% for cell in week %}
               {% if cell.clickable %}
-              <a href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=selected_professional_id, phone=contact_phone or none, name=contact_name or none, month=booking_calendar.month_key, date=cell.date) }}"
+              <a href="{{ url_for('public.agenda_publica', slug=slug, service_id=selected_service_id, professional_id=(none if auto_distribution else selected_professional_id), phone=contact_phone or none, name=contact_name or none, month=booking_calendar.month_key, date=cell.date) }}"
                  class="gcal-day available{% if cell.is_today %} today{% endif %}{% if cell.is_selected %} selected{% endif %}">
                 <span class="gcal-day-num">{{ cell.day }}</span>
                 {% if cell.has_slots and not cell.is_selected %}<span class="gcal-day-dot"></span>{% endif %}
@@ -228,7 +243,9 @@
         {% if selected_date and day_slots %}
         <form method="post" id="book-form">
           <input type="hidden" name="service_id" value="{{ selected_service_id }}">
+          {% if not auto_distribution %}
           <input type="hidden" name="professional_id" value="{{ selected_professional_id }}">
+          {% endif %}
           <input type="hidden" name="slot_iso" id="slot_iso" value="">
           <div class="gcal-times-header">
             <h3>{{ selected_date_long }}</h3>
@@ -241,7 +258,7 @@
               {% endfor %}
             </div>
           </div>
-          <button type="submit" id="confirm-btn" class="gcal-confirm" disabled>Agendar</button>
+          <button type="submit" id="confirm-btn" class="gcal-confirm btn-safe-disabled" disabled>Agendar</button>
         </form>
         {% elif selected_date %}
         <div class="gcal-times-header">
@@ -258,7 +275,7 @@
       </div>
     </div>
     {% else %}
-    <p class="mt-6 text-sm" style="color: var(--g-text-secondary)">Sem horários neste mês. Tente outro mês ou profissional.</p>
+    <p class="mt-6 text-sm" style="color: var(--g-text-secondary)">Sem horários neste mês.{% if not auto_distribution %} Tente outro mês ou profissional.{% else %} Tente outro mês.{% endif %}</p>
     {% endif %}
     {% endif %}
   </div>
@@ -338,13 +355,30 @@
         hidden.value = btn.getAttribute('data-iso') || '';
         document.querySelectorAll('.time-btn').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        confirmBtn.disabled = !hidden.value;
+        var enabled = !!hidden.value;
+        confirmBtn.disabled = !enabled;
+        if (enabled) {
+          confirmBtn.style.backgroundColor = '#1a73e8';
+          confirmBtn.style.color = '#ffffff';
+        } else {
+          confirmBtn.style.backgroundColor = '';
+          confirmBtn.style.color = '';
+        }
       });
     });
+    var submitting = false;
     form.addEventListener('submit', function (e) {
       if (!hidden.value || !contactValid()) {
         e.preventDefault();
+        return;
       }
+      if (submitting) {
+        e.preventDefault();
+        return;
+      }
+      submitting = true;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'A enviar…';
     });
   })();
   </script>

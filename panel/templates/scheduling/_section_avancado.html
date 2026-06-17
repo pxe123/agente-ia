@@ -1,0 +1,73 @@
+<div class="space-y-4 text-sm">
+  <p class="text-slate-600">
+    Tipo de agenda: <strong class="text-slate-800">{{ scheduling_engine_label or 'Agenda externa' }}</strong>
+  </p>
+
+  {% if agendamento_ia_configured and not scheduling_uses_internal %}
+  <form method="post" action="{{ url_for('scheduling.home', tab='clinica') }}" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="sync_tenant_snapshot">
+    <input type="hidden" name="return_tab" value="clinica">
+    <button type="submit" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+      Sincronizar com Agenda externa
+    </button>
+  </form>
+  {% if agenda_sync_status and agenda_sync_status.get('ok') is not none %}
+  <p class="text-xs text-slate-500">
+    Última sincronização: {% if agenda_sync_status.get('ok') %}ok{% else %}falhou{% endif %}
+    {% if agenda_sync_status.get('at') %} · {{ agenda_sync_status.at }}{% endif %}
+  </p>
+  {% endif %}
+  {% endif %}
+
+  {% if link_generate_available %}
+  <form method="post" action="{{ url_for('scheduling.home', tab='clinica') }}" class="rounded-xl border border-slate-200 p-4 space-y-3 max-w-lg">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="generate_agenda_link">
+    <input type="hidden" name="return_tab" value="clinica">
+    <p class="font-semibold text-slate-800">Gerar link de teste</p>
+    <input name="link_remote_id" class="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm font-mono" placeholder="5521999999999">
+    <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold">Gerar</button>
+  </form>
+  {% endif %}
+
+  {% if webhook_url_misconfigured %}
+  <p class="text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+    Webhook de marcações mal configurado — contacte suporte.
+  </p>
+  {% endif %}
+
+  {% if agendamento_ia_configured and google_status %}
+  <details class="rounded-xl border border-slate-200 bg-slate-50/50">
+    <summary class="px-4 py-2 text-xs font-semibold cursor-pointer">Diagnóstico Google Calendar</summary>
+    <div class="px-4 pb-3 text-xs text-slate-600 space-y-1">
+      {% if google_status.get('error') %}
+      <p class="ui-alert ui-alert-warning !mt-0">{{ google_status.error }}</p>
+      {% else %}
+      <p>Motor Google: {% if google_status.get('enabled') %}ligado{% else %}desligado{% endif %}</p>
+      <p>OAuth: {{ 'sim' if google_status.get('oauth_configured') else 'não' }}</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="rounded-xl border border-red-200 bg-red-50/60 p-4 space-y-3">
+    <p class="text-xs font-semibold text-red-900">Zona de risco</p>
+    <form method="post" action="{{ url_for('scheduling.home', tab='clinica') }}"
+          onsubmit="return confirm('Limpar nome, slug e horários gerais?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="clear_clinica">
+      <input type="hidden" name="return_tab" value="clinica">
+      <button type="submit" class="{{ btn_excluir }} mb-2">Limpar dados da clínica</button>
+    </form>
+    <form method="post" action="{{ url_for('scheduling.home', tab='clinica') }}"
+          onsubmit="return confirm('ATENÇÃO: apaga TODA a agenda deste espaço. Continuar?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="reset_agenda">
+      <input type="hidden" name="return_tab" value="clinica">
+      <button type="submit" class="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700">
+        Repor / apagar toda a agenda
+      </button>
+    </form>
+  </div>
+</div>

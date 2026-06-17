@@ -1,0 +1,97 @@
+<form id="form-clinica" method="post" action="{{ url_for('scheduling.home', tab='clinica') }}" class="space-y-4">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+  <input type="hidden" name="action" value="save_clinica">
+  <input type="hidden" name="return_tab" value="clinica">
+
+  <div>
+    <label class="block text-xs font-medium text-slate-500 mb-1">Nome da clínica <span class="text-red-500">*</span></label>
+    <input name="public_name" value="{{ settings.get('public_name') or '' }}"
+           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 outline-none bg-white"
+           placeholder="Ex.: Clínica Bem-Estar" required>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+    <p class="text-xs font-medium text-slate-500 mb-2">WhatsApp</p>
+    <a href="{{ url_for('customer.conexoes') }}"
+       class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-teal-700 hover:bg-teal-50">
+      Ir para Conexões → configurar WhatsApp
+    </a>
+    <p class="text-xs text-slate-500 mt-2">Necessário para lembretes e confirmações automáticas.</p>
+  </div>
+
+  <button type="submit" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">
+    Guardar
+  </button>
+
+  <details class="rounded-xl border border-slate-200 bg-white group" id="clinica-advanced-details">
+    <summary class="px-4 py-3 text-sm font-semibold text-slate-700 cursor-pointer list-none flex items-center gap-2 select-none">
+      <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+      Mostrar opções avançadas
+    </summary>
+    <div class="px-4 pb-4 pt-1 space-y-4 border-t border-slate-100">
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Opções avançadas</p>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Página de marcações (slug)</label>
+        <input name="public_slug" value="{{ settings.get('public_slug') or '' }}"
+               class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 outline-none bg-white"
+               placeholder="minha-clinica" pattern="[a-zA-Z0-9_-]+"
+               title="Letras, números, hífens ou underscores">
+        {% if public_book_url %}
+        <p class="text-xs text-teal-700 mt-1 break-all">{{ public_book_url }}</p>
+        {% elif public_agenda_url %}
+        <p class="text-xs text-teal-700 mt-1 break-all">{{ public_agenda_url }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Fuso horário</label>
+        {% set selected_tz = settings.get('timezone') or 'America/Sao_Paulo' %}
+        {% include 'scheduling/_timezone_select.html' %}
+      </div>
+
+      {% if scheduling_uses_internal %}
+      <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
+        <p class="text-xs font-medium text-slate-500">Quem escolhe o profissional?</p>
+        <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="radio" name="professional_assignment_mode" value="manual" class="mt-1"
+                 {% if (settings.get('professional_assignment_mode') or 'manual') != 'auto_distribution' %}checked{% endif %}>
+          <span>O cliente escolhe</span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="radio" name="professional_assignment_mode" value="auto_distribution" class="mt-1"
+                 {% if settings.get('professional_assignment_mode') == 'auto_distribution' %}checked{% endif %}>
+          <span>O sistema escolhe automaticamente</span>
+        </label>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
+        <p class="text-xs font-medium text-slate-500">Confirmação de pedidos</p>
+        <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="radio" name="confirmation_policy" value="auto" class="mt-1"
+                 {% if (settings.get('confirmation_policy') or 'auto') == 'auto' %}checked{% endif %}>
+          <span>Automática</span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="radio" name="confirmation_policy" value="professional" class="mt-1"
+                 {% if settings.get('confirmation_policy') == 'professional' %}checked{% endif %}>
+          <span>Profissional aprova antes</span>
+        </label>
+        <div class="pt-1">
+          <label class="block text-xs font-medium text-slate-500 mb-1">Expirar pedidos pendentes (horas)</label>
+          <input type="number" name="confirmation_pending_ttl_hours" min="1" max="720"
+                 value="{{ settings.get('confirmation_pending_ttl_hours') or confirmation_pending_ttl_hours or 48 }}"
+                 class="w-32 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+      </div>
+      {% else %}
+      <input type="hidden" name="professional_assignment_mode" value="manual">
+      <input type="hidden" name="confirmation_policy" value="auto">
+      {% endif %}
+
+      <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900">
+        Guardar opções avançadas
+      </button>
+    </div>
+  </details>
+</form>

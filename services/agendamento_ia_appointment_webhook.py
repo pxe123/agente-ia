@@ -24,6 +24,11 @@ _ALLOWED_EVENTS = frozenset(
         "appointment.cancelled",
         "appointment.rescheduled",
         "appointment.updated",
+        "appointment.pending",
+        "appointment.confirmed",
+        "appointment.rejected",
+        "appointment.proposal.created",
+        "appointment.proposal.resolved",
     }
 )
 
@@ -104,8 +109,12 @@ def _normalize_status(raw: str | None, event: str) -> str:
     s = (raw or "").strip().lower()
     if s in ("pending", "confirmed", "cancelled", "no_show"):
         return s
-    if event == "appointment.cancelled":
+    if event in ("appointment.cancelled", "appointment.rejected"):
         return "cancelled"
+    if event == "appointment.pending":
+        return "pending"
+    if event in ("appointment.created", "appointment.confirmed"):
+        return "confirmed"
     return "confirmed"
 
 
@@ -160,6 +169,9 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
         return False, "evento_invalido", 400
     payload = {**payload, "event": event}
 
+    if event in ("appointment.proposal.created", "appointment.proposal.resolved"):
+        return True, None, 200
+
     ver = payload.get("request_schema_version")
     if ver != 1:
         return False, "request_schema_version_invalida", 400
@@ -176,6 +188,23 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
     occurred_at = (payload.get("occurred_at") or "").strip()
 
     existing = sched_repo.get_appointment_by_external_agenda_id(cliente_id, appointment_id)
+
+    zapaction_appointment_id = (payload.get("zapaction_appointment_id") or "").strip()
+    recurrence_payload = payload.get("recurrence") if isinstance(payload.get("recurrence"), dict) else {}
+    recurrence_series_id = (recurrence_payload.get("series_id") or "").strip() or None
+    series_occurrence_at = (recurrence_payload.get("occurrence_at") or "").strip() or None
+
+    if not existing and zapaction_appointment_id:
+        by_za = sched_repo.get_appointment(cliente_id, zapaction_appointment_id)
+        if by_za:
+            existing = by_za
+
+    if not existing and recurrence_series_id and series_occurrence_at:
+        occ_dt = sched_repo.parse_row_datetime(series_occurrence_at)
+        if occ_dt:
+            by_occ = sched_repo.get_appointment_by_series_occurrence(recurrence_series_id, occ_dt)
+            if by_occ and str(by_occ.get("cliente_id") or "") == str(cliente_id):
+                existing = by_occ
 
     if event_id and existing:
         prev_meta = existing.get(SchedulingAppointmentModel.META) or existing.get("meta") or {}
@@ -195,10 +224,12 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
     remote_id = (payload.get("remote_id") or "").strip()
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
 
-    if event == "appointment.cancelled" or status == "cancelled":
+    if event in ("appointment.cancelled", "appointment.rejected") or status == "cancelled":
         if not existing:
             return True, None, 200
         meta = dict(existing.get(SchedulingAppointmentModel.META) or {})
+        if event == "appointment.rejected":
+            meta["cancellation_reason"] = "professional_rejected"
         meta["agenda_webhook"] = {
             **(meta.get("agenda_webhook") or {}),
             "appointment_id": appointment_id,
@@ -246,6 +277,9 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
         meta_base["contact_email"] = email
     if name:
         meta_base["contact_name"] = name
+    if zapaction_appointment_id:
+        meta_base["zapaction_appointment_id"] = zapaction_appointment_id
+        meta_base["motor_sync"] = "synced"
     notes_parts = [name] if name else []
     notes = " — ".join(notes_parts) if notes_parts else None
 
@@ -254,24 +288,28 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
         merged = {**prev_meta, **meta_base}
         if "agenda_metadata" in prev_meta and metadata:
             merged["agenda_metadata"] = {**(prev_meta.get("agenda_metadata") or {}), **metadata}
-        supabase.table(Tables.SCHEDULING_APPOINTMENTS).update(
-            {
-                SchedulingAppointmentModel.SERVICE_ID: str(service_id),
-                SchedulingAppointmentModel.PROFESSIONAL_ID: provider_id,
-                SchedulingAppointmentModel.STARTS_AT: starts_at,
-                SchedulingAppointmentModel.ENDS_AT: ends_at,
-                SchedulingAppointmentModel.STATUS: status,
-                SchedulingAppointmentModel.REMOTE_ID: remote_id or existing.get(
-                    SchedulingAppointmentModel.REMOTE_ID
-                ),
-                SchedulingAppointmentModel.CONTACT_PHONE: phone or existing.get(
-                    SchedulingAppointmentModel.CONTACT_PHONE
-                ),
-                SchedulingAppointmentModel.NOTES: notes if notes else existing.get(SchedulingAppointmentModel.NOTES),
-                SchedulingAppointmentModel.META: merged,
-                SchedulingAppointmentModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
-            }
-        ).eq(SchedulingAppointmentModel.ID, str(existing["id"])).eq(
+        update_row = {
+            SchedulingAppointmentModel.SERVICE_ID: str(service_id),
+            SchedulingAppointmentModel.PROFESSIONAL_ID: provider_id,
+            SchedulingAppointmentModel.STARTS_AT: starts_at,
+            SchedulingAppointmentModel.ENDS_AT: ends_at,
+            SchedulingAppointmentModel.STATUS: status,
+            SchedulingAppointmentModel.REMOTE_ID: remote_id or existing.get(
+                SchedulingAppointmentModel.REMOTE_ID
+            ),
+            SchedulingAppointmentModel.CONTACT_PHONE: phone or existing.get(
+                SchedulingAppointmentModel.CONTACT_PHONE
+            ),
+            SchedulingAppointmentModel.NOTES: notes if notes else existing.get(SchedulingAppointmentModel.NOTES),
+            SchedulingAppointmentModel.META: merged,
+            SchedulingAppointmentModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
+            SchedulingAppointmentModel.EXTERNAL_AGENDA_APPOINTMENT_ID: str(appointment_id),
+        }
+        if recurrence_series_id:
+            update_row[SchedulingAppointmentModel.RECURRENCE_SERIES_ID] = recurrence_series_id
+        if series_occurrence_at:
+            update_row[SchedulingAppointmentModel.SERIES_OCCURRENCE_AT] = series_occurrence_at
+        supabase.table(Tables.SCHEDULING_APPOINTMENTS).update(update_row).eq(SchedulingAppointmentModel.ID, str(existing["id"])).eq(
             SchedulingAppointmentModel.CLIENTE_ID, str(cliente_id)
         ).execute()
         return True, None, 200
@@ -290,6 +328,12 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
         SchedulingAppointmentModel.META: meta_base,
         SchedulingAppointmentModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
     }
+    if recurrence_series_id:
+        row[SchedulingAppointmentModel.RECURRENCE_SERIES_ID] = recurrence_series_id
+    if series_occurrence_at:
+        row[SchedulingAppointmentModel.SERIES_OCCURRENCE_AT] = series_occurrence_at
+    if zapaction_appointment_id:
+        row[SchedulingAppointmentModel.ID] = zapaction_appointment_id
     supabase.table(Tables.SCHEDULING_APPOINTMENTS).insert(row).execute()
     return True, None, 200
 

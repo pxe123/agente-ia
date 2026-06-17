@@ -1,0 +1,447 @@
+{% from 'scheduling/_recurrence_appt_actions.html' import recurrence_appt_actions %}
+{% set list_form_action = url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) %}
+{% set list_return_hidden %}<input type="hidden" name="return_tab" value="agendamentos">{% endset %}
+  <div class="space-y-6">
+    {# Navegação diária (vista secretária) #}
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200 p-4 card-shadow">
+      <div class="flex items-center gap-2">
+        <a href="{{ url_for('scheduling.home', tab='agendamentos', date=nav_prev_date, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+           class="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium"
+           title="Dia anterior">←</a>
+        <a href="{{ url_for('scheduling.home', tab='agendamentos', period='today', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+           class="px-4 py-2 rounded-xl text-sm font-semibold {% if nav_is_today and is_single_day_view %}bg-teal-600 text-white{% else %}border border-teal-200 text-teal-800 hover:bg-teal-50{% endif %}">
+          Hoje
+        </a>
+        <a href="{{ url_for('scheduling.home', tab='agendamentos', date=nav_next_date, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+           class="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium"
+           title="Dia seguinte">→</a>
+      </div>
+      <div class="text-center flex-1 min-w-[140px]">
+        <p class="text-lg font-bold text-slate-900">{{ period_label }}</p>
+        {% if is_single_day_view %}
+        <p class="text-xs text-slate-500">Vista do dia · fuso {{ scheduling_timezone }}</p>
+        {% else %}
+        <p class="text-xs text-slate-500">Use ← → para ver um dia específico</p>
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-2">
+      <a href="{{ url_for('scheduling.calendario', view='week', date=nav_view_date or none, professional_id=filter_professional_id or none, status=filter_status or 'all') }}"
+         class="px-3 py-2 rounded-xl text-sm font-medium text-teal-700 border border-teal-200 hover:bg-teal-50">Calendário ↗</a>
+      {% if panel_booking_enabled %}
+      <button type="button" id="list-create-appt-btn"
+              class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+        Novo agendamento
+      </button>
+      {% endif %}
+      </div>
+    </div>
+
+    {# Filtros rápidos de período #}
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='today', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+         class="px-3 py-1.5 rounded-full text-sm font-semibold {% if filter_period == 'today' and not filter_date %}bg-teal-600 text-white{% else %}bg-white border border-slate-200 text-slate-700 hover:bg-slate-50{% endif %}">Hoje</a>
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='tomorrow', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+         class="px-3 py-1.5 rounded-full text-sm font-semibold {% if filter_period == 'tomorrow' %}bg-teal-600 text-white{% else %}bg-white border border-slate-200 text-slate-700 hover:bg-slate-50{% endif %}">Amanhã</a>
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='week', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+         class="px-3 py-1.5 rounded-full text-sm font-semibold {% if filter_period == 'week' %}bg-teal-600 text-white{% else %}bg-white border border-slate-200 text-slate-700 hover:bg-slate-50{% endif %}">Semana</a>
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='month', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+         class="px-3 py-1.5 rounded-full text-sm font-semibold {% if filter_period == 'month' %}bg-teal-600 text-white{% else %}bg-white border border-slate-200 text-slate-700 hover:bg-slate-50{% endif %}">Mês</a>
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='all', professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}"
+         class="px-3 py-1.5 rounded-full text-sm font-semibold {% if filter_period == 'all' %}bg-teal-600 text-white{% else %}bg-white border border-slate-200 text-slate-700 hover:bg-slate-50{% endif %}">Todos</a>
+    </div>
+
+    <details class="bg-white rounded-xl border border-slate-200 card-shadow group">
+      <summary class="px-4 py-3 text-sm font-semibold text-slate-700 cursor-pointer list-none flex items-center gap-2">
+        <i class="fas fa-chevron-right text-xs text-slate-400 group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+        Filtros avançados
+      </summary>
+    <form method="get" action="{{ url_for('scheduling.home') }}" class="flex flex-wrap items-end gap-3 px-4 pb-4">
+      <input type="hidden" name="tab" value="agendamentos">
+      {% if filter_period and filter_period not in ('day',) %}
+      <input type="hidden" name="period" value="{{ filter_period }}">
+      {% endif %}
+      <div>
+        <label class="text-xs text-slate-500">Data específica</label>
+        <input type="date" name="date" value="{{ filter_date or '' }}" class="block border rounded-lg px-3 py-2 text-sm mt-1">
+      </div>
+      <div>
+        <label class="text-xs text-slate-500">Estado</label>
+        <select name="status" class="block border rounded-lg px-3 py-2 text-sm mt-1">
+          <option value="">Todos</option>
+          <option value="confirmed" {% if filter_status == 'confirmed' %}selected{% endif %}>Confirmado</option>
+          <option value="pending" {% if filter_status == 'pending' %}selected{% endif %}>Pendente</option>
+          <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>Cancelado</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-500">Profissional</label>
+        <select name="professional_id" class="block border rounded-lg px-3 py-2 text-sm mt-1">
+          <option value="">Todos</option>
+          {% for p in professionals %}
+          <option value="{{ p.id }}" {% if filter_professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex-1 min-w-[160px]">
+        <label class="text-xs text-slate-500">Pesquisar contacto</label>
+        <input name="q" value="{{ filter_q or '' }}" placeholder="Nome, telefone…" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+      </div>
+      <button type="submit" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold">Aplicar</button>
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='today') }}" class="text-sm text-slate-500 hover:underline py-2">Repor (hoje)</a>
+    </form>
+    </details>
+    {% if reassign_row %}
+    <div class="bg-white rounded-2xl border border-indigo-200 p-5 card-shadow max-w-2xl space-y-3">
+      <h4 class="font-semibold text-slate-800">Alterar profissional</h4>
+      <p class="text-sm text-slate-600">
+        {{ reassign_row.starts_at_display or (reassign_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+        — {{ reassign_row.contact_display or reassign_row.remote_id or '' }}
+        · {{ reassign_row.service_name or '—' }}
+        · atual: {{ reassign_row.prof_name or '—' }}
+      </p>
+      {% if not reassign_eligible_professionals %}
+      <p class="text-sm text-amber-800">Nenhum profissional elegível para este serviço.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="reassign_professional">
+        <input type="hidden" name="appointment_id" value="{{ reassign_row.id }}">
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-xs font-medium text-slate-500">Novo profissional</label>
+          <select name="professional_id" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            <option value="">— Escolha —</option>
+            {% for p in reassign_eligible_professionals %}
+            <option value="{{ p.id }}" {% if reassign_row.professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-teal-700" style="background-color:#0d9488;">Confirmar</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="text-xs text-slate-500 hover:underline">Cancelar</a>
+    </div>
+    {% endif %}
+    {% if propose_row %}
+    <div class="bg-white rounded-2xl border border-blue-200 p-5 card-shadow max-w-2xl space-y-3">
+      <h4 class="font-semibold text-slate-800">Sugerir novo horário (pedido pendente)</h4>
+      <p class="text-sm text-slate-600">
+        Pedido: {{ propose_row.starts_at_display or (propose_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+        — {{ propose_row.contact_name_display or propose_row.remote_id or '' }}
+      </p>
+      {% if not propose_slots %}
+      <p class="text-sm text-amber-800">Sem horários livres nas próximas semanas.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="propose_appointment">
+        <input type="hidden" name="appointment_id" value="{{ propose_row.id }}">
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-xs font-medium text-slate-500">Horário sugerido</label>
+          <select name="proposed_slot_iso" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            <option value="">— Escolha —</option>
+            {% for iso in propose_slots %}
+            <option value="{{ iso }}">{{ propose_slot_labels[loop.index0] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Enviar proposta</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="text-xs text-slate-500 hover:underline">Cancelar</a>
+    </div>
+    {% endif %}
+    {% if reschedule_row %}
+    <div class="bg-white rounded-2xl border border-teal-200 p-5 card-shadow max-w-2xl space-y-3">
+      <h4 class="font-semibold text-slate-800">Remarcar agendamento</h4>
+      <p class="text-sm text-slate-600">
+        Atual: {{ reschedule_row.starts_at_display or (reschedule_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+        — {{ reschedule_row.contact_display or reschedule_row.remote_id or '' }}
+      </p>
+      {% if not reschedule_slots %}
+      <p class="text-sm text-amber-800">Sem horários livres nas próximas semanas.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="reschedule_appointment">
+        <input type="hidden" name="appointment_id" value="{{ reschedule_row.id }}">
+        {% if reschedule_row.is_recurring and reschedule_row.recurrence_series_id %}
+        <div class="w-full sm:w-auto min-w-[200px]">
+          <label class="text-xs font-medium text-slate-500">Aplicar a</label>
+          <select name="reschedule_scope" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            <option value="this_only">Só esta ocorrência</option>
+            <option value="following">Esta e futuras</option>
+            <option value="all">Toda a série</option>
+          </select>
+        </div>
+        {% endif %}
+        <div class="flex-1 min-w-[160px]">
+          <label class="text-xs font-medium text-slate-500">Profissional</label>
+          <select name="professional_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            {% for p in professionals %}
+            <option value="{{ p.id }}" {% if reschedule_row.professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-xs font-medium text-slate-500">Novo horário</label>
+          <select name="slot_iso" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            <option value="">— Escolha —</option>
+            {% for iso in reschedule_slots %}
+            <option value="{{ iso }}">{{ reschedule_slot_labels[loop.index0] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">Confirmar remarcação</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="text-xs text-slate-500 hover:underline">Cancelar remarcação</a>
+    </div>
+    {% endif %}
+    {% if swap_preview and swap_appointment_a_id and swap_appointment_b_id %}
+    <div id="modal-swap-professionals" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true">
+      <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-200">
+        <h3 class="text-lg font-bold text-slate-900">Trocar clientes entre profissionais?</h3>
+        <p class="text-sm text-slate-600 mt-2">
+          O profissional <strong>{{ swap_preview.target_prof }}</strong> já possui atendimento neste horário.
+          Cliente em conflito: <strong>{{ swap_preview.conflict_client }}</strong>
+        </p>
+        <p class="text-sm text-slate-700 mt-4 mb-2">Deseja trocar as clientes entre os profissionais?</p>
+        <div class="grid grid-cols-2 gap-4 mt-3 text-sm">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Antes</p>
+            <ul class="space-y-2">
+              {% for row in swap_preview.before %}
+              <li class="rounded-lg border border-slate-200 px-3 py-2">
+                <span class="font-medium text-slate-800">{{ row.prof }}</span><br>
+                <span class="text-slate-600">{{ row.client }} — {{ row.time }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-2">Depois</p>
+            <ul class="space-y-2">
+              {% for row in swap_preview.after %}
+              <li class="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2">
+                <span class="font-medium text-slate-800">{{ row.prof }}</span><br>
+                <span class="text-slate-600">{{ row.client }} — {{ row.time }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="flex justify-end gap-2 mt-6">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+          <input type="hidden" name="action" value="swap_professionals">
+          <input type="hidden" name="appointment_a_id" value="{{ swap_appointment_a_id }}">
+          <input type="hidden" name="appointment_b_id" value="{{ swap_appointment_b_id }}">
+          <input type="hidden" name="swap_mode" value="{{ swap_mode or 'same_slot' }}">
+          <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, reassign=reassign_row.id if reassign_row else none, reschedule=reschedule_row.id if reschedule_row else none) }}"
+             class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200">Cancelar</a>
+          <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold text-white hover:bg-teal-700" style="background-color:#0d9488;">Confirmar troca</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    {% if agendamento_ia_configured and not scheduling_uses_internal %}
+    <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="flex flex-wrap items-center gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="sync_agenda_appointments">
+      <input type="hidden" name="return_tab" value="agendamentos">
+      <button type="submit" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+        Sincronizar do Agendamento IA
+      </button>
+      <span class="text-xs text-slate-500">Atualiza a lista com as marcações do motor de agenda (últimos 90 dias).</span>
+    </form>
+    {% endif %}
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto card-shadow max-w-5xl">
+      <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/80">
+        <div>
+          <h4 class="font-semibold text-slate-800">{% if is_single_day_view %}Marcações{% else %}{{ period_label or 'Agendamentos' }}{% endif %}</h4>
+          <p class="text-xs text-slate-500 mt-0.5">{{ appointments_count }} agendamento(s){% if not is_single_day_view %} · ordem cronológica do período{% endif %}</p>
+        </div>
+        {% if is_single_day_view and appointments_count == 0 %}
+        <span class="text-xs text-teal-700 bg-teal-50 border border-teal-100 px-2 py-1 rounded-lg">Nenhum compromisso neste dia</span>
+        {% endif %}
+      </div>
+      <table class="min-w-full text-sm appt-accordion-table">
+        <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase border-b border-slate-100">
+          <tr>
+            <th class="px-4 py-3">{% if filter_period in ('today', 'tomorrow', 'day') %}Horário{% else %}Início{% endif %}</th>
+            <th class="px-4 py-3">Nome</th>
+            <th class="px-4 py-3">Telefone</th>
+            <th class="px-4 py-3">Serviço</th>
+            <th class="px-4 py-3">Profissional</th>
+            <th class="px-4 py-3">Estado</th>
+            <th class="px-2 py-3 w-10" aria-label="Ações"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for a in appointments %}
+          {% set appt_panel_id = 'appt-panel-' ~ (a.id|string) %}
+          <tr class="appt-summary-row hover:bg-slate-50/60{% if a.status == 'cancelled' %} opacity-60{% endif %}">
+            <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-800">
+              {% if filter_period in ('today', 'tomorrow', 'day') %}
+              {{ a.starts_time_display or a.starts_at_display or (a.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+              {% else %}
+              {{ a.starts_at_display or (a.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-slate-800 truncate max-w-[140px]">
+              {{ a.contact_name_display or '—' }}
+              {% if a.is_recurring %}
+              <span class="ml-1 inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-800 border border-teal-200" title="{{ a.series_summary or 'Série recorrente' }}">↻ Recorrente</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-slate-600 whitespace-nowrap">
+              {{ a.contact_phone_display or '—' }}
+              {% if a.contact_phone_display and a.status == 'pending' %}
+              {% set wa_phone = a.contact_phone_display|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') %}
+              <a href="https://wa.me/55{{ wa_phone[-11:] if wa_phone|length >= 11 else wa_phone }}" target="_blank" rel="noopener"
+                 class="ml-2 inline-flex items-center px-2 py-0.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-semibold hover:bg-emerald-100"
+                 title="Contactar no WhatsApp">WhatsApp</a>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-slate-600 truncate max-w-[120px]">{{ a.service_name or '—' }}</td>
+            <td class="px-4 py-3 text-slate-600 truncate max-w-[120px]">
+              {{ a.prof_name or '—' }}
+              {% if a.assignment_auto %}
+              <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100"
+                    title="Atribuído automaticamente{% if a.assigned_at_display %} em {{ a.assigned_at_display }}{% endif %}">Auto</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 whitespace-nowrap">
+              {% if a.status == 'pending' %}
+              <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-100">Pendente</span>
+              {% if a.meta_dict and a.meta_dict.get('client_suggested_slot_at') %}
+              <span class="ml-1 inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-100" title="Cliente sugeriu novo horário">Sugestão cliente</span>
+              {% endif %}
+              {% elif a.status == 'cancelled' %}
+              <span class="text-xs text-slate-400">Cancelado</span>
+              {% else %}
+              <span class="text-xs text-emerald-700">Confirmado</span>
+              {% endif %}
+            </td>
+            <td class="px-2 py-3 text-right">
+              <button type="button"
+                      class="appt-accordion-toggle inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                      aria-expanded="false"
+                      aria-controls="{{ appt_panel_id }}"
+                      title="Mostrar ações">
+                <i class="fas fa-chevron-down text-xs appt-chevron transition-transform duration-200" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+          <tr id="{{ appt_panel_id }}" class="appt-accordion-panel hidden">
+            <td colspan="7" class="px-4 py-3 bg-slate-50/90 border-t border-slate-100">
+              <div class="flex flex-wrap items-center gap-2">
+                  {% if a.status == 'pending' and appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' %}
+                  <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="inline-flex shrink-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                    <input type="hidden" name="action" value="confirm_appointment">
+                    <input type="hidden" name="appointment_id" value="{{ a.id }}">
+                    <input type="hidden" name="return_tab" value="agendamentos">
+                    <button type="submit" class="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 whitespace-nowrap">Confirmar</button>
+                  </form>
+                  <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, propose=a.id) }}"
+                     class="inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs font-semibold hover:bg-blue-100 whitespace-nowrap">Sugerir horário</a>
+                  <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="inline-flex shrink-0"
+                        onsubmit="return confirm('Recusar este pedido?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                    <input type="hidden" name="action" value="reject_appointment">
+                    <input type="hidden" name="appointment_id" value="{{ a.id }}">
+                    <input type="hidden" name="return_tab" value="agendamentos">
+                    <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 whitespace-nowrap">Recusar</button>
+                  </form>
+                  {% endif %}
+                  {% if a.status != 'cancelled' and appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' %}
+                  <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, reschedule=a.id) }}"
+                     class="inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-800 text-xs font-semibold hover:bg-teal-100 whitespace-nowrap">Remarcar</a>
+                  <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, reassign=a.id) }}"
+                     class="inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-semibold hover:bg-indigo-100 whitespace-nowrap">Profissional</a>
+                  {% endif %}
+                  {% if a.status != 'cancelled' and not (a.is_recurring and a.recurrence_series_id) %}
+                  <form method="post" action="{{ list_form_action }}" class="inline-flex shrink-0"
+                        onsubmit="return confirm('Cancelar este agendamento?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                    <input type="hidden" name="action" value="cancel_appointment">
+                    <input type="hidden" name="appointment_id" value="{{ a.id }}">
+                    <input type="hidden" name="return_tab" value="agendamentos">
+                    <button type="submit" class="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold hover:bg-amber-100 whitespace-nowrap">Cancelar</button>
+                  </form>
+                  {% endif %}
+                  {% if not (a.is_recurring and a.recurrence_series_id) %}
+                  <form method="post" action="{{ list_form_action }}" class="inline-flex shrink-0"
+                        onsubmit="return confirm('Excluir este registo do painel? Esta ação não pode ser desfeita.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                    <input type="hidden" name="action" value="delete_appointment">
+                    <input type="hidden" name="appointment_id" value="{{ a.id }}">
+                    <button type="submit" class="{{ btn_excluir }} whitespace-nowrap">Excluir</button>
+                  </form>
+                  {% endif %}
+                  {{ recurrence_appt_actions(a, list_form_action, list_return_hidden) }}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhum agendamento neste período.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <script>
+      (function () {
+        document.querySelectorAll('.appt-accordion-toggle').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var panelId = btn.getAttribute('aria-controls');
+            var panel = panelId ? document.getElementById(panelId) : null;
+            if (!panel) return;
+            var opening = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !opening);
+            btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+            var chevron = btn.querySelector('.appt-chevron');
+            if (chevron) chevron.classList.toggle('rotate-180', opening);
+            var summaryRow = btn.closest('tr');
+            if (summaryRow) summaryRow.classList.toggle('bg-slate-50/80', opening);
+          });
+        });
+      })();
+      </script>
+    </div>
+
+    {% if panel_booking_enabled %}
+    <div id="list-create-appt-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40 overflow-y-auto" role="dialog">
+      <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-200 my-8">
+        <h3 class="text-lg font-bold text-slate-900">Criar agendamento</h3>
+        <div class="mt-4">
+          {% from 'scheduling/_create_appointment_form.html' import create_appointment_form %}
+          {{ create_appointment_form(professionals, services, default_date=filter_date or nav_view_date or '', filter_professional_id=filter_professional_id, return_tab='agendamentos', period=filter_period, date=filter_date or none, filter_status=filter_status, filter_q=filter_q) }}
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var btn = document.getElementById('list-create-appt-btn');
+      var modal = document.getElementById('list-create-appt-modal');
+      if (!btn || !modal) return;
+      function show() { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+      function hide() { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+      btn.addEventListener('click', show);
+      modal.addEventListener('click', function (e) { if (e.target === modal) hide(); });
+      modal.querySelectorAll('.create-appt-cancel').forEach(function (b) { b.addEventListener('click', hide); });
+      var form = document.getElementById('create-appointment-form');
+      if (!form) return;
+      var actionInput = document.getElementById('create-form-action');
+      var singleFields = document.getElementById('single-fields');
+      var recFields = document.getElementById('recurrence-fields');
+      function syncBookingType() {
+        var recurring = form.querySelector('input[name="booking_type"][value="recurring"]').checked;
+        if (actionInput) actionInput.value = recurring ? 'create_recurrence_series' : 'create_appointment';
+        if (singleFields) singleFields.classList.toggle('hidden', recurring);
+        if (recFields) recFields.classList.toggle('hidden', !recurring);
+      }
+      form.querySelectorAll('input[name="booking_type"]').forEach(function (r) { r.addEventListener('change', syncBookingType); });
+      syncBookingType();
+    })();
+    </script>
+    {% endif %}
+  </div>

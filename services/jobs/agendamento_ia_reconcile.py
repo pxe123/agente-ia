@@ -25,6 +25,13 @@ def run_agendamento_ia_reconcile(
 
     since_days = max(7, (since_hours + 23) // 24)
     imported, err = sync_appointments_from_agenda(str(cliente_id), since_days=since_days)
+    retry_stats = {}
+    try:
+        from services.scheduling.recurrence import retry_pending_motor_sync
+
+        retry_stats = retry_pending_motor_sync(str(cliente_id), limit=50)
+    except Exception:
+        logger.exception("agendamento_ia_reconcile retry_pending failed")
     if err:
         logger.info(
             "agendamento_ia_reconcile cliente_id=%s imported=%s err=%s",
@@ -32,5 +39,5 @@ def run_agendamento_ia_reconcile(
             imported,
             err,
         )
-        return {"ok": False, "error": err, "imported": imported}
-    return {"ok": True, "imported": imported}
+        return {"ok": False, "error": err, "imported": imported, "retry": retry_stats}
+    return {"ok": True, "imported": imported, "retry": retry_stats}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for, current_app
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for, current_app
 from flask_login import current_user, login_required
 
 from base.auth import get_current_cliente_id
@@ -58,6 +58,150 @@ def _cliente_id() -> str | None:
     return get_current_cliente_id(current_user)
 
 
+def _stash_redirect_extra(extra: dict[str, str]) -> None:
+    if extra:
+        session["scheduling_redirect_extra"] = extra
+
+
+def _pop_redirect_extra() -> dict[str, str]:
+    raw = session.pop("scheduling_redirect_extra", None)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _redirect_calendario_params() -> dict[str, str]:
+    """Query params para voltar ao calendário após POST (inclui swap/reschedule extra)."""
+    cal_params: dict[str, str] = {}
+    for key in ("view", "date", "professional_id", "status", "appt"):
+        val = (request.form.get("return_" + key) or request.form.get(key) or "").strip()
+        if val:
+            cal_params[key] = val
+    if "view" not in cal_params:
+        cal_params["view"] = "week"
+    cal_params.update(_pop_redirect_extra())
+    return cal_params
+
+
+def _appointment_action_panels(
+    cid: str,
+    *,
+    working_hours: list,
+    professionals: list,
+    services: list,
+    prof_names: dict[str, str],
+    service_names: dict[str, str],
+    tz_name: str,
+) -> dict:
+    """Contexto partilhado: painéis remarcar / propor / reatribuir / troca."""
+    from services.scheduling.display import enrich_appointments_display, format_datetime_br
+    from services.scheduling.eligible import eligible_professionals as eligible_profs_for_service
+    from services.scheduling import repository as sched_repo
+
+    reassign_id = (request.args.get("reassign") or "").strip()
+    reassign_row: dict | None = None
+    reassign_eligible_professionals: list[dict] = []
+    if reassign_id:
+        row_ra = sched_repo.get_appointment(cid, reassign_id)
+        if row_ra and str(row_ra.get("status") or "") != "cancelled":
+            reassign_row = enrich_appointments_display([row_ra], tz_name)[0]
+            reassign_row["prof_name"] = prof_names.get(
+                str(row_ra.get("professional_id") or ""), "—"
+            )
+            reassign_row["service_name"] = service_names.get(
+                str(row_ra.get("service_id") or ""), "—"
+            )
+            reassign_eligible_professionals = eligible_profs_for_service(
+                services, professionals, str(row_ra.get("service_id") or "")
+            )
+
+    swap_with_id = (request.args.get("swap_with") or "").strip()
+    swap_mode_arg = (request.args.get("swap_mode") or "").strip()
+    swap_preview: dict | None = None
+    swap_appointment_a_id = ""
+    swap_appointment_b_id = ""
+    if swap_with_id:
+        from services.scheduling.swap import build_swap_preview
+
+        anchor_id = reassign_id or (request.args.get("reschedule") or "").strip()
+        if anchor_id and anchor_id != swap_with_id:
+            row_a = sched_repo.get_appointment(cid, anchor_id)
+            row_b = sched_repo.get_appointment(cid, swap_with_id)
+            if row_a and row_b:
+                swap_preview = build_swap_preview(row_a, row_b, prof_names, tz_name)
+                swap_appointment_a_id = anchor_id
+                swap_appointment_b_id = swap_with_id
+
+    propose_id = (request.args.get("propose") or "").strip()
+    propose_row: dict | None = None
+    propose_slots: list[str] = []
+    propose_slot_labels: list[str] = []
+    if propose_id:
+        row_pr = sched_repo.get_appointment(cid, propose_id)
+        if row_pr and str(row_pr.get("status") or "") == "pending":
+            propose_row = enrich_appointments_display([row_pr], tz_name)[0]
+            svc_pr = sched_repo.get_service(cid, str(row_pr.get("service_id") or ""))
+            pid_pr = str(row_pr.get("professional_id") or "")
+            if pid_pr and svc_pr:
+                from services.scheduling.slots_public import compute_available_slot_isos
+
+                propose_slots = compute_available_slot_isos(
+                    cliente_id=cid,
+                    service_id=str(row_pr.get("service_id") or ""),
+                    professional_id=pid_pr,
+                    tz_name=tz_name,
+                    working_rows=working_hours,
+                    duration_minutes=int(svc_pr.get("duration_minutes") or 30),
+                    num_days=21,
+                    max_slots=40,
+                    exclude_appointment_id=propose_id,
+                )
+                propose_slot_labels = [
+                    format_datetime_br(iso, tz_name) for iso in propose_slots
+                ]
+
+    reschedule_id = (request.args.get("reschedule") or "").strip()
+    reschedule_row: dict | None = None
+    reschedule_slots: list[str] = []
+    reschedule_slot_labels: list[str] = []
+    if reschedule_id:
+        row_rs = sched_repo.get_appointment(cid, reschedule_id)
+        if row_rs and str(row_rs.get("status") or "") != "cancelled":
+            reschedule_row = enrich_appointments_display([row_rs], tz_name)[0]
+            svc_rs = sched_repo.get_service(cid, str(row_rs.get("service_id") or ""))
+            pid_rs = str(row_rs.get("professional_id") or "")
+            if pid_rs and svc_rs:
+                from services.scheduling.slots_public import compute_available_slot_isos
+
+                reschedule_slots = compute_available_slot_isos(
+                    cliente_id=cid,
+                    service_id=str(row_rs.get("service_id") or ""),
+                    professional_id=pid_rs,
+                    tz_name=tz_name,
+                    working_rows=working_hours,
+                    duration_minutes=int(svc_rs.get("duration_minutes") or 30),
+                    num_days=21,
+                    max_slots=40,
+                    exclude_appointment_id=reschedule_id,
+                )
+                reschedule_slot_labels = [
+                    format_datetime_br(iso, tz_name) for iso in reschedule_slots
+                ]
+
+    return {
+        "reassign_row": reassign_row,
+        "reassign_eligible_professionals": reassign_eligible_professionals,
+        "swap_preview": swap_preview,
+        "swap_appointment_a_id": swap_appointment_a_id,
+        "swap_appointment_b_id": swap_appointment_b_id,
+        "swap_mode": swap_mode_arg,
+        "propose_row": propose_row,
+        "propose_slots": propose_slots,
+        "propose_slot_labels": propose_slot_labels,
+        "reschedule_row": reschedule_row,
+        "reschedule_slots": reschedule_slots,
+        "reschedule_slot_labels": reschedule_slot_labels,
+    }
+
+
 def _handle_post(cid: str) -> str:
     """Processa POST do wizard; devolve tab para redirect."""
     action = (request.form.get("action") or "").strip()
@@ -88,12 +232,47 @@ def _handle_post(cid: str) -> str:
             SchedulingSettingsModel.UPDATED_AT: now_iso,
         }
         try:
+            from services.agendamento_ia_bridge import scheduling_uses_internal_motor
             from services.scheduling import repository as sched_repo
 
             sched_repo.ensure_settings(cid)
             supabase.table(Tables.SCHEDULING_SETTINGS).update(payload).eq(
                 SchedulingSettingsModel.CLIENTE_ID, cid
             ).execute()
+            if scheduling_uses_internal_motor(cid):
+                mode_raw = (
+                    request.form.get("professional_assignment_mode") or "manual"
+                ).strip().lower()
+                if mode_raw not in ("manual", "auto_distribution"):
+                    mode_raw = "manual"
+                changed_by = str(getattr(current_user, "id", "") or "panel")
+                sched_repo.set_assignment_mode(
+                    cid, mode_raw, changed_by=changed_by
+                )
+                from services.scheduling.confirmation_policy import (
+                    can_enable_professional_confirmation,
+                )
+
+                conf_raw = (
+                    request.form.get("confirmation_policy") or "auto"
+                ).strip().lower()
+                if conf_raw not in ("auto", "professional", "reception"):
+                    conf_raw = "auto"
+                if conf_raw == "professional" and not can_enable_professional_confirmation(cid):
+                    conf_raw = "auto"
+                if conf_raw == "reception":
+                    conf_raw = "auto"
+                try:
+                    ttl_h = int(request.form.get("confirmation_pending_ttl_hours") or 48)
+                except ValueError:
+                    ttl_h = 48
+                changed_by_conf = str(getattr(current_user, "id", "") or "panel")
+                sched_repo.set_confirmation_policy(
+                    cid,
+                    conf_raw,
+                    ttl_hours=ttl_h,
+                    changed_by=changed_by_conf,
+                )
             msg = "Dados da clínica guardados."
             if slug and slug_raw.strip().lower() != slug:
                 msg += f" Slug normalizado para: {slug}"
@@ -114,6 +293,28 @@ def _handle_post(cid: str) -> str:
         _after_agenda_mutation(cid)
         return ret
 
+    if action == "save_working_hour_routines":
+        import json
+
+        from services.scheduling.working_hour_routines import save_working_hour_config
+
+        raw_json = (request.form.get("routines_json") or "").strip()
+        try:
+            payload = json.loads(raw_json) if raw_json else {}
+        except json.JSONDecodeError:
+            flash("Dados de horários inválidos.", "error")
+            return "horarios"
+        if not isinstance(payload, dict):
+            flash("Dados de horários inválidos.", "error")
+            return "horarios"
+        err = save_working_hour_config(cid, payload)
+        if err:
+            flash(f"Não foi possível guardar horários ({err}).", "error")
+            return "horarios"
+        flash("Horários guardados e sincronizados.", "success")
+        _after_agenda_mutation(cid)
+        return "horarios"
+
     if action == "add_wh_clinic":
         try:
             dow = int(request.form.get("day_of_week") or 0)
@@ -131,7 +332,10 @@ def _handle_post(cid: str) -> str:
         supabase.table(Tables.SCHEDULING_WORKING_HOURS).insert(row).execute()
         flash("Horário da clínica adicionado.", "success")
         _after_agenda_mutation(cid)
-        return "clinica"
+        ret_wh = (request.form.get("return_tab") or "horarios").strip()
+        if ret_wh not in VALID_TABS:
+            ret_wh = "horarios"
+        return ret_wh
 
     if action == "delete_wh":
         hid = (request.form.get("id") or "").strip()
@@ -178,6 +382,16 @@ def _handle_post(cid: str) -> str:
             _after_agenda_mutation(cid)
         return "profissionais"
 
+    if action == "update_professional_whatsapp":
+        pid = (request.form.get("professional_id") or "").strip()
+        phone = (request.form.get("whatsapp_notify_phone") or "").strip() or None
+        if pid:
+            from services.scheduling import repository as sched_repo
+
+            sched_repo.update_professional_whatsapp_notify(cid, pid, phone)
+            flash("WhatsApp de alertas atualizado.", "success")
+        return "profissionais"
+
     if action == "delete_professional":
         pid = (request.form.get("id") or "").strip()
         if pid:
@@ -210,17 +424,31 @@ def _handle_post(cid: str) -> str:
         dur = int(request.form.get("duration_minutes") or 30)
         pid_raw = (request.form.get("professional_id") or "").strip()
         pid = pid_raw if pid_raw else None
+        price_raw = (
+            request.form.get("price_reais")
+            or request.form.get("price_cents")
+            or request.form.get("price")
+            or ""
+        ).strip()
+        price_cents = None
+        if price_raw:
+            cleaned = price_raw.replace("R$", "").replace(" ", "").replace(",", ".")
+            try:
+                price_cents = int(round(float(cleaned) * 100))
+            except ValueError:
+                price_cents = None
         if name:
-            supabase.table(Tables.SCHEDULING_SERVICES).insert(
-                {
-                    SchedulingServiceModel.CLIENTE_ID: cid,
-                    SchedulingServiceModel.NAME: name,
-                    SchedulingServiceModel.DURATION_MINUTES: max(5, dur),
-                    SchedulingServiceModel.PROFESSIONAL_ID: pid,
-                    SchedulingServiceModel.ACTIVE: True,
-                    SchedulingServiceModel.SORT_ORDER: 0,
-                }
-            ).execute()
+            row = {
+                SchedulingServiceModel.CLIENTE_ID: cid,
+                SchedulingServiceModel.NAME: name,
+                SchedulingServiceModel.DURATION_MINUTES: max(5, dur),
+                SchedulingServiceModel.PROFESSIONAL_ID: pid,
+                SchedulingServiceModel.ACTIVE: True,
+                SchedulingServiceModel.SORT_ORDER: 0,
+            }
+            if price_cents is not None:
+                row[SchedulingServiceModel.PRICE_CENTS] = price_cents
+            supabase.table(Tables.SCHEDULING_SERVICES).insert(row).execute()
             flash("Serviço adicionado.", "success")
             _after_agenda_mutation(cid)
         return "servicos"
@@ -363,42 +591,110 @@ def _handle_post(cid: str) -> str:
         return "clinica"
 
     if action == "add_blocked_time":
+        from datetime import date as date_type
+
         from services.scheduling import repository as sched_repo
+        from services.scheduling.blocks import create_block
         from services.scheduling.datetime_parse import parse_datetime_local
         from services.scheduling.timezones import normalize_timezone
 
         st = sched_repo.get_settings(cid) or {}
         tz = normalize_timezone(str(st.get("timezone") or ""))
+        all_day = request.form.get("all_day") in ("1", "on", "true", "yes")
+        day_raw = (request.form.get("block_date") or "").strip()
+        local_date = None
+        if day_raw:
+            try:
+                local_date = date_type.fromisoformat(day_raw[:10])
+            except ValueError:
+                local_date = None
         starts_local = parse_datetime_local(request.form.get("starts_at") or "", tz)
         ends_local = parse_datetime_local(request.form.get("ends_at") or "", tz)
-        if not starts_local or not ends_local:
+        if not all_day and (not starts_local or not ends_local):
             flash("Indique início e fim do bloqueio.", "error")
-            return "horarios"
-        if starts_local >= ends_local:
-            flash("O fim do bloqueio deve ser depois do início.", "error")
             return "horarios"
         pid_raw = (request.form.get("professional_id") or "").strip()
         pid = pid_raw if pid_raw else None
+        if pid and not _professional_owned_by_cliente(cid, pid):
+            flash("Profissional não encontrado.", "error")
+            return "horarios"
         reason = (request.form.get("reason") or "").strip() or None
-        row = sched_repo.insert_blocked_time(
+        wh = sched_repo.list_working_hours_all(cid)
+        row, berr = create_block(
             cliente_id=cid,
-            starts_at=starts_local,
-            ends_at=ends_local,
+            starts_at=starts_local or datetime.now(timezone.utc),
+            ends_at=ends_local or datetime.now(timezone.utc),
             professional_id=pid,
             reason=reason,
+            all_day=all_day,
+            local_date=local_date or (starts_local.date() if starts_local else None),
+            tz_name=tz,
+            working_rows=wh,
         )
         if row:
             flash("Bloqueio de agenda adicionado.", "success")
         else:
-            flash("Não foi possível guardar o bloqueio.", "error")
+            flash(f"Não foi possível guardar o bloqueio ({berr or 'erro'}).", "error")
+        return "horarios"
+
+    if action == "update_blocked_time":
+        from datetime import date as date_type
+
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.blocks import update_block
+        from services.scheduling.datetime_parse import parse_datetime_local
+        from services.scheduling.timezones import normalize_timezone
+
+        bid = (request.form.get("id") or "").strip()
+        if not bid:
+            return "horarios"
+        st = sched_repo.get_settings(cid) or {}
+        tz = normalize_timezone(str(st.get("timezone") or ""))
+        all_day = request.form.get("all_day") in ("1", "on", "true", "yes")
+        day_raw = (request.form.get("block_date") or "").strip()
+        local_date = None
+        if day_raw:
+            try:
+                local_date = date_type.fromisoformat(day_raw[:10])
+            except ValueError:
+                local_date = None
+        starts_local = parse_datetime_local(request.form.get("starts_at") or "", tz)
+        ends_local = parse_datetime_local(request.form.get("ends_at") or "", tz)
+        pid_raw = (request.form.get("professional_id") or "").strip()
+        pid = pid_raw if pid_raw else None
+        if pid and not _professional_owned_by_cliente(cid, pid):
+            flash("Profissional não encontrado.", "error")
+            return "horarios"
+        reason = (request.form.get("reason") or "").strip() or None
+        wh = sched_repo.list_working_hours_all(cid)
+        row, berr = update_block(
+            cliente_id=cid,
+            blocked_id=bid,
+            starts_at=starts_local,
+            ends_at=ends_local,
+            professional_id=pid,
+            reason=reason,
+            all_day=all_day,
+            local_date=local_date,
+            tz_name=tz,
+            working_rows=wh,
+        )
+        if row:
+            flash("Bloqueio actualizado.", "success")
+        else:
+            flash(f"Não foi possível actualizar ({berr or 'erro'}).", "error")
         return "horarios"
 
     if action == "delete_blocked_time":
-        from services.scheduling import repository as sched_repo
+        from services.scheduling.blocks import delete_block
 
         bid = (request.form.get("id") or "").strip()
-        if bid and sched_repo.delete_blocked_time(cid, bid):
-            flash("Bloqueio removido.", "success")
+        if bid:
+            ok, berr = delete_block(cid, bid)
+            if ok:
+                flash("Bloqueio removido.", "success")
+            elif berr:
+                flash(f"Não foi possível remover ({berr}).", "error")
         return "horarios"
 
     if action == "reschedule_appointment":
@@ -431,17 +727,174 @@ def _handle_post(cid: str) -> str:
         except Exception:
             flash("Horário inválido.", "error")
             return "agendamentos"
-        ok, rerr = reschedule_appointment(
+        new_pid_raw = (request.form.get("professional_id") or "").strip()
+        new_pid = new_pid_raw or str(existing.get("professional_id") or "") or None
+        reschedule_scope = (request.form.get("reschedule_scope") or "this_only").strip()
+        is_recurring = bool(str(existing.get("recurrence_series_id") or ""))
+        is_confirmed = str(existing.get("status") or "").lower() == "confirmed"
+        if is_recurring and reschedule_scope != "this_only":
+            from services.scheduling.recurrence import reschedule_recurrence_scope
+
+            ok, rerr = reschedule_recurrence_scope(
+                cid,
+                aid,
+                new_start,
+                dur,
+                professional_id=new_pid,
+                scope=reschedule_scope,
+            )
+            if ok:
+                flash("Série remarcada conforme o escopo escolhido.", "success")
+            else:
+                flash(f"Não foi possível remarcar ({rerr or 'erro'}).", "error")
+            return "agendamentos"
+        if is_confirmed:
+            from services.scheduling.confirmation_actions import propose_reschedule_confirmed
+
+            by = f"panel_user:{getattr(current_user, 'id', 'panel')}"
+            _prop, rerr, swap_offer = propose_reschedule_confirmed(
+                cid,
+                aid,
+                proposed_starts_at=new_start,
+                duration_minutes=dur,
+                professional_id=new_pid,
+                proposed_by=by,
+            )
+            if _prop:
+                flash(
+                    "Remarcação enviada ao cliente por WhatsApp. O horário fica pendente até confirmação.",
+                    "success",
+                )
+            elif rerr == "sem_telefone_cliente":
+                flash(
+                    "Não foi possível remarcar: o agendamento não tem telefone do cliente para confirmação.",
+                    "error",
+                )
+            elif rerr == "swap_available" and swap_offer:
+                _stash_redirect_extra(
+                    {
+                        "reschedule": aid,
+                        "swap_with": swap_offer.appointment_b_id,
+                        "swap_mode": swap_offer.mode,
+                    }
+                )
+            else:
+                flash(f"Não foi possível remarcar ({rerr or 'erro'}).", "error")
+            return "agendamentos"
+        ok, rerr, swap_offer = reschedule_appointment(
             cliente_id=cid,
             appointment_id=aid,
             new_starts_at=new_start,
             duration_minutes=dur,
-            professional_id=str(existing.get("professional_id") or "") or None,
+            professional_id=new_pid,
         )
         if ok:
             flash("Agendamento remarcado.", "success")
+        elif rerr == "swap_available" and swap_offer:
+            _stash_redirect_extra(
+                {
+                    "reschedule": aid,
+                    "swap_with": swap_offer.appointment_b_id,
+                    "swap_mode": swap_offer.mode,
+                }
+            )
         else:
             flash(f"Não foi possível remarcar ({rerr or 'erro'}).", "error")
+        return "agendamentos"
+
+    if action == "swap_professionals":
+        aid = (request.form.get("appointment_a_id") or "").strip()
+        bid = (request.form.get("appointment_b_id") or "").strip()
+        swap_mode = (request.form.get("swap_mode") or "same_slot").strip()
+        if not aid or not bid:
+            flash("Troca inválida.", "error")
+            return "agendamentos"
+        from services.agendamento_ia_appointment_webhook import appointment_origin_label
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.swap import swap_appointments_between_professionals
+
+        for appt_id in (aid, bid):
+            row = sched_repo.get_appointment(cid, appt_id)
+            if not row:
+                flash("Agendamento não encontrado.", "error")
+                return "agendamentos"
+            if appointment_origin_label(row) == "agenda":
+                flash("Marcações do Agendamento IA não podem ser trocadas aqui.", "warning")
+                return "agendamentos"
+        changed_by = str(getattr(current_user, "id", "") or "panel")
+        ok, serr = swap_appointments_between_professionals(
+            cid, aid, bid, changed_by, swap_mode=swap_mode
+        )
+        if ok:
+            current_app.logger.info(
+                "appointment_swap panel appointment_a=%s appointment_b=%s mode=%s user=%s",
+                aid,
+                bid,
+                swap_mode,
+                changed_by,
+            )
+            flash("Clientes trocados entre profissionais.", "success")
+        elif serr == "conflito_cruzado":
+            flash("Não foi possível trocar: um dos profissionais não está livre no horário.", "error")
+        else:
+            flash(f"Não foi possível concluir a troca ({serr or 'erro'}).", "error")
+        return "agendamentos"
+
+    if action == "reassign_professional":
+        aid = (request.form.get("appointment_id") or "").strip()
+        new_pid = (request.form.get("professional_id") or "").strip()
+        if not aid or not new_pid:
+            flash("Selecione o profissional para reatribuir.", "error")
+            return "agendamentos"
+        from services.agendamento_ia_appointment_webhook import appointment_origin_label
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.bookings import reassign_appointment_professional
+        from services.scheduling.eligible import eligible_professionals
+
+        existing = sched_repo.get_appointment(cid, aid)
+        if not existing:
+            flash("Agendamento não encontrado.", "error")
+            return "agendamentos"
+        if str(existing.get("status") or "") == "cancelled":
+            flash("Não é possível alterar profissional de um agendamento cancelado.", "error")
+            return "agendamentos"
+        if appointment_origin_label(existing) == "agenda":
+            flash(
+                "Esta marcação veio do Agendamento IA. Altere pelo fluxo externo.",
+                "warning",
+            )
+            return "agendamentos"
+        services = sched_repo.list_services(cid)
+        profs = sched_repo.list_professionals(cid, active_only=True)
+        eligible = eligible_professionals(
+            services, profs, str(existing.get("service_id") or "")
+        )
+        eligible_ids = {str(p.get("id") or "") for p in eligible}
+        if new_pid not in eligible_ids:
+            flash("Profissional não elegível para este serviço.", "error")
+            return "agendamentos"
+        changed_by = str(getattr(current_user, "id", "") or "panel")
+        ok, rerr, swap_offer = reassign_appointment_professional(
+            cliente_id=cid,
+            appointment_id=aid,
+            new_professional_id=new_pid,
+            changed_by=changed_by,
+        )
+        if ok:
+            flash("Profissional atualizado.", "success")
+        elif rerr == "swap_available" and swap_offer:
+            _stash_redirect_extra(
+                {
+                    "reassign": aid,
+                    "swap_with": swap_offer.appointment_b_id,
+                    "swap_mode": swap_offer.mode,
+                    "target_professional_id": new_pid,
+                }
+            )
+        elif rerr == "slot_ocupado":
+            flash("O profissional já tem compromisso neste horário.", "error")
+        else:
+            flash(f"Não foi possível alterar o profissional ({rerr or 'erro'}).", "error")
         return "agendamentos"
 
     if action == "cancel_appointment":
@@ -500,8 +953,408 @@ def _handle_post(cid: str) -> str:
             flash("Agendamento cancelado.", "success")
         return "agendamentos"
 
+    if action == "confirm_appointment":
+        aid = (request.form.get("appointment_id") or "").strip()
+        if aid:
+            from services.scheduling.confirmation_actions import confirm_appointment
+
+            by = f"panel_user:{getattr(current_user, 'id', 'panel')}"
+            ok, err = confirm_appointment(cid, aid, confirmed_by=by)
+            if ok:
+                flash("Agendamento confirmado.", "success")
+            else:
+                flash(f"Não foi possível confirmar ({err or 'erro'}).", "error")
+        return "agendamentos"
+
+    if action == "reject_appointment":
+        aid = (request.form.get("appointment_id") or "").strip()
+        if aid:
+            from services.scheduling.confirmation_actions import reject_appointment
+
+            by = f"panel_user:{getattr(current_user, 'id', 'panel')}"
+            ok, err = reject_appointment(cid, aid, rejected_by=by)
+            if ok:
+                flash("Pedido recusado e cliente notificado.", "success")
+            else:
+                flash(f"Não foi possível recusar ({err or 'erro'}).", "error")
+        return "agendamentos"
+
+    if action == "create_appointment":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada para este tenant.", "error")
+            return ret
+        from datetime import date as date_type, time as time_type, timedelta
+
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.datetime_parse import parse_datetime_local
+        from services.scheduling.motor_adapters import BookOccurrenceRequest, get_motor_adapter
+        from services.scheduling.timezones import normalize_timezone
+
+        service_id = (request.form.get("service_id") or "").strip()
+        prof_raw = (request.form.get("professional_id") or "").strip()
+        professional_id = prof_raw or None
+        contact_name = (request.form.get("contact_name") or "").strip()
+        contact_phone_raw = (request.form.get("contact_phone") or "").strip()
+        contact_phone, phone_err = _parse_panel_contact_phone(contact_phone_raw)
+        if phone_err:
+            flash(phone_err, "error")
+            return ret
+        notes = (request.form.get("notes") or "").strip() or None
+        date_raw = (request.form.get("appointment_date") or "").strip()[:10]
+        time_raw = (request.form.get("appointment_time") or "09:00").strip()
+        if not service_id or not contact_name or not date_raw:
+            flash("Serviço, nome e data são obrigatórios.", "error")
+            return ret
+        st = sched_repo.get_settings(cid) or {}
+        tz = normalize_timezone(str(st.get("timezone") or ""))
+        try:
+            local_date = date_type.fromisoformat(date_raw)
+            parts = time_raw.split(":")
+            local_time = time_type(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+            starts_local = parse_datetime_local(
+                f"{local_date.isoformat()}T{local_time.strftime('%H:%M')}", tz
+            )
+        except (ValueError, TypeError):
+            flash("Data ou horário inválidos.", "error")
+            return ret
+        if not starts_local:
+            flash("Data ou horário inválidos.", "error")
+            return ret
+        svc = sched_repo.get_service(cid, service_id)
+        dur = int((svc or {}).get("duration_minutes") or 30)
+        ends_at = starts_local + timedelta(minutes=dur)
+        meta = {"source": "panel", "contact_name": contact_name}
+        adapter = get_motor_adapter(cid)
+        result = adapter.book_occurrence(
+            BookOccurrenceRequest(
+                cliente_id=cid,
+                service_id=service_id,
+                professional_id=professional_id,
+                starts_at=starts_local,
+                ends_at=ends_at,
+                contact_name=contact_name,
+                contact_phone=contact_phone,
+                notes=notes,
+                status="confirmed",
+                meta=meta,
+            )
+        )
+        if result.row:
+            flash("Agendamento criado.", "success")
+        else:
+            flash(f"Não foi possível criar ({result.error or 'erro'}).", "error")
+        return ret
+
+    if action == "create_recurrence_series":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada para este tenant.", "error")
+            return ret
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.recurrence import (
+            create_recurrence_series,
+            notify_recurrence_series_summary,
+            validate_recurrence_rule,
+        )
+
+        service_id = (request.form.get("service_id") or "").strip()
+        prof_raw = (request.form.get("professional_id") or "").strip()
+        professional_id = prof_raw or None
+        contact_name = (request.form.get("contact_name") or "").strip()
+        contact_phone_raw = (request.form.get("contact_phone") or "").strip()
+        contact_phone, phone_err = _parse_panel_contact_phone(contact_phone_raw)
+        if phone_err:
+            flash(phone_err, "error")
+            return ret
+        notes = (request.form.get("notes") or "").strip() or None
+        if not service_id or not contact_name:
+            flash("Serviço e nome do cliente são obrigatórios.", "error")
+            return ret
+        parsed, perr = _parse_recurrence_form()
+        if perr or not parsed:
+            flash(f"Dados de recorrência inválidos ({perr or 'erro'}).", "error")
+            return ret
+        verr = validate_recurrence_rule(parsed["frequency"], parsed["rule"])
+        if verr:
+            flash(f"Regra inválida ({verr}).", "error")
+            return ret
+        series, expansion, cerr = create_recurrence_series(
+            cliente_id=cid,
+            service_id=service_id,
+            professional_id=professional_id,
+            frequency=parsed["frequency"],
+            rule=parsed["rule"],
+            time_local=parsed["time_local"],
+            starts_on=parsed["starts_on"],
+            ends_on=parsed["ends_on"],
+            contact_name=contact_name,
+            contact_phone=contact_phone,
+            notes=notes,
+        )
+        if not series:
+            flash(f"Não foi possível criar a série ({cerr or 'erro'}).", "error")
+            return ret
+        wants_summary = (request.form.get("send_whatsapp_summary") or "1").strip().lower()
+        created = expansion.created if expansion else 0
+        conflicts = expansion.skipped_conflict if expansion else 0
+        msg = f"Série recorrente criada. {created} ocorrência(s) gerada(s)."
+        if conflicts:
+            msg += f" {conflicts} conflito(s) ignorado(s)."
+        if contact_phone and wants_summary not in ("0", "off", "false", "no"):
+            sent, wa_err = notify_recurrence_series_summary(cid, series)
+            if sent:
+                msg += " Resumo enviado ao cliente por WhatsApp."
+            elif wa_err:
+                msg += f" Não foi possível enviar o resumo por WhatsApp: {wa_err}"
+            else:
+                msg += " Não foi possível enviar o resumo por WhatsApp (verifique telefone e instância)."
+        flash(msg, "success")
+        return ret
+
+    if action == "pause_recurrence_series":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from services.scheduling.recurrence import pause_recurrence_series
+
+        sid = (request.form.get("series_id") or "").strip()
+        if sid and pause_recurrence_series(cid, sid):
+            flash("Série pausada. Ocorrências futuras canceladas.", "success")
+        else:
+            flash("Não foi possível pausar a série.", "error")
+        return ret
+
+    if action == "resume_recurrence_series":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from services.scheduling.recurrence import resume_recurrence_series
+
+        sid = (request.form.get("series_id") or "").strip()
+        if sid:
+            expansion = resume_recurrence_series(cid, sid)
+            created = expansion.created if expansion else 0
+            flash(f"Série reativada. {created} ocorrência(s) gerada(s).", "success")
+        else:
+            flash("Série não indicada.", "error")
+        return ret
+
+    if action == "end_recurrence_series":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from datetime import date as date_type
+
+        from services.scheduling.recurrence import end_recurrence_series
+
+        sid = (request.form.get("series_id") or "").strip()
+        end_raw = (request.form.get("end_date") or "").strip()[:10]
+        end_date = None
+        if end_raw:
+            try:
+                end_date = date_type.fromisoformat(end_raw)
+            except ValueError:
+                pass
+        if sid and end_recurrence_series(cid, sid, end_date=end_date):
+            flash("Série encerrada.", "success")
+        else:
+            flash("Não foi possível encerrar a série.", "error")
+        return ret
+
+    if action == "cancel_recurrence_scope":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from services.scheduling.recurrence import cancel_recurrence_scope
+
+        scope = (request.form.get("cancel_scope") or "this_only").strip()
+        sid = (request.form.get("series_id") or "").strip() or None
+        aid = (request.form.get("appointment_id") or "").strip() or None
+        ok, err = cancel_recurrence_scope(
+            cid, scope=scope, series_id=sid, appointment_id=aid
+        )
+        if ok:
+            flash("Cancelamento aplicado.", "success")
+        else:
+            flash(f"Não foi possível cancelar ({err or 'erro'}).", "error")
+        return ret
+
+    if action == "delete_recurrence_scope":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from services.scheduling.recurrence import delete_recurrence_scope
+
+        scope = (request.form.get("delete_scope") or "this_only").strip()
+        sid = (request.form.get("series_id") or "").strip() or None
+        aid = (request.form.get("appointment_id") or "").strip() or None
+        ok, err = delete_recurrence_scope(
+            cid, scope=scope, series_id=sid, appointment_id=aid
+        )
+        if ok:
+            flash("Registo(s) excluído(s) do painel.", "success")
+        else:
+            flash(f"Não foi possível excluir ({err or 'erro'}).", "error")
+        return ret
+
+    if action == "edit_recurrence_series":
+        if not _panel_booking_allowed(cid):
+            flash("Agenda não configurada.", "error")
+            return ret
+        from services.scheduling.recurrence import apply_series_edit
+
+        sid = (request.form.get("series_id") or "").strip()
+        scope = (request.form.get("edit_scope") or "all").strip()
+        aid = (request.form.get("appointment_id") or "").strip() or None
+        if not sid:
+            flash("Série não indicada.", "error")
+            return ret
+        parsed, perr = _parse_recurrence_form()
+        prof_raw = (request.form.get("professional_id") or "").strip()
+        contact_name = (request.form.get("contact_name") or "").strip() or None
+        contact_phone_raw = (request.form.get("contact_phone") or "").strip()
+        contact_phone, phone_err = _parse_panel_contact_phone(contact_phone_raw)
+        if phone_err:
+            flash(phone_err, "error")
+            return ret
+        notes = (request.form.get("notes") or "").strip()
+        no_end = request.form.get("no_end_date") in ("1", "on", "true", "yes")
+        ends_on = parsed.get("ends_on") if parsed else None
+        if perr and scope != "this_only":
+            flash(f"Dados inválidos ({perr}).", "error")
+            return ret
+        _updated, expansion, err = apply_series_edit(
+            cid,
+            sid,
+            scope=scope,
+            appointment_id=aid,
+            frequency=parsed.get("frequency") if parsed else None,
+            rule=parsed.get("rule") if parsed else None,
+            time_local=parsed.get("time_local") if parsed else None,
+            professional_id=prof_raw or None,
+            contact_name=contact_name,
+            contact_phone=contact_phone if contact_phone else None,
+            notes=notes if notes else None,
+            ends_on=ends_on,
+            no_end_date=no_end,
+        )
+        if err:
+            flash(f"Não foi possível editar ({err}).", "error")
+        else:
+            msg = "Série atualizada."
+            if expansion and expansion.created:
+                msg += f" {expansion.created} ocorrência(s) gerada(s)."
+            if expansion and expansion.skipped_conflict:
+                msg += f" {expansion.skipped_conflict} conflito(s)."
+            flash(msg, "success")
+        return ret
+
+    if action == "propose_appointment":
+        aid = (request.form.get("appointment_id") or "").strip()
+        slot_iso = (request.form.get("proposed_slot_iso") or "").strip()
+        if aid and slot_iso:
+            from services.scheduling import repository as sched_repo
+            from services.scheduling.confirmation_actions import propose_new_time
+            from services.scheduling.display import parse_iso_datetime
+
+            row = sched_repo.get_appointment(cid, aid)
+            svc = sched_repo.get_service(cid, str((row or {}).get("service_id") or ""))
+            dur = int((svc or {}).get("duration_minutes") or 30)
+            starts = parse_iso_datetime(slot_iso)
+            if not starts:
+                flash("Horário proposto inválido.", "error")
+            else:
+                from datetime import timedelta
+
+                ends = starts + timedelta(minutes=dur)
+                by = f"panel_user:{getattr(current_user, 'id', 'panel')}"
+                _prop, perr = propose_new_time(
+                    cid,
+                    aid,
+                    proposed_starts_at=starts,
+                    proposed_ends_at=ends,
+                    proposed_by=by,
+                )
+                if perr:
+                    flash(f"Não foi possível enviar proposta ({perr}).", "error")
+                else:
+                    flash("Proposta enviada ao cliente por WhatsApp.", "success")
+        else:
+            flash("Indique o novo horário.", "error")
+        return "agendamentos"
+
     flash("Ação não reconhecida.", "error")
     return ret
+
+
+def _parse_panel_contact_phone(raw: str | None) -> tuple[str | None, str | None]:
+    from services.scheduling.public_contact import parse_panel_contact_phone
+
+    return parse_panel_contact_phone(raw)
+
+
+def _panel_booking_allowed(cid: str) -> bool:
+    from services.scheduling.motor_adapters.factory import panel_booking_allowed
+
+    return panel_booking_allowed(cid)
+
+
+def _parse_recurrence_form() -> tuple[dict | None, str | None]:
+    from datetime import date as date_type, time as time_type
+
+    frequency = (request.form.get("recurrence_frequency") or "").strip().lower()
+    if frequency not in ("daily", "weekly", "monthly"):
+        return None, "frequencia_invalida"
+
+    rule: dict = {}
+    if frequency == "daily":
+        mode = (request.form.get("daily_mode") or "all_days").strip().lower()
+        rule = {"mode": mode if mode in ("all_days", "weekdays") else "all_days"}
+    elif frequency == "weekly":
+        days = []
+        for d in range(7):
+            if request.form.get(f"weekday_{d}") in ("1", "on", "true", "yes"):
+                days.append(d)
+        rule = {"days_of_week": days}
+    else:
+        try:
+            dom = int(request.form.get("day_of_month") or 1)
+        except ValueError:
+            dom = 1
+        rule = {"day_of_month": max(1, min(31, dom))}
+
+    time_raw = (request.form.get("time_local") or request.form.get("appointment_time") or "09:00").strip()
+    try:
+        parts = time_raw.split(":")
+        tl = time_type(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+    except (TypeError, ValueError):
+        return None, "horario_invalido"
+
+    starts_raw = (request.form.get("starts_on") or request.form.get("appointment_date") or "").strip()[:10]
+    try:
+        starts_on = date_type.fromisoformat(starts_raw)
+    except ValueError:
+        return None, "data_inicial_invalida"
+
+    no_end = request.form.get("no_end_date") in ("1", "on", "true", "yes")
+    ends_on = None
+    if not no_end:
+        ends_raw = (request.form.get("ends_on") or "").strip()[:10]
+        if ends_raw:
+            try:
+                ends_on = date_type.fromisoformat(ends_raw)
+            except ValueError:
+                return None, "data_final_invalida"
+
+    return (
+        {
+            "frequency": frequency,
+            "rule": rule,
+            "time_local": tl,
+            "starts_on": starts_on,
+            "ends_on": ends_on,
+        },
+        None,
+    )
 
 
 @scheduling_bp.route("/", methods=["GET", "POST"])
@@ -552,7 +1405,23 @@ def home():
                 flash(f"{imported} agendamento(s) sincronizado(s) do Agendamento IA.", "success")
 
     if request.method == "POST":
-        tab = _handle_post(cid)
+        try:
+            tab = _handle_post(cid)
+        except Exception:
+            current_app.logger.exception(
+                "scheduling.home POST failed cliente_id=%s action=%s",
+                cid[:8],
+                (request.form.get("action") or "")[:40],
+            )
+            flash(
+                "Não foi possível concluir a ação. Atualize a página (Ctrl+F5) e tente novamente.",
+                "error",
+            )
+            tab = (request.form.get("return_tab") or "agendamentos").strip()
+            if tab not in VALID_TABS:
+                tab = "agendamentos"
+        if (request.form.get("return_to") or "").strip() == "calendario":
+            return redirect(url_for("scheduling.calendario", **_redirect_calendario_params()))
         params: dict[str, str] = {"tab": tab}
         for key in ("period", "date", "professional_id", "status", "q"):
             val = (request.args.get(key) or request.form.get(key) or "").strip()
@@ -560,6 +1429,7 @@ def home():
                 params[key] = val
         if tab == "agendamentos" and "period" not in params and "date" not in params:
             params["period"] = "today"
+        params.update(_pop_redirect_extra())
         return redirect(url_for("scheduling.home", **params))
 
     if request.method == "GET" and clinic_sync_configured() and not uses_internal_scheduling:
@@ -621,6 +1491,9 @@ def home():
     )
     clinic_hours = [h for h in working_hours if h.get("professional_id") in (None, "")]
     prof_hours = [h for h in working_hours if h.get("professional_id") not in (None, "")]
+    from services.scheduling.working_hour_routines import load_working_hour_config
+
+    working_hour_config = load_working_hour_config(settings, clinic_hours)
     from datetime import timedelta
 
     from services.scheduling.appointments_filter import parse_filter_date, resolve_appointments_period
@@ -699,12 +1572,33 @@ def home():
     appointments = enrich_appointments_display(appointments, tz_name)
     service_names = {str(s.get("id") or ""): str(s.get("name") or "") for s in services if s.get("id")}
     from services.scheduling.display import parse_iso_datetime
+    from services.scheduling.recurrence import format_series_summary
     from services.scheduling.slot_engine import _get_tz
 
+    series_cache: dict[str, dict] = {}
     tz_obj = _get_tz(tz_name)
     for row in appointments:
         row["prof_name"] = prof_names.get(str(row.get("professional_id") or ""), "—")
         row["service_name"] = service_names.get(str(row.get("service_id") or ""), "—")
+        rsid = str(row.get("recurrence_series_id") or "")
+        if rsid:
+            try:
+                if rsid not in series_cache:
+                    series_cache[rsid] = sched_repo.get_recurrence_series(cid, rsid) or {}
+                srow = series_cache[rsid]
+                row["series_summary"] = format_series_summary(srow, tz_name) if srow else ""
+                row["series_status"] = str(srow.get("status") or "")
+            except Exception:
+                current_app.logger.exception(
+                    "scheduling.home series_meta failed cliente_id=%s series_id=%s",
+                    cid[:8],
+                    rsid[:8],
+                )
+                row["series_summary"] = ""
+                row["series_status"] = ""
+        else:
+            row["series_summary"] = ""
+            row["series_status"] = ""
         if filter_period in ("today", "tomorrow", "day"):
             dt = parse_iso_datetime(row.get("starts_at"))
             if dt:
@@ -729,45 +1623,69 @@ def home():
     upcoming = enrich_appointments_display(upcoming, tz_name)
 
     blocked_times_raw = sched_repo.list_blocked_times(cid, limit=50)
+    from services.scheduling.blocks import block_scope_label
+    from services.scheduling.datetime_parse import format_datetime_local_input
     from services.scheduling.display import format_datetime_br
 
-    blocked_times = [
-        {
+    blocked_times = []
+    edit_block_id = (request.args.get("edit_block") or "").strip()
+    edit_block_row = None
+    for b in blocked_times_raw:
+        pid = b.get("professional_id")
+        pid_str = str(pid) if pid not in (None, "") else ""
+        prof_label = block_scope_label(
+            pid_str or None,
+            prof_names.get(pid_str) if pid_str else None,
+        )
+        enriched = {
             **b,
             "starts_display": format_datetime_br(b.get("starts_at"), tz_name),
             "ends_display": format_datetime_br(b.get("ends_at"), tz_name),
-            "prof_name": prof_names.get(str(b.get("professional_id") or ""), "Toda a clínica"),
+            "starts_at_input": format_datetime_local_input(b.get("starts_at"), tz_name),
+            "ends_at_input": format_datetime_local_input(b.get("ends_at"), tz_name),
+            "prof_name": prof_label,
+            "scope": "clinic" if not pid_str else "professional",
         }
-        for b in blocked_times_raw
-    ]
+        blocked_times.append(enriched)
+        if edit_block_id and str(b.get("id")) == edit_block_id:
+            edit_block_row = enriched
 
-    reschedule_id = (request.args.get("reschedule") or "").strip()
-    reschedule_row: dict | None = None
-    reschedule_slots: list[str] = []
-    reschedule_slot_labels: list[str] = []
-    if reschedule_id:
-        row_rs = sched_repo.get_appointment(cid, reschedule_id)
-        if row_rs and str(row_rs.get("status") or "") != "cancelled":
-            reschedule_row = enrich_appointments_display([row_rs], tz_name)[0]
-            svc_rs = sched_repo.get_service(cid, str(row_rs.get("service_id") or ""))
-            pid_rs = str(row_rs.get("professional_id") or "")
-            if pid_rs and svc_rs:
-                from services.scheduling.slots_public import compute_available_slot_isos
+    from services.scheduling.assignment import assignment_mode_label, uses_auto_distribution
+    from services.scheduling.confirmation_policy import (
+        confirmation_policy_label,
+        get_confirmation_policy,
+        get_confirmation_pending_ttl_hours,
+        requires_professional_confirmation,
+    )
+    from services.scheduling.eligible import eligible_professionals as eligible_profs_for_service
 
-                reschedule_slots = compute_available_slot_isos(
-                    cliente_id=cid,
-                    service_id=str(row_rs.get("service_id") or ""),
-                    professional_id=pid_rs,
-                    tz_name=tz_name,
-                    working_rows=working_hours,
-                    duration_minutes=int(svc_rs.get("duration_minutes") or 30),
-                    num_days=21,
-                    max_slots=40,
-                    exclude_appointment_id=reschedule_id,
-                )
-                reschedule_slot_labels = [
-                    format_datetime_br(iso, tz_name) for iso in reschedule_slots
-                ]
+    assignment_mode = sched_repo.get_assignment_mode(cid)
+    auto_distribution_enabled = uses_auto_distribution(cid)
+    confirmation_policy = get_confirmation_policy(cid)
+    confirmation_pending_ttl_hours = get_confirmation_pending_ttl_hours(cid)
+    professional_confirmation_enabled = requires_professional_confirmation(cid)
+
+    action_panels = _appointment_action_panels(
+        cid,
+        working_hours=working_hours,
+        professionals=professionals,
+        services=services,
+        prof_names=prof_names,
+        service_names=service_names,
+        tz_name=tz_name,
+    )
+    reassign_row = action_panels["reassign_row"]
+    reassign_eligible_professionals = action_panels["reassign_eligible_professionals"]
+    swap_preview = action_panels["swap_preview"]
+    swap_appointment_a_id = action_panels["swap_appointment_a_id"]
+    swap_appointment_b_id = action_panels["swap_appointment_b_id"]
+    swap_mode_arg = action_panels["swap_mode"]
+    propose_row = action_panels["propose_row"]
+    propose_slots = action_panels["propose_slots"]
+    propose_slot_labels = action_panels["propose_slot_labels"]
+    reschedule_row = action_panels["reschedule_row"]
+    reschedule_slots = action_panels["reschedule_slots"]
+    reschedule_slot_labels = action_panels["reschedule_slot_labels"]
 
     google_status: dict | None = None
     google_status_by_provider: dict[str, dict] = {}
@@ -778,7 +1696,7 @@ def home():
         )
 
         try:
-            if tab == "profissionais" and professionals:
+            if tab != "agendamentos" and professionals:
                 active_ids = [
                     str(p.get("id"))
                     for p in professionals
@@ -813,9 +1731,14 @@ def home():
         else "Agenda externa (Agendamento IA)"
     )
 
+    template = (
+        "scheduling/agendamentos_lista.html"
+        if tab == "agendamentos"
+        else "scheduling/config_accordion.html"
+    )
     try:
         return render_template(
-            "scheduling/wizard.html",
+            template,
             tab=tab,
             tab_index=tab_index,
             agendamento_ia_sync=clinic_sync_configured(),
@@ -850,8 +1773,27 @@ def home():
             scheduling_engine=scheduling_engine,
             scheduling_engine_label=scheduling_engine_label,
             scheduling_uses_internal=scheduling_uses_internal_motor(cid),
+            panel_booking_enabled=_panel_booking_allowed(cid),
+            assignment_mode=assignment_mode,
+            assignment_mode_label=assignment_mode_label(assignment_mode),
+            auto_distribution_enabled=auto_distribution_enabled,
+            confirmation_policy=confirmation_policy,
+            confirmation_policy_label=confirmation_policy_label(confirmation_policy),
+            confirmation_pending_ttl_hours=confirmation_pending_ttl_hours,
+            professional_confirmation_enabled=professional_confirmation_enabled,
+            propose_row=propose_row,
+            propose_slots=propose_slots,
+            propose_slot_labels=propose_slot_labels,
+            reassign_row=reassign_row,
+            reassign_eligible_professionals=reassign_eligible_professionals,
+            swap_preview=swap_preview,
+            swap_mode=swap_mode_arg,
+            swap_appointment_a_id=swap_appointment_a_id,
+            swap_appointment_b_id=swap_appointment_b_id,
             dias=dias,
+            working_hour_config=working_hour_config,
             blocked_times=blocked_times,
+            edit_block_row=edit_block_row,
             reschedule_row=reschedule_row,
             reschedule_slots=reschedule_slots,
             reschedule_slot_labels=reschedule_slot_labels,
@@ -926,7 +1868,7 @@ def calendario():
     from services.scheduling.stats import compute_dashboard_stats
     from services.scheduling.timezones import DEFAULT_TIMEZONE, normalize_timezone
 
-    view = (request.args.get("view") or "day").strip().lower()
+    view = (request.args.get("view") or "week").strip().lower()
     st = sched_repo.get_settings(cid) or {}
     tz_name = normalize_timezone(str(st.get("timezone") or DEFAULT_TIMEZONE))
     anchor = parse_anchor_date(request.args.get("date"), tz_name)
@@ -964,13 +1906,58 @@ def calendario():
     prof_names = {str(p.get("id") or ""): str(p.get("name") or "") for p in professionals}
     service_names = {str(s.get("id") or ""): str(s.get("name") or "") for s in services}
     enriched = enrich_appointments_display(raw_appts, tz_name)
-    for row in enriched:
-        row["origin"] = "agenda" if appointment_origin_label(row) == "agenda" else "local"
+    series_cache: dict[str, dict] = {}
+    from services.scheduling.recurrence import format_series_summary
 
+    appointment_origins: dict[str, str] = {}
+    for row in enriched:
+        origin_label = appointment_origin_label(row)
+        row["origin"] = "agenda" if origin_label == "agenda" else "local"
+        aid = str(row.get("id") or "")
+        if aid:
+            appointment_origins[aid] = origin_label
+        row["prof_name"] = prof_names.get(str(row.get("professional_id") or ""), "—")
+        row["service_name"] = service_names.get(str(row.get("service_id") or ""), "—")
+        rsid = str(row.get("recurrence_series_id") or "")
+        if rsid:
+            try:
+                if rsid not in series_cache:
+                    series_cache[rsid] = sched_repo.get_recurrence_series(cid, rsid) or {}
+                srow = series_cache[rsid]
+                row["series_summary"] = format_series_summary(srow, tz_name) if srow else ""
+                row["series_status"] = str(srow.get("status") or "")
+            except Exception:
+                current_app.logger.exception(
+                    "scheduling.calendario series_meta failed cliente_id=%s series_id=%s",
+                    cid[:8],
+                    rsid[:8],
+                )
+                row["series_summary"] = ""
+                row["series_status"] = ""
+        else:
+            row["series_summary"] = ""
+            row["series_status"] = ""
+
+    working_hours = sched_repo.list_working_hours_all(cid)
+    action_panels = _appointment_action_panels(
+        cid,
+        working_hours=working_hours,
+        professionals=professionals,
+        services=services,
+        prof_names=prof_names,
+        service_names=service_names,
+        tz_name=tz_name,
+    )
+
+    blocked_raw = sched_repo.list_blocked_times_in_range(
+        cid, from_utc, to_utc, professional_id=filter_prof or None
+    )
     cal = build_calendar_view(
         view=view,
         anchor=anchor,
         appointments=enriched,
+        blocked_times=blocked_raw,
+        working_rows=working_hours,
         tz_name=tz_name,
         prof_names=prof_names,
         service_names=service_names,
@@ -983,21 +1970,65 @@ def calendario():
     prev_date = (anchor - timedelta(days=1 if view == "day" else 7 if view == "week" else 28)).isoformat()
     next_date = (anchor + timedelta(days=1 if view == "day" else 7 if view == "week" else 28)).isoformat()
 
-    return render_template(
-        "scheduling/calendario.html",
-        view=view,
-        anchor=anchor.isoformat(),
-        calendar=cal,
-        stats=stats,
-        professionals=professionals,
-        filter_professional_id=filter_prof,
-        filter_status=filter_status,
-        scheduling_timezone=tz_name,
-        settings=st,
-        prev_date=prev_date,
-        next_date=next_date,
-        public_agenda_url="",
-    )
+    from services.scheduling.engine import scheduling_uses_internal_motor
+    from services.scheduling.motor_adapters.factory import panel_booking_allowed
+
+    try:
+        from services.jobs.recurrence_expander import run_recurrence_expander_for_cliente
+
+        run_recurrence_expander_for_cliente(cid)
+    except Exception:
+        current_app.logger.exception("recurrence_expander calendario cliente_id=%s", cid[:8])
+
+    public_agenda_url = ""
+    public_book_url = ""
+    slug = str(st.get("public_slug") or "").strip()
+    try:
+        from services.agendamento_ia_link import build_zapaction_public_agenda_url
+        from services.agendamento_ia_urls import (
+            agendamento_ia_configured,
+            build_public_book_page_url,
+        )
+
+        if slug:
+            public_agenda_url = build_zapaction_public_agenda_url(slug)
+        if scheduling_uses_internal_motor(cid) and slug:
+            public_book_url = public_agenda_url
+        elif agendamento_ia_configured() and slug:
+            public_book_url = build_public_book_page_url(slug)
+    except Exception:
+        public_agenda_url = ""
+        public_book_url = ""
+
+    from services.scheduling.display import appointments_for_cal_js
+
+    try:
+        return render_template(
+            "scheduling/calendario.html",
+            view=view,
+            anchor=anchor.isoformat(),
+            calendar=cal,
+            stats=stats,
+            professionals=professionals,
+            services=services,
+            filter_professional_id=filter_prof,
+            filter_status=filter_status,
+            scheduling_timezone=tz_name,
+            scheduling_uses_internal=scheduling_uses_internal_motor(cid),
+            panel_booking_enabled=panel_booking_allowed(cid),
+            settings=st,
+            prev_date=prev_date,
+            next_date=next_date,
+            public_agenda_url=public_agenda_url,
+            public_book_url=public_book_url,
+            appointment_origins=appointment_origins,
+            appointments_lookup=appointments_for_cal_js(enriched),
+            **action_panels,
+        )
+    except Exception:
+        current_app.logger.exception("scheduling.calendario render failed cliente_id=%s", cid[:8])
+        flash("Não foi possível carregar o calendário. Tente atualizar a página (Ctrl+F5).", "error")
+        return redirect(url_for("scheduling.home", tab="agendamentos"))
 
 
 @scheduling_bp.route("/api/appointment/reschedule", methods=["POST"])
@@ -1021,21 +2052,189 @@ def api_appointment_reschedule():
         return jsonify({"ok": False, "error": "nao_encontrado"}), 404
     if appointment_origin_label(existing) == "agenda":
         return jsonify({"ok": False, "error": "origem_agenda"}), 400
+    if str(existing.get("status") or "") == "cancelled":
+        return jsonify({"ok": False, "error": "cancelado"}), 400
     svc = sched_repo.get_service(cid, str(existing.get("service_id") or ""))
     dur = int((svc or {}).get("duration_minutes") or 30)
     try:
         new_start = datetime.fromisoformat(slot_iso.replace("Z", "+00:00"))
     except Exception:
         return jsonify({"ok": False, "error": "horario_invalido"}), 400
-    ok, err = reschedule_appointment(
+    prof_id = str(existing.get("professional_id") or "") or None
+    if str(existing.get("status") or "").lower() == "confirmed":
+        from services.scheduling.confirmation_actions import propose_reschedule_confirmed
+
+        by = f"panel_user:{getattr(current_user, 'id', 'panel')}"
+        _prop, err, swap_offer = propose_reschedule_confirmed(
+            cid,
+            aid,
+            proposed_starts_at=new_start,
+            duration_minutes=dur,
+            professional_id=prof_id,
+            proposed_by=by,
+        )
+        if _prop:
+            return jsonify({"ok": True, "awaiting_client": True})
+        payload: dict = {"ok": False, "error": err or "falha"}
+        if err == "swap_available" and swap_offer:
+            payload["swap_available"] = True
+            payload["conflict_appointment_id"] = swap_offer.appointment_b_id
+            payload["swap_mode"] = swap_offer.mode
+        status_code = 409 if err in ("slot_ocupado", "swap_available") else 400
+        return jsonify(payload), status_code
+    ok, err, swap_offer = reschedule_appointment(
         cliente_id=cid,
         appointment_id=aid,
         new_starts_at=new_start,
         duration_minutes=dur,
-        professional_id=str(existing.get("professional_id") or "") or None,
+        professional_id=prof_id,
     )
+    if ok and str(existing.get("recurrence_series_id") or ""):
+        scope = str(data.get("scope") or "this_only").strip().lower()
+        if scope == "this_only":
+            from services.scheduling.recurrence import supabase_update_appointment
+            from database.models import SchedulingAppointmentModel
+
+            supabase_update_appointment(
+                cid,
+                aid,
+                {SchedulingAppointmentModel.IS_SERIES_EXCEPTION: True},
+            )
+            sched_repo.merge_appointment_meta(cid, aid, {"series_exception": True})
     if not ok:
-        return jsonify({"ok": False, "error": err or "falha"}), 409
+        payload: dict = {"ok": False, "error": err or "falha"}
+        if err == "swap_available" and swap_offer:
+            payload["swap_available"] = True
+            payload["conflict_appointment_id"] = swap_offer.appointment_b_id
+            payload["swap_mode"] = swap_offer.mode
+        return jsonify(payload), 409
+    return jsonify({"ok": True})
+
+
+def _parse_block_api_body(
+    data: dict, cid: str, *, is_update: bool = False
+) -> tuple[dict | None, str | None, int]:
+    """Prepara kwargs para create_block / update_block a partir de JSON."""
+    from datetime import date as date_type
+
+    from services.scheduling import repository as sched_repo
+    from services.scheduling.datetime_parse import parse_panel_datetime
+    from services.scheduling.timezones import normalize_timezone
+
+    st = sched_repo.get_settings(cid) or {}
+    tz = normalize_timezone(str(st.get("timezone") or ""))
+    all_day = bool(data.get("all_day"))
+    day_raw = (data.get("date") or data.get("block_date") or "").strip()
+    local_date = None
+    if day_raw:
+        try:
+            local_date = date_type.fromisoformat(str(day_raw)[:10])
+        except ValueError:
+            return None, "data_invalida", 400
+
+    starts = None
+    ends = None
+    starts_raw = (data.get("starts_at") or "").strip()
+    ends_raw = (data.get("ends_at") or "").strip()
+    if starts_raw:
+        starts = parse_panel_datetime(starts_raw, tz)
+    if ends_raw:
+        ends = parse_panel_datetime(ends_raw, tz)
+
+    pid_raw = data.get("professional_id")
+    if pid_raw is None and data.get("scope") == "clinic":
+        pid = None
+    elif pid_raw is None and "professional_id" not in data:
+        pid = ...
+    else:
+        pid = (str(pid_raw).strip() if pid_raw else None) or None
+
+    reason = data.get("reason")
+    if reason is not None:
+        reason = (str(reason).strip() or None)
+
+    wh = sched_repo.list_working_hours_all(cid)
+    payload: dict = {
+        "all_day": all_day,
+        "local_date": local_date,
+        "tz_name": tz,
+        "working_rows": wh,
+    }
+    if starts is not None:
+        payload["starts_at"] = starts
+    if ends is not None:
+        payload["ends_at"] = ends
+    if pid is not ...:
+        payload["professional_id"] = pid
+    if reason is not None:
+        payload["reason"] = reason
+    if all_day and not local_date:
+        return None, "data_em_falta", 400
+    if not is_update and not all_day and (starts is None or ends is None):
+        return None, "horario_em_falta", 400
+    return payload, None, 200
+
+
+@scheduling_bp.route("/api/blocked-time", methods=["POST"])
+@login_required
+def api_blocked_time_create():
+    cid = _cliente_id()
+    if not cid:
+        return jsonify({"ok": False, "error": "sessao_invalida"}), 401
+    data = request.get_json(silent=True) or {}
+    payload, err, code = _parse_block_api_body(data, cid)
+    if err:
+        return jsonify({"ok": False, "error": err}), code
+    from services.scheduling.blocks import create_block
+
+    pid = payload.get("professional_id")
+    if pid and not _professional_owned_by_cliente(cid, str(pid)):
+        return jsonify({"ok": False, "error": "profissional_invalido"}), 400
+    row, berr = create_block(cliente_id=cid, **payload)
+    if not row:
+        status = 403 if berr == "motor_externo" else 400
+        return jsonify({"ok": False, "error": berr or "falha"}), status
+    return jsonify({"ok": True, "block": row})
+
+
+@scheduling_bp.route("/api/blocked-time/<blocked_id>", methods=["PATCH"])
+@login_required
+def api_blocked_time_update(blocked_id: str):
+    cid = _cliente_id()
+    if not cid:
+        return jsonify({"ok": False, "error": "sessao_invalida"}), 401
+    data = request.get_json(silent=True) or {}
+    payload, err, code = _parse_block_api_body(data, cid, is_update=True)
+    if err:
+        return jsonify({"ok": False, "error": err}), code
+    from services.scheduling.blocks import update_block
+
+    kwargs = {k: v for k, v in payload.items() if k in (
+        "starts_at", "ends_at", "professional_id", "reason",
+        "all_day", "local_date", "tz_name", "working_rows",
+    )}
+    pid = kwargs.get("professional_id")
+    if pid and not _professional_owned_by_cliente(cid, str(pid)):
+        return jsonify({"ok": False, "error": "profissional_invalido"}), 400
+    row, berr = update_block(cliente_id=cid, blocked_id=blocked_id, **kwargs)
+    if not row:
+        status = 404 if berr == "nao_encontrado" else (403 if berr == "motor_externo" else 400)
+        return jsonify({"ok": False, "error": berr or "falha"}), status
+    return jsonify({"ok": True, "block": row})
+
+
+@scheduling_bp.route("/api/blocked-time/<blocked_id>", methods=["DELETE"])
+@login_required
+def api_blocked_time_delete(blocked_id: str):
+    cid = _cliente_id()
+    if not cid:
+        return jsonify({"ok": False, "error": "sessao_invalida"}), 401
+    from services.scheduling.blocks import delete_block
+
+    ok, berr = delete_block(cid, blocked_id)
+    if not ok:
+        status = 404 if berr == "nao_encontrado" else (403 if berr == "motor_externo" else 400)
+        return jsonify({"ok": False, "error": berr or "falha"}), status
     return jsonify({"ok": True})
 
 

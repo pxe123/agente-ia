@@ -1,0 +1,77 @@
+<form method="post" action="{{ url_for('scheduling.home', tab='servicos') }}" class="flex flex-wrap gap-2 items-end">
+  <input type="hidden" name="action" value="add_service">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+  <input type="hidden" name="professional_id" value="">
+  <div class="flex-1 min-w-[140px]">
+    <label class="text-xs font-medium text-slate-500">Nome</label>
+    <input name="name" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1" required placeholder="Corte de cabelo">
+  </div>
+  <div class="w-28">
+    <label class="text-xs font-medium text-slate-500">Duração</label>
+    <select name="duration_minutes" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+      <option value="15">15 min</option>
+      <option value="20">20 min</option>
+      <option value="30" selected>30 min</option>
+      <option value="45">45 min</option>
+      <option value="60">60 min</option>
+      <option value="90">90 min</option>
+    </select>
+  </div>
+  <div class="w-28">
+    <label class="text-xs font-medium text-slate-500">Preço (opcional)</label>
+    <input name="price_reais" type="text" inputmode="decimal" placeholder="R$ 50"
+           class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+  </div>
+  <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold shrink-0">+ Adicionar</button>
+</form>
+
+<ul class="divide-y divide-slate-100 rounded-xl border border-slate-200 mt-4 overflow-hidden bg-white">
+  {% for s in services %}
+  <li class="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
+    <div>
+      <span class="font-medium text-slate-800">{{ s.name }}</span>
+      <span class="text-slate-500"> · {{ s.duration_minutes }} min</span>
+      {% if s.price_cents %}
+      <span class="text-slate-600"> · R$ {{ '%.2f'|format(s.price_cents / 100) }}</span>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="post" action="{{ url_for('scheduling.home', tab='servicos') }}"
+            onsubmit="return confirm('Excluir {{ s.name }}?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <input type="hidden" name="action" value="delete_service">
+        <input type="hidden" name="id" value="{{ s.id }}">
+        <button type="submit" class="{{ btn_excluir }}">Remover</button>
+      </form>
+    </div>
+  </li>
+  {% else %}
+  <li class="px-4 py-6 text-sm text-slate-500 text-center">Nenhum serviço. Adicione pelo menos um.</li>
+  {% endfor %}
+</ul>
+
+<details class="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 group">
+  <summary class="px-4 py-2 text-xs font-semibold text-slate-600 cursor-pointer list-none flex items-center gap-2">
+    <i class="fas fa-chevron-right text-[10px] group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+    Quem pode fazer cada serviço?
+  </summary>
+  <div class="px-4 pb-4 space-y-3 border-t border-slate-100 pt-3">
+    {% for s in services %}
+    <form method="post" action="{{ url_for('scheduling.home', tab='servicos') }}" class="flex flex-wrap items-center gap-2 text-sm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="update_service_professional">
+      <input type="hidden" name="service_id" value="{{ s.id }}">
+      <span class="font-medium text-slate-700 min-w-[120px]">{{ s.name }}</span>
+      <select name="professional_id" class="border border-slate-200 rounded-lg px-2 py-1 text-xs flex-1 min-w-[140px]">
+        <option value="" {% if not s.professional_id %}selected{% endif %}>Todos os profissionais</option>
+        {% for p in professionals %}
+        <option value="{{ p.id }}" {% if s.professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="text-teal-700 text-xs font-semibold">Atualizar</button>
+    </form>
+    {% else %}
+    <p class="text-xs text-slate-500">Adicione serviços primeiro.</p>
+    {% endfor %}
+  </div>
+</details>

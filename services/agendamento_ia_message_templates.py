@@ -13,6 +13,7 @@ _DEFAULT_MESSAGE_TEMPLATES: dict[str, str] = {
     "default": "Para marcar, responda com 1, 2 ou 3 para escolher um horário.\n\n{{slot_list}}",
     "needs_input": "Horários disponíveis:\n{{slot_list}}\n\nResponda com o número (1, 2 ou 3) ou diga *sim* para confirmar.",
     "ok": "Marcação confirmada. Início: {{start}} — fim: {{end}}.",
+    "schedule_pending": "Pedido recebido. Aguardando confirmação da clínica para {{start}}.",
     "error": "Não foi possível concluir o agendamento ({{error_code}}). Tente de novo em instantes.",
 }
 
@@ -157,8 +158,14 @@ def format_agendamento_user_message(
             tpl = tplmap[key_err]
         else:
             tpl = tplmap.get("error", "") or tplmap.get("default", "")
-    elif st == "ok" and (parsed.get("done") is True) and (tplmap.get("ok", "") or "").strip():
-        tpl = tplmap["ok"]
+    elif st == "ok" and (parsed.get("done") is True):
+        intent = str((parsed.get("data") or {}).get("intent") or "")
+        if intent == "schedule_pending" and (tplmap.get("schedule_pending", "") or "").strip():
+            tpl = tplmap["schedule_pending"]
+        elif (tplmap.get("ok", "") or "").strip():
+            tpl = tplmap["ok"]
+        else:
+            tpl = tplmap.get("default", "") or (nd.get("message_template") or "")
     elif st == "needs_input" and (tplmap.get("needs_input", "") or "").strip():
         tpl = tplmap["needs_input"]
     else:

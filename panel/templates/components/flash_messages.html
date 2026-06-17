@@ -1,0 +1,13 @@
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="{{ wrapper_class or 'px-4 sm:px-6 py-2 space-y-1' }}">
+  {% for category, msg in messages %}
+  <div class="ui-alert
+    {% if category == 'success' %} ui-alert-success
+    {% elif category in ('error', 'danger') %} ui-alert-error
+    {% elif category == 'info' %} ui-alert-info
+    {% else %} ui-alert-warning{% endif %}">{{ msg }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}

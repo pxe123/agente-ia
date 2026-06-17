@@ -1,0 +1,203 @@
+/**
+ * ZapAction — utilitários de contraste (botões, alertas, estados disabled).
+ * Usa design tokens de zapaction-theme.css (light / dark).
+ */
+
+/* Botões primários desabilitados */
+.btn-safe-disabled:disabled,
+.btn-safe-disabled[aria-disabled="true"] {
+  background-color: var(--za-btn-disabled-bg) !important;
+  color: var(--za-btn-disabled-text) !important;
+  border-color: var(--za-btn-disabled-border) !important;
+  cursor: not-allowed;
+  opacity: 1 !important;
+}
+
+/* CTA colorido substituído quando quota / ação indisponível */
+.btn-quota-disabled {
+  background-color: var(--za-btn-disabled-bg) !important;
+  color: var(--za-text-muted) !important;
+  border: 1px solid var(--za-btn-disabled-border) !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  opacity: 1 !important;
+}
+
+/* Alertas */
+.ui-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  border-width: 1px;
+  border-style: solid;
+}
+.ui-alert-error {
+  background-color: var(--za-alert-error-bg);
+  color: var(--za-alert-error-text);
+  border-color: var(--za-alert-error-border);
+}
+.ui-alert-success {
+  background-color: var(--za-alert-success-bg);
+  color: var(--za-alert-success-text);
+  border-color: var(--za-alert-success-border);
+}
+.ui-alert-warning {
+  background-color: var(--za-alert-warning-bg);
+  color: var(--za-alert-warning-text);
+  border-color: var(--za-alert-warning-border);
+}
+.ui-alert-info {
+  background-color: var(--za-alert-info-bg);
+  color: var(--za-alert-info-text);
+  border-color: var(--za-alert-info-border);
+}
+
+/* Mensagens inline (JS) */
+.ui-msg-error {
+  color: var(--za-alert-error-text);
+  background-color: var(--za-alert-error-bg);
+  border: 1px solid var(--za-alert-error-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+.ui-msg-success {
+  color: var(--za-alert-success-text);
+  background-color: var(--za-alert-success-bg);
+  border: 1px solid var(--za-alert-success-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+.ui-msg-muted {
+  color: var(--za-text-muted);
+}
+
+/* Sidebar: ícones herdam cor do link */
+.sidebar-nav-icon {
+  width: 1.25rem;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+/*
+ * Agenda / calendário — cores fixas (não depender do purge Tailwind).
+ */
+.agenda-nav-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: var(--za-accent-hover);
+  color: #ffffff;
+  border: 1px solid #0f766e;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.agenda-nav-active:hover {
+  background-color: #0f766e;
+  color: #ffffff;
+}
+.agenda-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: var(--za-agenda-nav-item-bg);
+  color: var(--za-agenda-nav-item-text);
+  border: 1px solid var(--za-agenda-nav-item-border);
+  transition: background-color 0.15s, color 0.15s;
+}
+.agenda-nav-item:hover {
+  background-color: var(--za-bg-elevated);
+  color: var(--za-agenda-nav-item-text);
+}
+
+.agenda-btn-primary {
+  background-color: var(--za-accent-hover);
+  color: #ffffff;
+  border: 1px solid #0f766e;
+}
+.agenda-btn-primary:hover {
+  background-color: #0f766e;
+  color: #ffffff;
+}
+
+.cal-event {
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.25rem;
+  font-size: 10px;
+  line-height: 1.25;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  overflow: hidden;
+}
+.cal-event-local {
+  background-color: var(--za-accent-hover);
+  color: #ffffff;
+  border: 1px solid #0f766e;
+  cursor: grab;
+}
+.cal-event-pending {
+  background-color: var(--za-cal-pending-bg);
+  color: var(--za-cal-pending-text);
+  border: 1px solid #fbbf24;
+  cursor: grab;
+}
+.cal-event-external {
+  background-color: var(--za-cal-external-bg);
+  color: var(--za-cal-external-text);
+  border: 1px solid var(--za-border);
+  cursor: default;
+}
+.cal-event-cancelled {
+  background-color: var(--za-bg-elevated);
+  color: var(--za-text-muted);
+  border: 1px solid var(--za-border);
+  opacity: 0.85;
+  text-decoration: line-through;
+}
+.cal-event-month {
+  margin-top: 0.25rem;
+  font-size: 10px;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-event-month-local {
+  background-color: rgba(20, 184, 166, 0.2);
+  color: #5eead4;
+}
+[data-theme="light"] .cal-event-month-local {
+  background-color: #ccfbf1;
+  color: #115e59;
+}
+.cal-event-month-pending {
+  background-color: var(--za-cal-pending-bg);
+  color: var(--za-cal-pending-text);
+}
+.cal-event-month-external {
+  background-color: var(--za-cal-external-bg);
+  color: var(--za-cal-external-text);
+}
+.cal-day-cell {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.cal-day-cell:hover {
+  background-color: rgba(20, 184, 166, 0.06);
+}
+[data-theme="light"] .cal-day-cell:hover {
+  background-color: #f0fdfa;
+}
+.cal-day-cell .cal-event-month,
+.cal-day-cell .cal-block,
+.cal-day-cell .cal-day-num-link {
+  cursor: pointer;
+}

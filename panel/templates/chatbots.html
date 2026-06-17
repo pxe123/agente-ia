@@ -65,10 +65,10 @@
         }
         if (btnCriar) {
             if (canCreate) {
-                btnCriar.classList.remove('pointer-events-none', 'opacity-50', 'cursor-not-allowed');
+                btnCriar.classList.remove('btn-quota-disabled');
                 btnCriar.removeAttribute('aria-disabled');
             } else {
-                btnCriar.classList.add('pointer-events-none', 'opacity-50', 'cursor-not-allowed');
+                btnCriar.classList.add('btn-quota-disabled');
                 btnCriar.setAttribute('aria-disabled', 'true');
             }
         }
@@ -147,7 +147,7 @@
 
     function loadChatbots() {
         listEl.classList.remove('hidden');
-        listEl.innerHTML = '<p class="text-slate-400 text-sm">Carregando…</p>';
+        listEl.innerHTML = '<p class="text-slate-500 text-sm">Carregando…</p>';
         fetch('/api/chatbots', { credentials: 'include' })
             .then(function(r) { return r.json(); })
             .then(function(data) {

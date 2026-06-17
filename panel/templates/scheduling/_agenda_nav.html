@@ -1,0 +1,23 @@
+{% set nav_active = agenda_nav_active|default('config') %}
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+  <nav class="flex flex-wrap gap-2" aria-label="Áreas da agenda">
+    <a href="{{ url_for('scheduling.calendario') }}"
+       class="{% if nav_active == 'calendario' %}agenda-nav-active{% else %}agenda-nav-item{% endif %}">
+      <i class="fas fa-calendar-alt" aria-hidden="true"></i> Calendário
+    </a>
+    <a href="{{ url_for('scheduling.home', tab='agendamentos', period='today') }}"
+       class="{% if nav_active == 'agendamentos' %}agenda-nav-active{% else %}agenda-nav-item{% endif %}">
+      <i class="fas fa-list" aria-hidden="true"></i> Agendamentos
+    </a>
+    <a href="{{ url_for('scheduling.home', tab='clinica') }}"
+       class="{% if nav_active == 'config' %}agenda-nav-active{% else %}agenda-nav-item{% endif %}">
+      <i class="fas fa-cog" aria-hidden="true"></i> Configuração
+    </a>
+  </nav>
+  {% if public_agenda_url or public_book_url %}
+  <a href="{{ public_book_url or public_agenda_url }}" target="_blank" rel="noopener noreferrer"
+     class="text-sm font-medium text-teal-700 hover:underline shrink-0">
+    Abrir página pública ↗
+  </a>
+  {% endif %}
+</div>

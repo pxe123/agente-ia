@@ -581,11 +581,12 @@ def request_context():
         g.authz_role = None
         g.authz_role_source = None
 
-    # Garante token CSRF para sessões autenticadas (para JS e forms)
+    # Garante token CSRF para sessões autenticadas (só em GET — em POST não gerar antes da validação)
     try:
         from flask_login import current_user
         if getattr(current_user, "is_authenticated", False) and current_user.is_authenticated:
-            csrf_token()
+            if request.method == "GET":
+                csrf_token()
     except Exception:
         pass
 
@@ -594,6 +595,8 @@ def request_context():
         p = request.path or ""
         # Exceções: webhooks e auth bootstrap
         if p.startswith("/webhook/"):
+            return None
+        if p.startswith("/socket.io/"):
             return None
         if p.startswith("/api/auth/"):
             return None
@@ -604,10 +607,26 @@ def request_context():
         # Export é GET; não entra aqui
         if p.startswith("/api/") or p.startswith("/admin/api/") or p.startswith("/painel/"):
             # aceita token no header (JS) ou em form field
-            token_header = (request.headers.get("X-CSRF-Token") or "").strip()
+            token_header = (
+                (request.headers.get("X-CSRF-Token") or request.headers.get("X-CSRFToken") or "")
+                .strip()
+            )
             token_form = (request.form.get("csrf_token") or "").strip() if request.form else ""
             token = token_header or token_form
+            if not token and request.is_json:
+                data = request.get_json(silent=True) or {}
+                if isinstance(data, dict):
+                    token = (data.get("csrf_token") or "").strip()
             expected = (session.get("csrf_token") or "").strip()
+            # Sessão nova (ex.: remember-me) com formulário ainda válido: alinhar uma vez
+            if not expected and token:
+                try:
+                    from flask_login import current_user as _cu
+                    if getattr(_cu, "is_authenticated", False) and _cu.is_authenticated:
+                        session["csrf_token"] = token
+                        expected = token
+                except Exception:
+                    pass
             #region agent log csrf_enforce_enter
             _agent_debug_log(
                 hypothesis_id="H1_embed_csrf_missing",
@@ -645,7 +664,19 @@ def request_context():
                     },
                 )
                 #endregion
-                from flask import jsonify
+                from flask import flash, jsonify, redirect
+
+                # POST de formulário HTML no painel: não devolver JSON cru no browser
+                if (
+                    p.startswith("/painel/")
+                    and "/api/" not in p
+                    and (token_form or request.accept_mimetypes.accept_html)
+                ):
+                    flash(
+                        "Sessão expirada ou pedido inválido. Atualize a página (Ctrl+F5) e tente novamente.",
+                        "error",
+                    )
+                    return redirect(request.referrer or "/login")
                 return jsonify({"erro": "CSRF inválido ou ausente."}), 403
 
     # Entitlements/billing: bloquear ações pagas quando assinatura não estiver ok
@@ -684,6 +715,7 @@ def request_context():
                 "/panel/static/",
                 "/favicon.ico",
                 "/sw.js",
+                "/socket.io/",
             )
             if not p.startswith(allow_prefixes):
                 # Bloqueio estrito: se o billing não estiver ok, o cliente/sublogin perde acesso a tudo

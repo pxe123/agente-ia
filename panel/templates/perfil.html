@@ -64,6 +64,26 @@
         </form>
     </div>
 
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
+        <div class="p-6 border-b border-slate-100">
+            <h3 class="font-bold text-slate-800">Aparência</h3>
+            <p class="text-sm text-slate-500 mt-1">Escolha como o painel é exibido neste dispositivo.</p>
+        </div>
+        <div class="p-6">
+            <fieldset class="space-y-3">
+                <legend class="sr-only">Tema do painel</legend>
+                <label class="flex items-center gap-3 cursor-pointer text-sm text-slate-700">
+                    <input type="radio" name="za_theme_mode" value="light" class="text-teal-600 focus:ring-teal-500">
+                    <span class="flex items-center gap-2"><i class="fas fa-sun text-amber-500 w-4 text-center" aria-hidden="true"></i> Claro</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer text-sm text-slate-700">
+                    <input type="radio" name="za_theme_mode" value="dark" class="text-teal-600 focus:ring-teal-500">
+                    <span class="flex items-center gap-2"><i class="fas fa-moon text-slate-500 w-4 text-center" aria-hidden="true"></i> Escuro</span>
+                </label>
+            </fieldset>
+        </div>
+    </div>
+
     {% if not is_perfil_sublogin %}
     <div class="mt-6 bg-white rounded-2xl border border-slate-200/80 card-shadow overflow-hidden">
         <div class="p-5 border-b border-slate-100 flex items-center gap-4">
@@ -200,7 +220,7 @@
 
             <div class="flex flex-col sm:flex-row gap-3">
                 <button type="button" id="btn-cancelar"
-                        class="flex-1 py-3 bg-white text-red-700 font-semibold rounded-xl border border-red-200 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="flex-1 py-3 bg-white text-red-700 font-semibold rounded-xl border border-red-200 hover:bg-red-50 transition disabled:bg-slate-100 disabled:text-slate-500 disabled:border-slate-200 disabled:cursor-not-allowed"
                         {% if cancel_flag %}disabled{% endif %}>
                     <i class="fas fa-ban mr-2"></i>Cancelar assinatura
                 </button>
@@ -263,7 +283,7 @@
   function setMsg(text, isError) {
     if (!msg) return;
     msg.textContent = text || "";
-    msg.className = "text-xs " + (isError ? "text-red-700" : "text-slate-500");
+    msg.className = "text-xs block mt-2 " + (isError ? "ui-msg-error" : "ui-msg-muted");
   }
 
   function bodyJson(obj) {

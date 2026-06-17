@@ -1,0 +1,30 @@
+{% set ok_clinica = (settings.get('public_name') or '')|trim %}
+{% set ok_equipe = professionals|length > 0 %}
+{% set ok_servicos = services|length > 0 %}
+{% set ok_horarios = clinic_hours|length > 0 or prof_hours|length > 0 %}
+<div class="rounded-xl border border-slate-200 bg-white p-4 card-shadow">
+  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Progresso da configuração</p>
+  <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+    <span class="inline-flex items-center gap-1.5 {% if ok_clinica %}text-emerald-700{% else %}text-amber-700{% endif %}">
+      {% if ok_clinica %}<i class="fas fa-check-circle" aria-hidden="true"></i>{% else %}<i class="fas fa-exclamation-circle" aria-hidden="true"></i>{% endif %}
+      Dados da clínica
+    </span>
+    <span class="inline-flex items-center gap-1.5 {% if ok_equipe %}text-emerald-700{% else %}text-amber-700{% endif %}">
+      {% if ok_equipe %}<i class="fas fa-check-circle" aria-hidden="true"></i>{% else %}<i class="fas fa-exclamation-circle" aria-hidden="true"></i>{% endif %}
+      Equipe
+    </span>
+    <span class="inline-flex items-center gap-1.5 {% if ok_servicos %}text-emerald-700{% else %}text-amber-700{% endif %}">
+      {% if ok_servicos %}<i class="fas fa-check-circle" aria-hidden="true"></i>{% else %}<i class="fas fa-exclamation-circle" aria-hidden="true"></i>{% endif %}
+      Serviços
+    </span>
+    <span class="inline-flex items-center gap-1.5 {% if ok_horarios %}text-emerald-700{% else %}text-amber-700{% endif %}">
+      {% if ok_horarios %}<i class="fas fa-check-circle" aria-hidden="true"></i>{% else %}<i class="fas fa-exclamation-circle" aria-hidden="true"></i>{% endif %}
+      Horários
+    </span>
+  </div>
+  {% if ok_clinica and ok_equipe and ok_servicos and ok_horarios %}
+  <p class="text-xs text-teal-700 mt-3">
+    Tudo pronto — <a href="{{ url_for('scheduling.calendario') }}" class="font-semibold hover:underline">ir para o calendário</a>.
+  </p>
+  {% endif %}
+</div>

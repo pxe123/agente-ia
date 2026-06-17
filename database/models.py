@@ -33,6 +33,10 @@ class Tables:
     SCHEDULING_WORKING_HOURS = "scheduling_working_hours"
     SCHEDULING_BLOCKED_TIMES = "scheduling_blocked_times"
     SCHEDULING_APPOINTMENTS = "scheduling_appointments"
+    SCHEDULING_APPOINTMENT_PROPOSALS = "scheduling_appointment_proposals"
+    SCHEDULING_CONFIRMATION_TOKENS = "scheduling_confirmation_tokens"
+    SCHEDULING_RECURRENCE_SERIES = "scheduling_recurrence_series"
+    SCHEDULING_RECURRENCE_SKIPS = "scheduling_recurrence_skips"
 
 
 class EgressProfileModel:
@@ -313,6 +317,16 @@ class SchedulingSettingsModel:
     SCHEDULING_ENGINE = "scheduling_engine"
     SCHEDULING_ENGINE_CHANGED_AT = "scheduling_engine_changed_at"
     SCHEDULING_ENGINE_CHANGED_BY = "scheduling_engine_changed_by"
+    PROFESSIONAL_ASSIGNMENT_MODE = "professional_assignment_mode"
+    DISTRIBUTION_STRATEGY = "distribution_strategy"
+    DISTRIBUTION_LAST_PROFESSIONAL_ID = "distribution_last_professional_id"
+    ASSIGNMENT_MODE_CHANGED_AT = "assignment_mode_changed_at"
+    ASSIGNMENT_MODE_CHANGED_BY = "assignment_mode_changed_by"
+    CONFIRMATION_POLICY = "confirmation_policy"
+    CONFIRMATION_PENDING_TTL_HOURS = "confirmation_pending_ttl_hours"
+    CONFIRMATION_POLICY_CHANGED_AT = "confirmation_policy_changed_at"
+    CONFIRMATION_POLICY_CHANGED_BY = "confirmation_policy_changed_by"
+    WORKING_HOUR_CONFIG = "working_hour_config"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
 
@@ -323,8 +337,32 @@ class SchedulingProfessionalModel:
     NAME = "name"
     ACTIVE = "active"
     SORT_ORDER = "sort_order"
+    WHATSAPP_NOTIFY_PHONE = "whatsapp_notify_phone"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
+
+
+class SchedulingAppointmentProposalModel:
+    ID = "id"
+    APPOINTMENT_ID = "appointment_id"
+    CLIENTE_ID = "cliente_id"
+    PROPOSED_STARTS_AT = "proposed_starts_at"
+    PROPOSED_ENDS_AT = "proposed_ends_at"
+    PROPOSED_BY = "proposed_by"
+    STATUS = "status"
+    CREATED_AT = "created_at"
+
+
+class SchedulingConfirmationTokenModel:
+    ID = "id"
+    TOKEN_HASH = "token_hash"
+    APPOINTMENT_ID = "appointment_id"
+    PROPOSAL_ID = "proposal_id"
+    CLIENTE_ID = "cliente_id"
+    ACTION = "action"
+    EXPIRES_AT = "expires_at"
+    USED_AT = "used_at"
+    CREATED_AT = "created_at"
 
 
 class SchedulingServiceModel:
@@ -361,6 +399,34 @@ class SchedulingBlockedTimeModel:
     CREATED_AT = "created_at"
 
 
+class SchedulingRecurrenceSeriesModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    SERVICE_ID = "service_id"
+    PROFESSIONAL_ID = "professional_id"
+    STATUS = "status"
+    FREQUENCY = "frequency"
+    RULE = "rule"
+    TIME_LOCAL = "time_local"
+    STARTS_ON = "starts_on"
+    ENDS_ON = "ends_on"
+    CONTACT_NAME = "contact_name"
+    CONTACT_PHONE = "contact_phone"
+    NOTES = "notes"
+    META = "meta"
+    MATERIALIZED_UNTIL = "materialized_until"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
+class SchedulingRecurrenceSkipModel:
+    ID = "id"
+    CLIENTE_ID = "cliente_id"
+    SERIES_ID = "series_id"
+    OCCURRENCE_DATE = "occurrence_date"
+    CREATED_AT = "created_at"
+
+
 class SchedulingAppointmentModel:
     ID = "id"
     CLIENTE_ID = "cliente_id"
@@ -374,6 +440,9 @@ class SchedulingAppointmentModel:
     CONTACT_PHONE = "contact_phone"
     NOTES = "notes"
     META = "meta"
+    RECURRENCE_SERIES_ID = "recurrence_series_id"
+    SERIES_OCCURRENCE_AT = "series_occurrence_at"
+    IS_SERIES_EXCEPTION = "is_series_exception"
     CREATED_AT = "created_at"
     UPDATED_AT = "updated_at"
 

@@ -13,8 +13,11 @@ from services.agendamento_ia_contact import (
     normalize_collected_for_agendamento,
 )
 from services.scheduling import repository as scheduling_repository
-from services.scheduling.bookings import book_appointment
-from services.scheduling.slot_engine import slot_starts_in_range
+from services.scheduling.assignment import build_auto_booking_meta, uses_auto_distribution
+from services.scheduling.bookings import book_appointment, book_with_auto_assignment
+from services.scheduling.eligible import eligible_professionals
+from services.scheduling.pool_slots import compute_pooled_slot_isos
+from services.scheduling.slot_engine import slot_starts_in_range, _get_tz
 
 
 def _booking_contact_from_context(ctx: dict[str, Any]) -> tuple[str, str, str, str | None]:
@@ -60,16 +63,22 @@ def _parsed(
     }
 
 
-def _eligible_professionals(
-    services: list[dict[str, Any]], professionals: list[dict[str, Any]], service_id: str
-) -> list[dict[str, Any]]:
-    svc = next((x for x in services if str(x.get("id")) == str(service_id)), None)
-    if not svc:
-        return []
-    pid = svc.get("professional_id")
-    if pid:
-        return [p for p in professionals if str(p.get("id")) == str(pid)]
-    return list(professionals)
+def _skip_professional_step(cliente_id: str, eprofs: list[dict[str, Any]]) -> bool:
+    return len(eprofs) <= 1 or uses_auto_distribution(cliente_id)
+
+
+def _prepare_professional_for_slots(
+    session: dict[str, Any],
+    cliente_id: str,
+    eprofs: list[dict[str, Any]],
+    professionals: list[dict[str, Any]],
+) -> None:
+    if uses_auto_distribution(cliente_id) and len(eprofs) > 1:
+        session.pop("scheduling_professional_id", None)
+    elif eprofs:
+        session["scheduling_professional_id"] = str(eprofs[0].get("id"))
+    elif professionals:
+        session["scheduling_professional_id"] = str(professionals[0].get("id"))
 
 
 def _match_by_name_or_index(items: list[dict[str, Any]], text: str, name_key: str = "name") -> dict[str, Any] | None:
@@ -300,14 +309,9 @@ def handle_turn(body: dict[str, Any]) -> dict[str, Any]:
         picked0 = next((x for x in services if str(x.get("id")) == pref_sid), None)
         if picked0:
             session["scheduling_service_id"] = pref_sid
-            eprofs0 = _eligible_professionals(services, professionals, pref_sid)
-            if len(eprofs0) <= 1:
-                pid0 = (
-                    str(eprofs0[0].get("id"))
-                    if eprofs0
-                    else (str(professionals[0].get("id")) if professionals else "")
-                )
-                session["scheduling_professional_id"] = pid0
+            eprofs0 = eligible_professionals(services, professionals, pref_sid)
+            if _skip_professional_step(cliente_id, eprofs0):
+                _prepare_professional_for_slots(session, cliente_id, eprofs0, professionals)
                 session["scheduling_step"] = "choose_slot"
                 return _advance_to_slots(
                     cliente_id=cliente_id,
@@ -385,10 +389,9 @@ def handle_turn(body: dict[str, Any]) -> dict[str, Any]:
                 reply=_service_lines(services),
             )
         session["scheduling_service_id"] = str(picked.get("id"))
-        eprofs = _eligible_professionals(services, professionals, session["scheduling_service_id"])
-        if len(eprofs) <= 1:
-            pid = str(eprofs[0].get("id")) if eprofs else str(professionals[0].get("id"))
-            session["scheduling_professional_id"] = pid
+        eprofs = eligible_professionals(services, professionals, session["scheduling_service_id"])
+        if _skip_professional_step(cliente_id, eprofs):
+            _prepare_professional_for_slots(session, cliente_id, eprofs, professionals)
             session["scheduling_step"] = "choose_slot"
             return _advance_to_slots(
                 cliente_id=cliente_id,
@@ -409,7 +412,7 @@ def handle_turn(body: dict[str, Any]) -> dict[str, Any]:
 
     # --- choose_professional ---
     if step == "choose_professional":
-        eprofs = _eligible_professionals(services, professionals, str(session.get("scheduling_service_id")))
+        eprofs = eligible_professionals(services, professionals, str(session.get("scheduling_service_id")))
         picked = _match_by_name_or_index(eprofs, user_message)
         if not picked:
             return _parsed(
@@ -497,17 +500,40 @@ def handle_turn(body: dict[str, Any]) -> dict[str, Any]:
             meta["contact_email"] = _email
         if _nome:
             meta["contact_name"] = _nome
-        row, err = book_appointment(
-            cliente_id=cliente_id,
-            service_id=svc_id,
-            professional_id=prof_id or None,
-            starts_at=starts,
-            duration_minutes=dur,
-            remote_id=remote_id,
-            contact_phone=contact_phone or None,
-            notes=notes,
-            meta=meta or None,
-        )
+        auto = uses_auto_distribution(cliente_id)
+        if auto:
+            cand_map = session.get("scheduling_slot_candidates")
+            candidates: list[str] = []
+            if isinstance(cand_map, dict):
+                candidates = list(cand_map.get(iso) or [])
+            if not candidates:
+                from services.scheduling.pool_slots import candidates_at_instant
+
+                candidates = candidates_at_instant(slot_iso=iso, candidates_map=cand_map or {})
+            meta = build_auto_booking_meta(extra=meta)
+            row, err = book_with_auto_assignment(
+                cliente_id=cliente_id,
+                service_id=svc_id,
+                starts_at=starts,
+                duration_minutes=dur,
+                candidate_professional_ids=candidates,
+                remote_id=remote_id,
+                contact_phone=contact_phone or None,
+                notes=notes,
+                meta=meta,
+            )
+        else:
+            row, err = book_appointment(
+                cliente_id=cliente_id,
+                service_id=svc_id,
+                professional_id=prof_id or None,
+                starts_at=starts,
+                duration_minutes=dur,
+                remote_id=remote_id,
+                contact_phone=contact_phone or None,
+                notes=notes,
+                meta=meta or None,
+            )
         if err or not row:
             return _parsed(
                 api_status="error",
@@ -517,16 +543,22 @@ def handle_turn(body: dict[str, Any]) -> dict[str, Any]:
                 err={"code": err or "book_failed"},
             )
         ends_iso = row.get("ends_at")
+        intent = (
+            "schedule_pending"
+            if str(row.get("status") or "").lower() == "pending"
+            else "schedule"
+        )
         session.clear()
         return _parsed(
             api_status="ok",
             done=True,
             data={
-                "intent": "schedule",
+                "intent": intent,
                 "appointment": {
                     "id": str(row.get("id")),
                     "start": row.get("starts_at"),
                     "end": ends_iso,
+                    "status": row.get("status"),
                 },
             },
             session=session,
@@ -565,12 +597,11 @@ def _advance_to_slots(
     working_rows: list[dict[str, Any]],
     tz_name: str,
 ) -> dict[str, Any]:
-    from zoneinfo import ZoneInfo
-
     svc_id = str(session.get("scheduling_service_id") or "")
     prof_id = str(session.get("scheduling_professional_id") or "")
     svc = next((x for x in services if str(x.get("id")) == svc_id), None)
-    if not svc or not prof_id:
+    auto = uses_auto_distribution(cliente_id)
+    if not svc or (not auto and not prof_id):
         session["scheduling_step"] = "choose_service"
         return _parsed(
             api_status="needs_input",
@@ -580,23 +611,38 @@ def _advance_to_slots(
             reply=_service_lines(services),
         )
     dur = int(svc.get("duration_minutes") or 30)
-    from services.scheduling.slot_engine import _get_tz
-
     tz = _get_tz(tz_name)
     today = datetime.now(timezone.utc).astimezone(tz).date()
-    from_utc = datetime.combine(today, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
-    to_utc = from_utc + timedelta(days=21)
-    busy = scheduling_repository.busy_intervals_utc(cliente_id, prof_id, from_utc, to_utc)
-    slots = slot_starts_in_range(
-        tz_name=tz_name,
-        start_day=today,
-        num_days=14,
-        duration_minutes=dur,
-        professional_id=prof_id,
-        working_rows=working_rows,
-        busy_intervals_utc=busy,
-    )
-    iso_opts = [s.astimezone(timezone.utc).isoformat() for s in slots]
+    if auto:
+        iso_opts, cand_map = compute_pooled_slot_isos(
+            cliente_id=cliente_id,
+            service_id=svc_id,
+            tz_name=tz_name,
+            working_rows=working_rows,
+            professionals=professionals,
+            services=services,
+            duration_minutes=dur,
+            start_day=today,
+            num_days=14,
+            max_slots=40,
+        )
+        session["scheduling_slot_candidates"] = cand_map
+        session.pop("scheduling_professional_id", None)
+    else:
+        from_utc = datetime.combine(today, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+        to_utc = from_utc + timedelta(days=21)
+        busy = scheduling_repository.busy_intervals_utc(cliente_id, prof_id, from_utc, to_utc)
+        slots = slot_starts_in_range(
+            tz_name=tz_name,
+            start_day=today,
+            num_days=14,
+            duration_minutes=dur,
+            professional_id=prof_id,
+            working_rows=working_rows,
+            busy_intervals_utc=busy,
+        )
+        iso_opts = [s.astimezone(timezone.utc).isoformat() for s in slots]
+        session.pop("scheduling_slot_candidates", None)
     session["scheduling_slot_options"] = iso_opts
     session["scheduling_step"] = "choose_slot"
     if not iso_opts:
@@ -607,12 +653,16 @@ def _advance_to_slots(
             session=session,
             err={"code": "sem_slots", "message": "Sem horários livres. Ajuste horários de trabalho no painel."},
         )
+    if auto:
+        reply_slots = _slot_lines_from_iso(iso_opts[:20], tz_name)
+    else:
+        reply_slots = _slot_lines(slots[:20], tz_name)
     return _parsed(
         api_status="needs_input",
         done=False,
         data={"intent": "list_slots", "slots": [{"start": o, "end": ""} for o in iso_opts[:20]]},
         session=session,
-        reply=_slot_lines(slots[:20], tz_name),
+        reply=reply_slots,
     )
 
 

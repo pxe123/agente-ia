@@ -1,0 +1,191 @@
+{% set btn_excluir = 'inline-flex items-center px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors shrink-0' %}
+{% set cal_base_url = url_for('scheduling.calendario', view=view, date=anchor, professional_id=filter_professional_id or none, status=filter_status) %}
+
+{% macro cal_return_fields() %}
+<input type="hidden" name="return_to" value="calendario">
+<input type="hidden" name="return_view" value="{{ view }}">
+<input type="hidden" name="return_date" value="{{ anchor }}">
+<input type="hidden" name="return_professional_id" value="{{ filter_professional_id or '' }}">
+<input type="hidden" name="return_status" value="{{ filter_status }}">
+{% endmacro %}
+
+{% if reassign_row %}
+<div class="bg-white rounded-2xl border border-indigo-200 p-5 card-shadow max-w-2xl space-y-3">
+  <h4 class="font-semibold text-slate-800">Alterar profissional</h4>
+  <p class="text-sm text-slate-600">
+    {{ reassign_row.starts_at_display or (reassign_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+    — {{ reassign_row.contact_name_display or reassign_row.remote_id or '' }}
+    · {{ reassign_row.service_name or '—' }}
+    · atual: {{ reassign_row.prof_name or '—' }}
+  </p>
+  {% if not reassign_eligible_professionals %}
+  <p class="text-sm text-amber-800">Nenhum profissional elegível para este serviço.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('scheduling.home') }}" class="flex flex-wrap items-end gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="reassign_professional">
+    <input type="hidden" name="appointment_id" value="{{ reassign_row.id }}">
+    {{ cal_return_fields() }}
+    <div class="flex-1 min-w-[200px]">
+      <label class="text-xs font-medium text-slate-500">Novo profissional</label>
+      <select name="professional_id" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        <option value="">— Escolha —</option>
+        {% for p in reassign_eligible_professionals %}
+        <option value="{{ p.id }}" {% if reassign_row.professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:bg-teal-700" style="background-color:#0d9488;">Confirmar</button>
+  </form>
+  {% endif %}
+  <a href="{{ cal_base_url }}" class="text-xs text-slate-500 hover:underline">Cancelar</a>
+</div>
+{% endif %}
+
+{% if propose_row %}
+<div class="bg-white rounded-2xl border border-blue-200 p-5 card-shadow max-w-2xl space-y-3">
+  <h4 class="font-semibold text-slate-800">Sugerir novo horário (pedido pendente)</h4>
+  <p class="text-sm text-slate-600">
+    Pedido: {{ propose_row.starts_at_display or (propose_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+    — {{ propose_row.contact_name_display or propose_row.remote_id or '' }}
+  </p>
+  {% if not propose_slots %}
+  <p class="text-sm text-amber-800">Sem horários livres nas próximas semanas.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('scheduling.home') }}" class="flex flex-wrap items-end gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="propose_appointment">
+    <input type="hidden" name="appointment_id" value="{{ propose_row.id }}">
+    {{ cal_return_fields() }}
+    <div class="flex-1 min-w-[200px]">
+      <label class="text-xs font-medium text-slate-500">Horário sugerido</label>
+      <select name="proposed_slot_iso" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        <option value="">— Escolha —</option>
+        {% for iso in propose_slots %}
+        <option value="{{ iso }}">{{ propose_slot_labels[loop.index0] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Enviar proposta</button>
+  </form>
+  {% endif %}
+  <a href="{{ cal_base_url }}" class="text-xs text-slate-500 hover:underline">Cancelar</a>
+</div>
+{% endif %}
+
+{% if reschedule_row %}
+<div class="bg-white rounded-2xl border border-teal-200 p-5 card-shadow max-w-2xl space-y-3">
+  <h4 class="font-semibold text-slate-800">Remarcar agendamento</h4>
+  <p class="text-sm text-slate-600">
+    Atual: {{ reschedule_row.starts_at_display or (reschedule_row.starts_at|format_scheduling_datetime(scheduling_timezone)) }}
+    — {{ reschedule_row.contact_name_display or reschedule_row.remote_id or '' }}
+  </p>
+  {% if not reschedule_slots %}
+  <p class="text-sm text-amber-800">Sem horários livres nas próximas semanas.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('scheduling.home') }}" class="flex flex-wrap items-end gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="reschedule_appointment">
+    <input type="hidden" name="appointment_id" value="{{ reschedule_row.id }}">
+    {{ cal_return_fields() }}
+    {% if reschedule_row.is_recurring and reschedule_row.recurrence_series_id %}
+    <div class="w-full sm:w-auto min-w-[200px]">
+      <label class="text-xs font-medium text-slate-500">Aplicar a</label>
+      <select name="reschedule_scope" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        <option value="this_only">Só esta ocorrência</option>
+        <option value="following">Esta e futuras</option>
+        <option value="all">Toda a série</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="flex-1 min-w-[160px]">
+      <label class="text-xs font-medium text-slate-500">Profissional</label>
+      <select name="professional_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        {% for p in professionals %}
+        <option value="{{ p.id }}" {% if reschedule_row.professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex-1 min-w-[200px]">
+      <label class="text-xs font-medium text-slate-500">Novo horário</label>
+      <select name="slot_iso" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        <option value="">— Escolha —</option>
+        {% for iso in reschedule_slots %}
+        <option value="{{ iso }}">{{ reschedule_slot_labels[loop.index0] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">Confirmar remarcação</button>
+  </form>
+  {% endif %}
+  <a href="{{ cal_base_url }}" class="text-xs text-slate-500 hover:underline">Cancelar remarcação</a>
+</div>
+{% endif %}
+
+{% if swap_preview and swap_appointment_a_id and swap_appointment_b_id %}
+<div id="modal-swap-professionals" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-200">
+    <h3 class="text-lg font-bold text-slate-900">Trocar clientes entre profissionais?</h3>
+    <p class="text-sm text-slate-600 mt-2">
+      O profissional <strong>{{ swap_preview.target_prof }}</strong> já possui atendimento neste horário.
+      Cliente em conflito: <strong>{{ swap_preview.conflict_client }}</strong>
+    </p>
+    <p class="text-sm text-slate-700 mt-4 mb-2">Deseja trocar as clientes entre os profissionais?</p>
+    <div class="grid grid-cols-2 gap-4 mt-3 text-sm">
+      <div>
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Antes</p>
+        <ul class="space-y-2">
+          {% for row in swap_preview.before %}
+          <li class="rounded-lg border border-slate-200 px-3 py-2">
+            <span class="font-medium text-slate-800">{{ row.prof }}</span><br>
+            <span class="text-slate-600">{{ row.client }} — {{ row.time }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-2">Depois</p>
+        <ul class="space-y-2">
+          {% for row in swap_preview.after %}
+          <li class="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2">
+            <span class="font-medium text-slate-800">{{ row.prof }}</span><br>
+            <span class="text-slate-600">{{ row.client }} — {{ row.time }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('scheduling.home') }}" class="flex justify-end gap-2 mt-6">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="swap_professionals">
+      <input type="hidden" name="appointment_a_id" value="{{ swap_appointment_a_id }}">
+      <input type="hidden" name="appointment_b_id" value="{{ swap_appointment_b_id }}">
+      <input type="hidden" name="swap_mode" value="{{ swap_mode or 'same_slot' }}">
+      {{ cal_return_fields() }}
+      <a href="{{ cal_base_url }}" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-800 hover:bg-slate-200">Cancelar</a>
+      <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold text-white hover:bg-teal-700" style="background-color:#0d9488;">Confirmar troca</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div id="appt-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true" aria-labelledby="appt-modal-title">
+  <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 id="appt-modal-title" class="text-lg font-bold text-slate-900">Agendamento</h3>
+        <p id="appt-modal-time" class="text-sm text-slate-600 mt-1"></p>
+      </div>
+      <button type="button" id="appt-modal-close" class="text-slate-400 hover:text-slate-700 text-xl leading-none" aria-label="Fechar">&times;</button>
+    </div>
+    <div id="appt-modal-status" class="mt-3"></div>
+    <div id="appt-modal-series" class="hidden mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900"></div>
+    <dl class="mt-4 grid grid-cols-1 gap-2 text-sm">
+      <div><dt class="text-xs text-slate-500">Nome</dt><dd id="appt-modal-name" class="font-medium text-slate-800">—</dd></div>
+      <div><dt class="text-xs text-slate-500">Telefone</dt><dd id="appt-modal-phone" class="text-slate-700">—</dd></div>
+      <div><dt class="text-xs text-slate-500">Serviço</dt><dd id="appt-modal-service" class="text-slate-700">—</dd></div>
+      <div><dt class="text-xs text-slate-500">Profissional</dt><dd id="appt-modal-prof" class="text-slate-700">—</dd></div>
+    </dl>
+    <div id="appt-modal-actions" class="flex flex-wrap items-center gap-2 mt-6 pt-4 border-t border-slate-100"></div>
+  </div>
+</div>

@@ -1,0 +1,145 @@
+<div class="space-y-6" id="wh-routines-root"
+     data-day-names='{{ dias|tojson }}'
+     data-initial-config='{{ (working_hour_config or {})|tojson }}'
+     data-save-url="{{ url_for('scheduling.home', tab='horarios') }}"
+     data-csrf="{{ csrf_token() if csrf_token else '' }}">
+
+  <div class="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p class="text-sm font-medium text-slate-800">Rotinas de atendimento</p>
+        <p class="text-xs text-slate-500 mt-0.5">Crie várias rotinas (ex.: semana e sábado). Cada dia só pode pertencer a uma rotina.</p>
+      </div>
+      <button type="button" id="wh-add-routine"
+              class="px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-800 text-xs font-semibold hover:bg-teal-100">
+        + Adicionar rotina
+      </button>
+    </div>
+    <div id="wh-routines-list" class="space-y-4"></div>
+    <p id="wh-routines-summary" class="text-xs text-slate-600"></p>
+  </div>
+
+  <details class="rounded-xl border border-slate-200 bg-white group">
+    <summary class="px-4 py-3 text-sm font-semibold text-slate-700 cursor-pointer list-none">
+      Personalizar dia específico (opcional)
+    </summary>
+    <div class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
+      <p class="text-xs text-slate-500">Substitui a rotina só nesse dia. O dia personalizado não pode estar marcado numa rotina.</p>
+      <div id="wh-day-overrides" class="space-y-3"></div>
+    </div>
+  </details>
+
+  <form method="post" id="wh-save-form" action="{{ url_for('scheduling.home', tab='horarios') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="save_working_hour_routines">
+    <input type="hidden" name="return_tab" value="horarios">
+    <input type="hidden" name="routines_json" id="wh-routines-json" value="">
+    <button type="submit" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+      Guardar horários
+    </button>
+  </form>
+
+  <details id="wh-advanced-details" class="rounded-xl border border-slate-200 bg-white group">
+    <summary class="px-4 py-3 text-sm font-semibold text-slate-700 cursor-pointer list-none">
+      Intervalos gerados (pré-visualização)
+    </summary>
+    <div class="px-4 pb-4 border-t border-slate-100 pt-3">
+      <ul class="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden" id="wh-generated-preview">
+        {% for h in clinic_hours %}
+        <li class="flex justify-between items-center gap-2 px-4 py-3 text-sm bg-slate-50/50">
+          <span>
+            <span class="font-medium text-slate-800">{{ dias[h.day_of_week|int] if h.day_of_week is not none else '—' }}</span>
+            <span class="text-slate-600">{{ h.start_time }} – {{ h.end_time }}</span>
+          </span>
+        </li>
+        {% else %}
+        <li class="px-4 py-6 text-sm text-slate-500 text-center">Nenhum horário guardado. Configure as rotinas e clique em «Guardar horários».</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </details>
+
+  <details class="rounded-xl border border-slate-200 bg-white group">
+    <summary class="px-4 py-3 text-sm font-semibold text-slate-700 cursor-pointer list-none">
+      Horários diferentes por pessoa (opcional)
+    </summary>
+    <div class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-4">
+      {% if not professionals %}
+      <p class="text-sm text-amber-800">Adicione pessoas na equipe primeiro.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('scheduling.home', tab='horarios') }}" class="grid sm:grid-cols-2 gap-3">
+        <input type="hidden" name="action" value="add_wh_prof">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <div class="sm:col-span-2">
+          <label class="text-xs font-medium text-slate-500">Profissional</label>
+          <select name="professional_id" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            {% for p in professionals %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500">Dia</label>
+          <select name="day_of_week" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+            {% for dn in dias %}
+            <option value="{{ loop.index0 }}">{{ dn }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div></div>
+        <div>
+          <label class="text-xs font-medium text-slate-500">Início</label>
+          <input name="start_time" value="09:00" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500">Fim</label>
+          <input name="end_time" value="18:00" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+        </div>
+        <div class="sm:col-span-2">
+          <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold">Adicionar</button>
+        </div>
+      </form>
+      <ul class="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden text-sm">
+        {% for h in prof_hours %}
+        <li class="p-3 flex justify-between items-center gap-2">
+          <span class="text-slate-700">
+            {{ prof_names.get(h.professional_id|string, 'Profissional') }}
+            — {{ dias[h.day_of_week|int] }} — {{ h.start_time }}–{{ h.end_time }}
+          </span>
+          <form method="post" action="{{ url_for('scheduling.home', tab='horarios') }}" onsubmit="return confirm('Excluir?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+            <input type="hidden" name="action" value="delete_wh">
+            <input type="hidden" name="id" value="{{ h.id }}">
+            <input type="hidden" name="return_tab" value="horarios">
+            <button type="submit" class="{{ btn_excluir }}">Excluir</button>
+          </form>
+        </li>
+        {% else %}
+        <li class="p-4 text-slate-500 text-center">Nenhum horário por profissional.</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </details>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <h4 class="text-sm font-semibold text-slate-800">Bloqueios (férias, folgas)</h4>
+    <a href="{{ url_for('scheduling.calendario') }}" class="inline-flex items-center gap-2 text-sm font-semibold text-teal-700 hover:underline">
+      Abrir calendário para bloquear →
+    </a>
+    {% if scheduling_uses_internal and blocked_times %}
+    <ul class="divide-y border-t border-slate-100 text-sm mt-2">
+      {% for b in blocked_times[:5] %}
+      <li class="py-2 text-slate-600">
+        {{ b.starts_display }} → {{ b.ends_display }}
+        {% if b.reason %}<span class="text-slate-500">({{ b.reason }})</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if blocked_times|length > 5 %}
+    <p class="text-xs text-slate-500">+ {{ blocked_times|length - 5 }} bloqueio(s) — gerir no calendário.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+<script src="{{ url_for('static', filename='scheduling-hours-routines.js') }}"></script>

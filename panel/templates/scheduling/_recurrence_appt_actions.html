@@ -1,0 +1,102 @@
+{# Ações de série recorrente: cancelar / excluir por escopo + gestão da série #}
+{% macro recurrence_appt_actions(a, form_action, return_hidden='') %}
+{% if a.is_recurring and a.recurrence_series_id %}
+<div class="w-full flex flex-col gap-2 mt-1 pt-2 border-t border-slate-200/80">
+  <p class="text-[11px] font-semibold text-teal-800 uppercase tracking-wide">Recorrência</p>
+  {% if a.status != 'cancelled' %}
+  <div class="flex flex-wrap gap-2">
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Cancelar só esta ocorrência?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="cancel_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="appointment_id" value="{{ a.id }}">
+      <input type="hidden" name="cancel_scope" value="this_only">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 whitespace-nowrap">Cancelar só esta</button>
+    </form>
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Cancelar esta e todas as futuras ocorrências?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="cancel_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="appointment_id" value="{{ a.id }}">
+      <input type="hidden" name="cancel_scope" value="following">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-100 text-amber-950 text-xs font-semibold hover:bg-amber-200 whitespace-nowrap">Cancelar esta e futuras</button>
+    </form>
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Cancelar toda a série (futuras ocorrências)?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="cancel_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="cancel_scope" value="all">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-amber-400 bg-amber-200 text-amber-950 text-xs font-semibold hover:bg-amber-300 whitespace-nowrap">Cancelar toda a série</button>
+    </form>
+  </div>
+  {% endif %}
+  <div class="flex flex-wrap gap-2">
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Excluir só este registo?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="delete_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="appointment_id" value="{{ a.id }}">
+      <input type="hidden" name="delete_scope" value="this_only">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 whitespace-nowrap">Excluir só esta</button>
+    </form>
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Excluir esta e todas as futuras do painel?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="delete_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="appointment_id" value="{{ a.id }}">
+      <input type="hidden" name="delete_scope" value="following">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-300 bg-red-100 text-red-900 text-xs font-semibold hover:bg-red-200 whitespace-nowrap">Excluir esta e futuras</button>
+    </form>
+    <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+          onsubmit="return confirm('Excluir toda a série do painel?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="action" value="delete_recurrence_scope">
+      <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+      <input type="hidden" name="delete_scope" value="all">
+      {{ return_hidden|safe }}
+      <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-400 bg-red-200 text-red-950 text-xs font-semibold hover:bg-red-300 whitespace-nowrap">Excluir toda a série</button>
+    </form>
+  </div>
+  {% if a.status != 'cancelled' %}
+  {% if a.series_status == 'active' %}
+  <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+        onsubmit="return confirm('Pausar toda a série futura?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="pause_recurrence_series">
+    <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+    {{ return_hidden|safe }}
+    <button type="submit" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold whitespace-nowrap">Pausar série</button>
+  </form>
+  {% elif a.series_status == 'paused' %}
+  <form method="post" action="{{ form_action }}" class="inline-flex shrink-0">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="resume_recurrence_series">
+    <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+    {{ return_hidden|safe }}
+    <button type="submit" class="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold whitespace-nowrap">Reativar série</button>
+  </form>
+  {% endif %}
+  {% if a.series_status != 'ended' %}
+  <form method="post" action="{{ form_action }}" class="inline-flex shrink-0"
+        onsubmit="return confirm('Encerrar a série recorrente?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+    <input type="hidden" name="action" value="end_recurrence_series">
+    <input type="hidden" name="series_id" value="{{ a.recurrence_series_id }}">
+    {{ return_hidden|safe }}
+    <button type="submit" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold whitespace-nowrap">Encerrar série</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}

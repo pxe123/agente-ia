@@ -348,8 +348,36 @@ def whatsapp_atendimento():
 @public_bp.route("/agenda/<slug>", methods=["GET", "POST"])
 def agenda_publica(slug: str):
     """Agendamento público por slug — escolha de serviço, profissional e horário."""
+
+    def _redirect_after_booking(
+        *,
+        row: dict,
+        starts: datetime,
+        service_id: str,
+        phone_display: str,
+        contact_name_value: str,
+    ):
+        from services.scheduling.slot_engine import _get_tz
+
+        params: dict[str, str] = {"slug": slug, "booked": "1"}
+        if str((row or {}).get("status") or "").lower() == "pending":
+            params["pending"] = "1"
+        local = starts.astimezone(_get_tz(tz_name))
+        params["date"] = local.date().isoformat()
+        params["month"] = local.date().replace(day=1).isoformat()
+        if service_id:
+            params["service_id"] = service_id
+        if phone_display:
+            params["phone"] = phone_display
+        if contact_name_value:
+            params["name"] = contact_name_value
+        if not auto_distribution and selected_professional_id:
+            params["professional_id"] = selected_professional_id
+        return redirect(url_for("public.agenda_publica", **params))
+
     from services.scheduling import repository as sched_repo
-    from services.scheduling.bookings import book_appointment
+    from services.scheduling.assignment import build_auto_booking_meta, uses_auto_distribution
+    from services.scheduling.bookings import book_appointment, book_with_auto_assignment
     from services.scheduling.public_booking import (
         build_public_booking_calendar,
         day_time_slots,
@@ -360,6 +388,7 @@ def agenda_publica(slug: str):
         parse_month_anchor,
         parse_selected_date,
     )
+    from services.scheduling.pool_slots import compute_pooled_slot_isos, professional_ids_free_at_slot
     from services.scheduling.slots_public import compute_available_slot_isos, eligible_professionals
 
     if not supabase:
@@ -408,21 +437,22 @@ def agenda_publica(slug: str):
     eligible_profs = (
         eligible_professionals(services, profs, selected_service_id) if selected_service_id else list(profs)
     )
-    if not selected_professional_id and eligible_profs:
+    auto_distribution = uses_auto_distribution(cid)
+    if not auto_distribution and not selected_professional_id and eligible_profs:
         selected_professional_id = str(eligible_profs[0].get("id") or "")
 
     err = None
-    ok = False
+    ok = request.args.get("booked") == "1"
+    booking_pending = request.args.get("pending") == "1"
     if request.method == "POST" and (request.form.get("slot_iso") or "").strip():
         slot_iso = (request.form.get("slot_iso") or "").strip()
         sid = selected_service_id
-        pid = selected_professional_id
         phone = contact_phone
         name = contact_name
-        if not (slot_iso and sid and pid):
+        if not (slot_iso and sid):
             err = "Preencha todos os campos."
         else:
-            from services.scheduling.public_contact import format_br_phone_input, validate_public_contact
+            from services.scheduling.public_contact import validate_public_contact
 
             nome_ok, phone_norm, contact_err = validate_public_contact(name=name, phone=phone)
             svc = sched_repo.get_service(cid, sid)
@@ -435,22 +465,69 @@ def agenda_publica(slug: str):
                 err = contact_err
             elif not starts:
                 err = "Horário inválido."
-            else:
-                meta: dict[str, str] = {"source": "public_agenda", "contact_name": nome_ok}
-                row, berr = book_appointment(
+            elif auto_distribution:
+                candidates = professional_ids_free_at_slot(
                     cliente_id=cid,
                     service_id=sid,
-                    professional_id=pid,
                     starts_at=starts,
                     duration_minutes=dur,
-                    remote_id=phone_norm,
-                    contact_phone=phone_norm,
-                    meta=meta,
+                    tz_name=tz_name,
+                    working_rows=wh_all,
+                    professionals=profs,
+                    services=services,
                 )
-                if berr:
-                    err = berr
+                if not candidates:
+                    err = "Este horário já não está disponível. Escolha outro."
                 else:
-                    ok = True
+                    meta = build_auto_booking_meta(
+                        extra={"source": "public_agenda", "contact_name": nome_ok}
+                    )
+                    row, berr = book_with_auto_assignment(
+                        cliente_id=cid,
+                        service_id=sid,
+                        starts_at=starts,
+                        duration_minutes=dur,
+                        candidate_professional_ids=candidates,
+                        remote_id=phone_norm,
+                        contact_phone=phone_norm,
+                        meta=meta,
+                    )
+                    if berr:
+                        err = "Este horário acabou de ser ocupado. Escolha outro."
+                    else:
+                        return _redirect_after_booking(
+                            row=row or {},
+                            starts=starts,
+                            service_id=sid,
+                            phone_display=contact_phone_display or contact_phone,
+                            contact_name_value=nome_ok,
+                        )
+            else:
+                pid = selected_professional_id
+                if not pid:
+                    err = "Selecione o profissional."
+                else:
+                    meta: dict[str, str] = {"source": "public_agenda", "contact_name": nome_ok}
+                    row, berr = book_appointment(
+                        cliente_id=cid,
+                        service_id=sid,
+                        professional_id=pid,
+                        starts_at=starts,
+                        duration_minutes=dur,
+                        remote_id=phone_norm,
+                        contact_phone=phone_norm,
+                        meta=meta,
+                    )
+                    if berr:
+                        err = berr
+                    else:
+                        return _redirect_after_booking(
+                            row=row or {},
+                            starts=starts,
+                            service_id=sid,
+                            phone_display=contact_phone_display or contact_phone,
+                            contact_name_value=nome_ok,
+                        )
 
     slots_iso: list[str] = []
     booking_calendar: dict | None = None
@@ -458,7 +535,7 @@ def agenda_publica(slug: str):
     day_slots: list[dict[str, str]] = []
     month_anchor = parse_month_anchor(_field("month"), tz_name)
 
-    if selected_service_id and selected_professional_id:
+    if selected_service_id and (auto_distribution or selected_professional_id):
         svc_sel = sched_repo.get_service(cid, selected_service_id)
         dur_sel = int((svc_sel or {}).get("duration_minutes") or 30)
         month_start, month_end = month_bounds(month_anchor)
@@ -466,17 +543,31 @@ def agenda_publica(slug: str):
         range_start = max(month_start, today_local)
         num_days = max(0, (month_end - range_start).days + 1)
         if num_days > 0:
-            slots_iso = compute_available_slot_isos(
-                cliente_id=cid,
-                service_id=selected_service_id,
-                professional_id=selected_professional_id,
-                tz_name=tz_name,
-                working_rows=wh_all,
-                duration_minutes=dur_sel,
-                start_day=range_start,
-                num_days=num_days,
-                max_slots=200,
-            )
+            if auto_distribution:
+                slots_iso, _ = compute_pooled_slot_isos(
+                    cliente_id=cid,
+                    service_id=selected_service_id,
+                    tz_name=tz_name,
+                    working_rows=wh_all,
+                    professionals=profs,
+                    services=services,
+                    duration_minutes=dur_sel,
+                    start_day=range_start,
+                    num_days=num_days,
+                    max_slots=200,
+                )
+            else:
+                slots_iso = compute_available_slot_isos(
+                    cliente_id=cid,
+                    service_id=selected_service_id,
+                    professional_id=selected_professional_id,
+                    tz_name=tz_name,
+                    working_rows=wh_all,
+                    duration_minutes=dur_sel,
+                    start_day=range_start,
+                    num_days=num_days,
+                    max_slots=200,
+                )
         slots_by_day = group_slot_isos_by_local_day(slots_iso, tz_name)
         booking_calendar = build_public_booking_calendar(
             month_anchor=month_anchor,
@@ -505,7 +596,159 @@ def agenda_publica(slug: str):
         selected_date_long=format_selected_date_long(selected_date) if selected_date else "",
         day_slots=day_slots,
         scheduling_timezone=tz_name,
+        auto_distribution=auto_distribution,
         erro=err,
         ok=ok,
+        booking_pending=booking_pending,
+    )
+
+
+@public_bp.route("/confirmacao/<token>", methods=["GET", "POST"])
+def confirmacao_proposta(token: str):
+    """Página pública para aceitar ou recusar proposta de horário."""
+    from services.scheduling.confirmation_actions import (
+        client_choose_alternative_slot,
+        resolve_proposal_choice,
+    )
+    from services.scheduling.confirmation_tokens import resolve_token
+    from services.scheduling import repository as sched_repo
+    from services.scheduling.public_booking import (
+        build_public_booking_calendar,
+        day_time_slots,
+        format_selected_date_long,
+        group_slot_isos_by_local_day,
+        month_bounds,
+        parse_month_anchor,
+        parse_selected_date,
+    )
+    from services.scheduling.slots_public import compute_available_slot_isos
+    from services.scheduling.timezones import normalize_timezone
+
+    token_row, token_err = resolve_token(token)
+    outcome = None
+    human_link = None
+    choose_slot = False
+    booking_calendar = None
+    day_slots: list[dict[str, str]] = []
+    selected_date = ""
+    selected_date_long = ""
+    tz_name = "America/Sao_Paulo"
+
+    def _load_slot_picker(cid: str, appt: dict) -> None:
+        nonlocal booking_calendar, day_slots, selected_date, selected_date_long, tz_name
+        st = sched_repo.get_settings(cid) or {}
+        tz_name = normalize_timezone(str(st.get("timezone") or ""))
+        month_raw = (request.args.get("month") or request.form.get("month") or "").strip()
+        date_raw = (request.args.get("date") or request.form.get("date") or "").strip()
+        sel_date = parse_selected_date(date_raw)
+        month_anchor = parse_month_anchor(month_raw or None, tz_name)
+        svc_id = str(appt.get("service_id") or "")
+        prof_id = str(appt.get("professional_id") or "")
+        svc = sched_repo.get_service(cid, svc_id)
+        dur = int((svc or {}).get("duration_minutes") or 30)
+        wh = sched_repo.list_working_hours_all(cid)
+        month_start, month_end = month_bounds(month_anchor)
+        from services.scheduling.public_booking import local_today
+
+        today_local = local_today(tz_name)
+        range_start = max(month_start, today_local)
+        num_days = max(0, (month_end - range_start).days + 1)
+        slots_iso: list[str] = []
+        if num_days > 0 and prof_id and svc_id:
+            slots_iso = compute_available_slot_isos(
+                cliente_id=cid,
+                service_id=svc_id,
+                professional_id=prof_id,
+                tz_name=tz_name,
+                working_rows=wh,
+                duration_minutes=dur,
+                start_day=range_start,
+                num_days=num_days,
+                max_slots=200,
+                exclude_appointment_id=str(appt.get("id") or ""),
+            )
+        slots_by_day = group_slot_isos_by_local_day(slots_iso, tz_name)
+        booking_calendar = build_public_booking_calendar(
+            month_anchor=month_anchor,
+            slots_by_day=slots_by_day,
+            tz_name=tz_name,
+            selected_date=sel_date,
+        )
+        if sel_date:
+            selected_date = sel_date.isoformat()
+            selected_date_long = format_selected_date_long(sel_date)
+            day_slots = day_time_slots(slots_by_day.get(sel_date.isoformat(), []), tz_name)
+
+    if request.method == "POST":
+        choice = (request.form.get("choice") or "").strip().lower()
+        slot_iso = (request.form.get("slot_iso") or "").strip()
+        if choice == "slot" and slot_iso:
+            ok, err = client_choose_alternative_slot(token, slot_iso)
+            outcome = "slot_submitted" if ok else f"error:{err}"
+        elif choice in ("accept", "decline"):
+            ok, err, _appt = resolve_proposal_choice(token, choice)
+            if choice == "accept":
+                outcome = "accepted" if ok else f"error:{err}"
+            elif ok:
+                choose_slot = True
+                outcome = None
+            else:
+                outcome = f"error:{err}"
+    elif token_row and not token_err:
+        action = str(token_row.get("action") or "")
+        if action == "accept_proposal" and request.args.get("auto") == "1":
+            ok, err, _appt = resolve_proposal_choice(token, "accept")
+            outcome = "accepted" if ok else f"error:{err}"
+        elif action == "decline_proposal" and request.args.get("auto") == "1":
+            ok, err, _appt = resolve_proposal_choice(token, "decline")
+            choose_slot = ok
+            outcome = None if ok else f"error:{err}"
+
+    appt_row: dict | None = None
+    if token_row:
+        cid = str(token_row.get("cliente_id") or "")
+        aid = str(token_row.get("appointment_id") or "")
+        appt_row = sched_repo.get_appointment(cid, aid)
+        meta = appt_row.get("meta") if isinstance((appt_row or {}).get("meta"), dict) else {}
+        if not choose_slot and outcome is None and meta.get("awaiting_client_slot"):
+            choose_slot = True
+        if choose_slot and appt_row:
+            _load_slot_picker(cid, appt_row)
+        try:
+            from database.models import ClienteModel, Tables
+
+            if supabase:
+                r = (
+                    supabase.table(Tables.CLIENTES)
+                    .select(ClienteModel.NOTIFY_WHATSAPP)
+                    .eq(ClienteModel.ID, cid)
+                    .limit(1)
+                    .execute()
+                )
+                phone = ((r.data or [{}])[0]).get(ClienteModel.NOTIFY_WHATSAPP) or ""
+                digits = "".join(c for c in str(phone) if c.isdigit())
+                if len(digits) >= 10:
+                    human_link = f"https://wa.me/{digits}"
+        except Exception:
+            pass
+        st = sched_repo.get_settings(cid) or {}
+        clinic_name = (st.get("public_name") or "").strip() or "Clínica"
+    else:
+        clinic_name = "Clínica"
+
+    return render_template(
+        "confirmacao_proposta.html",
+        token=token,
+        token_valid=bool(token_row and not token_err),
+        token_error=token_err,
+        outcome=outcome,
+        human_link=human_link,
+        clinic_name=clinic_name,
+        choose_slot=choose_slot,
+        booking_calendar=booking_calendar,
+        day_slots=day_slots,
+        selected_date=selected_date,
+        selected_date_long=selected_date_long,
+        scheduling_timezone=tz_name,
     )
 

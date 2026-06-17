@@ -253,6 +253,8 @@ def build_tenant_snapshot_payload(cliente_id: str) -> dict[str, Any] | None:
             "timezone": (st.get("timezone") or "America/Sao_Paulo") or "America/Sao_Paulo",
             "working_hours_clinic": clinic_wh,
             "working_hours_by_professional": prof_wh,
+            "confirmation_policy": st.get("confirmation_policy") or "auto",
+            "confirmation_pending_ttl_hours": int(st.get("confirmation_pending_ttl_hours") or 48),
         },
         "professionals": prof_out,
         "services": svc_out,

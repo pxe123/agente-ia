@@ -24,12 +24,14 @@ class TestEligibleProfessionals(unittest.TestCase):
 
 
 class TestRescheduleAppointment(unittest.TestCase):
+    @patch("services.scheduling.bookings.repository.get_appointment")
     @patch("database.supabase_sq.supabase")
     @patch("services.scheduling.bookings.repository.busy_intervals_utc", return_value=[])
-    def test_reschedule_ok(self, _busy, mock_supabase):
+    def test_reschedule_ok(self, _busy, mock_supabase, mock_get):
+        mock_get.return_value = {"id": "a1", "status": "confirmed"}
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = None
         new_start = datetime(2026, 6, 10, 14, 0, tzinfo=timezone.utc)
-        ok, err = reschedule_appointment(
+        ok, err, offer = reschedule_appointment(
             cliente_id="c1",
             appointment_id="a1",
             new_starts_at=new_start,
@@ -38,13 +40,17 @@ class TestRescheduleAppointment(unittest.TestCase):
         )
         self.assertTrue(ok)
         self.assertIsNone(err)
+        self.assertIsNone(offer)
 
+    @patch("services.scheduling.bookings.detect_swap_offer", return_value=None)
+    @patch("services.scheduling.bookings.repository.get_appointment")
     @patch("services.scheduling.bookings.repository.busy_intervals_utc")
-    def test_reschedule_conflict(self, mock_busy):
+    def test_reschedule_conflict(self, mock_busy, mock_get, _swap):
+        mock_get.return_value = {"id": "a1", "status": "confirmed"}
         new_start = datetime(2026, 6, 10, 14, 0, tzinfo=timezone.utc)
         end = datetime(2026, 6, 10, 14, 30, tzinfo=timezone.utc)
         mock_busy.return_value = [(new_start, end)]
-        ok, err = reschedule_appointment(
+        ok, err, offer = reschedule_appointment(
             cliente_id="c1",
             appointment_id="a1",
             new_starts_at=new_start,
@@ -53,6 +59,7 @@ class TestRescheduleAppointment(unittest.TestCase):
         )
         self.assertFalse(ok)
         self.assertEqual(err, "slot_ocupado")
+        self.assertIsNone(offer)
 
 
 if __name__ == "__main__":

@@ -128,5 +128,50 @@ def enrich_appointments_display(
             if contact_phone != "—"
             else "—"
         )
+        r["assignment_auto"] = meta.get("assignment_mode") == "auto"
+        assigned_at = meta.get("assigned_at")
+        r["assigned_at_display"] = (
+            format_datetime_br(assigned_at, tz) if assigned_at else None
+        )
+        sid = str(r.get("recurrence_series_id") or "")
+        r["is_recurring"] = bool(sid)
+        r["recurrence_series_id"] = sid or None
         out.append(r)
+    return out
+
+
+_CAL_JS_FIELDS = (
+    "id",
+    "status",
+    "starts_at",
+    "starts_at_display",
+    "starts_time_display",
+    "ends_at_display",
+    "contact_name_display",
+    "contact_phone_display",
+    "service_name",
+    "prof_name",
+    "is_recurring",
+    "recurrence_series_id",
+    "series_status",
+    "series_summary",
+    "assignment_auto",
+    "origin",
+    "notes",
+)
+
+
+def appointments_for_cal_js(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Subset JSON-safe para o modal do calendário (evita 500 no |tojson)."""
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        item: dict[str, Any] = {}
+        for key in _CAL_JS_FIELDS:
+            val = row.get(key)
+            if isinstance(val, datetime):
+                val = val.isoformat()
+            elif val is not None and not isinstance(val, (str, int, float, bool)):
+                val = str(val)
+            item[key] = val
+        out.append(item)
     return out

@@ -3,16 +3,29 @@
 {% block page_title %}Agenda — Calendário{% endblock %}
 {% block content %}
 <div class="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-    <div>
-      <h2 class="text-lg font-bold text-slate-900">Calendário</h2>
-      <p class="text-sm text-slate-600">Vista {{ view }} — arraste marcações locais para remarcar (semana/dia).</p>
-    </div>
-    <div class="flex flex-wrap gap-2 text-sm">
-      <a href="{{ url_for('scheduling.home') }}" class="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">Configurar</a>
-      <a href="{{ url_for('scheduling.home', tab='agendamentos', period='today') }}" class="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">Lista (hoje)</a>
-    </div>
+  {% set agenda_nav_active = 'calendario' %}
+  {% include 'scheduling/_agenda_nav.html' %}
+
+  <div>
+    <h2 class="text-lg font-bold text-slate-900">Calendário</h2>
+    <p class="text-sm text-slate-600">Marcações e bloqueios na sua agenda. Clique numa marcação para ver opções.{% if panel_booking_enabled %} Use «Novo Agendamento» no topo ou{% if view == 'month' %} clique num dia vazio{% else %} clique/arraste num horário vazio{% endif %} para criar{% if scheduling_uses_internal %} agendamento ou bloqueio{% endif %}.{% endif %}</p>
   </div>
+
+  <div class="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-local border border-teal-700"></span> Confirmado</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-pending border border-amber-600"></span> Pendente</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-external border border-slate-400"></span> Agendamento IA</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-200 border border-amber-400"></span> Bloqueio</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-recurring border border-teal-800 border-dashed"></span> Recorrente</span>
+  </div>
+
+  {% include 'scheduling/_calendario_appt_modal.html' %}
+
+  {% if not scheduling_uses_internal %}
+  <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+  Bloqueios locais disponíveis apenas com motor interno ZapAction.
+  </div>
+  {% endif %}
 
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
     <div class="bg-white rounded-xl border border-slate-200 p-4 card-shadow">
@@ -48,7 +61,7 @@
     </div>
     <div>
       <label class="text-xs text-slate-500">Profissional</label>
-      <select name="professional_id" class="block border rounded-lg px-3 py-2 text-sm mt-1">
+      <select name="professional_id" id="cal-filter-prof" class="block border rounded-lg px-3 py-2 text-sm mt-1">
         <option value="">Todos</option>
         {% for p in professionals %}
         <option value="{{ p.id }}" {% if filter_professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
@@ -64,28 +77,65 @@
         <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>Cancelado</option>
       </select>
     </div>
-    <button type="submit" class="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">Aplicar</button>
+    <button type="submit" class="px-4 py-2 rounded-lg agenda-btn-primary text-sm font-semibold">Aplicar</button>
     <a href="{{ url_for('scheduling.calendario', view=view, professional_id=filter_professional_id, status=filter_status) }}" class="px-3 py-2 rounded-lg border border-teal-200 text-teal-800 text-sm font-semibold hover:bg-teal-50">Hoje</a>
     <a href="{{ url_for('scheduling.calendario', view=view, date=prev_date, professional_id=filter_professional_id, status=filter_status) }}" class="px-3 py-2 rounded-lg border text-sm">← Anterior</a>
     <a href="{{ url_for('scheduling.calendario', view=view, date=next_date, professional_id=filter_professional_id, status=filter_status) }}" class="px-3 py-2 rounded-lg border text-sm">Seguinte →</a>
   </form>
+  {% if panel_booking_enabled or scheduling_uses_internal %}
+  <div class="flex flex-wrap gap-2 -mt-3">
+    {% if panel_booking_enabled %}
+    <button type="button" id="cal-new-appt-btn"
+            class="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+      Novo Agendamento
+    </button>
+    {% endif %}
+    {% if scheduling_uses_internal %}
+    <button type="button" id="cal-new-block-btn"
+            class="px-4 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm font-semibold hover:bg-amber-100">
+      Novo Bloqueio
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if view != 'month' %}
+  <p class="text-sm text-slate-600">
+    <span class="font-medium text-slate-800">{{ calendar.events_count }}</span> evento(s) neste período
+    (marcações + bloqueios). Fuso da clínica: <code class="text-xs bg-slate-100 px-1 rounded">{{ scheduling_timezone }}</code>.
+  </p>
+  {% endif %}
 
   {% if view == 'month' and calendar.month_grid %}
-  <div class="bg-white rounded-xl border border-slate-200 p-4 card-shadow overflow-x-auto">
+  <div id="cal-month-root" class="bg-white rounded-xl border border-slate-200 p-4 card-shadow overflow-x-auto">
     <div class="grid grid-cols-7 gap-1 min-w-[640px] text-center text-xs font-medium text-slate-500 mb-2">
       <div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div>
     </div>
     {% for week in calendar.month_grid %}
     <div class="grid grid-cols-7 gap-1 min-w-[640px] mb-1">
       {% for d in week %}
-      <div class="min-h-[88px] border border-slate-100 rounded-lg p-1 text-left {% if not d %}bg-slate-50{% endif %}">
+      <div class="min-h-[88px] border border-slate-100 rounded-lg p-1 text-left {% if not d %}bg-slate-50{% else %}cal-day-cell{% endif %}"
+           {% if d %}data-date="{{ d.isoformat() }}"{% endif %}>
         {% if d %}
-        <a href="{{ url_for('scheduling.calendario', view='day', date=d.isoformat(), professional_id=filter_professional_id, status=filter_status) }}" class="text-xs font-semibold text-slate-700 hover:text-teal-700">{{ d.day }}</a>
-        {% for ev in calendar.events_by_day.get(d.isoformat(), [])[:3] %}
-        <div class="mt-1 text-[10px] truncate px-1 py-0.5 rounded bg-teal-50 text-teal-900" title="{{ ev.title }}">{{ ev.starts_display }}</div>
+        <a href="{{ url_for('scheduling.calendario', view='day', date=d.isoformat(), professional_id=filter_professional_id, status=filter_status) }}" class="cal-day-num-link text-xs font-semibold text-slate-700 hover:text-teal-700">{{ d.day }}</a>
+        {% for ev in calendar.events_by_day.get(d.isoformat(), [])[:4] %}
+        {% if ev.event_kind == 'block' %}
+        <div class="cal-event-month cal-block cursor-pointer {% if ev.scope == 'clinic' %}bg-amber-200 text-amber-950{% else %}bg-amber-50 text-amber-900{% endif %}"
+             data-block-id="{{ ev.id }}"
+             data-starts="{{ ev.starts_at }}"
+             data-ends="{{ ev.ends_at }}"
+             data-scope="{{ ev.scope }}"
+             data-professional-id="{{ ev.professional_id or '' }}"
+             data-reason="{{ ev.reason or '' }}"
+             title="{{ ev.title }} — clique para editar">{{ ev.starts_display }}</div>
+        {% else %}
+        <div class="cal-event-month cal-event-clickable cursor-pointer {% if ev.is_recurring %}cal-event-month-recurring{% elif ev.origin == 'agenda' %}cal-event-month-external{% elif ev.status == 'pending' %}cal-event-month-pending{% else %}cal-event-month-local{% endif %}"
+             data-appt-id="{{ ev.id }}"
+             title="{{ ev.title }} — clique para opções">{{ ev.starts_display }}</div>
+        {% endif %}
         {% endfor %}
-        {% if calendar.events_by_day.get(d.isoformat(), [])|length > 3 %}
-        <p class="text-[10px] text-slate-400 mt-0.5">+{{ calendar.events_by_day.get(d.isoformat(), [])|length - 3 }}</p>
+        {% if calendar.events_by_day.get(d.isoformat(), [])|length > 4 %}
+        <a href="{{ url_for('scheduling.calendario', view='day', date=d.isoformat(), professional_id=filter_professional_id, status=filter_status) }}"
+           class="text-[10px] text-teal-600 hover:underline mt-0.5 inline-block">+{{ calendar.events_by_day.get(d.isoformat(), [])|length - 4 }} mais</a>
         {% endif %}
         {% endif %}
       </div>
@@ -102,47 +152,367 @@
         {{ d.weekday }}<br><span class="text-slate-500">{{ d.label }}</span>
       </div>
       {% endfor %}
-      {% for hour in calendar.hours %}
-      <div class="border-b border-slate-50 p-1 text-[10px] text-slate-400 text-right pr-2">{{ '%02d:00' % hour }}</div>
+      <div class="border-l border-slate-50 relative" style="height: {{ calendar.grid_height_px }}px;">
+        {% for hour in calendar.hours %}
+        <div class="absolute left-0 right-0 border-b border-slate-50 p-1 text-[10px] text-slate-400 text-right pr-2 pointer-events-none"
+             style="top: {{ (hour - calendar.grid_start_hour) * calendar.row_px }}px; height: {{ calendar.row_px }}px;">
+          {{ '%02d:00' % hour }}
+        </div>
+        {% endfor %}
+      </div>
       {% for d in calendar.days %}
-      <div class="cal-slot border-b border-l border-slate-50 relative min-h-[48px] hover:bg-teal-50/40"
-           data-date="{{ d.date }}" data-hour="{{ hour }}"
-           ondragover="event.preventDefault();"
-           ondrop="window.calDrop(event)">
+      <div class="cal-day-col border-l border-slate-50 relative select-none"
+           style="height: {{ calendar.grid_height_px }}px; min-width: 80px;"
+           data-date="{{ d.date }}">
+        {% for hour in calendar.hours %}
+        <div class="cal-slot absolute left-0 right-0 border-b border-slate-50/80 hover:bg-teal-50/30 z-0"
+             style="top: {{ (hour - calendar.grid_start_hour) * calendar.row_px }}px; height: {{ calendar.row_px }}px;"
+             data-date="{{ d.date }}" data-hour="{{ hour }}"
+             ondragover="event.preventDefault();"
+             ondrop="window.calDrop(event)"></div>
+        {% endfor %}
         {% for ev in calendar.events_by_day.get(d.date, []) %}
-        {% if ev.start_hour >= hour and ev.start_hour < hour + 1 %}
-        <div class="cal-event absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-[10px] leading-tight cursor-grab shadow-sm z-10
-                    {% if ev.origin == 'agenda' %}bg-slate-200 text-slate-700{% else %}bg-teal-600 text-white{% endif %}"
-             draggable="{% if ev.origin != 'agenda' %}true{% else %}false{% endif %}"
+        {% set top_px = ((ev.start_hour - calendar.grid_start_hour) * calendar.row_px)|int %}
+        {% set h_px = (ev.duration_hours * calendar.row_px)|int %}
+        {% if ev.event_kind == 'block' %}
+        <div class="cal-block absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm z-20 cursor-pointer border border-amber-300 {% if ev.scope == 'clinic' %}bg-amber-200 text-amber-950{% else %}bg-amber-100 text-amber-900{% endif %}"
+             data-block-id="{{ ev.id }}"
+             data-starts="{{ ev.starts_at }}"
+             data-ends="{{ ev.ends_at }}"
+             data-scope="{{ ev.scope }}"
+             data-professional-id="{{ ev.professional_id or '' }}"
+             data-reason="{{ ev.reason or '' }}"
+             style="top: {{ top_px }}px; height: {{ h_px }}px; min-height: 20px;"
+             title="{{ ev.title }}">
+          <span class="line-clamp-2">{{ ev.title }}</span>
+        </div>
+        {% else %}
+        <div class="cal-event absolute left-0.5 right-0.5 z-20 cursor-pointer
+                    {% if ev.cancelled %}cal-event-cancelled{% elif ev.is_recurring %}cal-event-recurring{% elif ev.origin == 'agenda' %}cal-event-external{% elif ev.status == 'pending' %}cal-event-pending{% else %}cal-event-local{% endif %}"
+             draggable="{% if not ev.cancelled and ev.origin != 'agenda' %}true{% else %}false{% endif %}"
              data-id="{{ ev.id }}"
              data-starts="{{ ev.starts_at }}"
-             style="top: {{ ((ev.start_hour - hour) * 48)|int }}px; height: {{ (ev.duration_hours * 48)|int }}px; min-height: 20px;"
-             title="{{ ev.title }} — {{ ev.starts_display }}">
+             style="top: {{ top_px }}px; height: {{ h_px }}px; min-height: 20px;"
+             title="{{ ev.title }} — {{ ev.starts_display }}{% if ev.cancelled %} (cancelado){% endif %}{% if ev.status == 'pending' %} (pendente){% endif %} — clique para opções">
           <span class="line-clamp-2">{{ ev.title }}</span>
         </div>
         {% endif %}
         {% endfor %}
       </div>
       {% endfor %}
-      {% endfor %}
     </div>
   </div>
-  <p class="text-xs text-slate-500">Marcações do Agendamento IA (cinza) não podem ser arrastadas aqui.</p>
+  <p class="text-xs text-slate-500">Pendentes aparecem em âmbar. Marcações do Agendamento IA (cinza) não podem ser arrastadas. Cancelados aparecem riscados. Bloqueios (âmbar) não cancelam marcações existentes.</p>
   {% endif %}
 </div>
+
+{% if panel_booking_enabled %}
+<div id="slot-choice-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40" role="dialog">
+  <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 border border-slate-200">
+    <h3 class="text-lg font-bold text-slate-900">Novo no horário</h3>
+    <p class="text-sm text-slate-600 mt-1">O que deseja criar?</p>
+    <div class="flex flex-col gap-2 mt-4">
+      <button type="button" id="slot-choice-appointment" class="w-full px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">Agendamento</button>
+      {% if scheduling_uses_internal %}
+      <button type="button" id="slot-choice-block" class="w-full px-4 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm font-semibold hover:bg-amber-100">Bloqueio</button>
+      {% endif %}
+      <button type="button" id="slot-choice-cancel" class="w-full px-4 py-2 rounded-lg border text-sm text-slate-600">Cancelar</button>
+    </div>
+  </div>
+</div>
+<div id="create-appt-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40 overflow-y-auto" role="dialog">
+  <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-200 my-8">
+    <h3 class="text-lg font-bold text-slate-900">Criar agendamento</h3>
+    {% from 'scheduling/_create_appointment_form.html' import create_appointment_form %}
+    <div class="mt-4">
+      {{ create_appointment_form(professionals, services, default_date=anchor, filter_professional_id=filter_professional_id, return_to_cal=true, view=view, anchor=anchor, filter_status=filter_status) }}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% if scheduling_uses_internal %}
+<div id="block-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
+    <h3 id="block-modal-title" class="text-lg font-bold text-slate-900">Criar bloqueio</h3>
+    <p class="text-xs text-slate-500 mt-1">Indisponível para novos agendamentos. Não cancela marcações existentes.</p>
+    <form id="block-form" class="mt-4 space-y-3">
+      <input type="hidden" id="block-id" value="">
+      <div>
+        <label class="text-xs font-medium text-slate-500">Aplicar a</label>
+        <div class="flex flex-wrap gap-4 mt-1 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="block_scope" value="professional" checked> Profissional</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="block_scope" value="clinic"> Toda a clínica</label>
+        </div>
+      </div>
+      <div id="block-prof-wrap">
+        <label class="text-xs font-medium text-slate-500">Profissional</label>
+        <select id="block-professional-id" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+          <option value="">— Escolha —</option>
+          {% for p in professionals %}
+          <option value="{{ p.id }}" {% if filter_professional_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" id="block-all-day"> Dia inteiro</label>
+      </div>
+      <div id="block-date-wrap" class="hidden">
+        <label class="text-xs font-medium text-slate-500">Data</label>
+        <input type="date" id="block-date" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+      </div>
+      <div id="block-times-wrap" class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium text-slate-500">Início</label>
+          <input type="datetime-local" id="block-starts" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500">Fim</label>
+          <input type="datetime-local" id="block-ends" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-slate-500">Motivo (opcional)</label>
+        <input type="text" id="block-reason" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="Almoço, consulta médica…">
+      </div>
+      <p id="block-form-error" class="text-sm text-red-600 hidden"></p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="block-delete-btn" class="hidden px-4 py-2 rounded-lg border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-50">Excluir</button>
+        <button type="button" id="block-cancel-btn" class="px-4 py-2 rounded-lg border text-sm">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script type="application/json" id="cal-appts-json">{{ appointments_lookup | tojson }}</script>
+<script type="application/json" id="cal-origins-json">{{ appointment_origins | tojson }}</script>
 <script>
 (function () {
-  let dragId = null;
-  document.querySelectorAll('.cal-event[draggable="true"]').forEach(function (el) {
-    el.addEventListener('dragstart', function (e) {
-      dragId = el.getAttribute('data-id');
-      e.dataTransfer.setData('text/plain', dragId);
+  var canBlock = {{ 'true' if scheduling_uses_internal else 'false' }};
+  var canCreate = {{ 'true' if panel_booking_enabled else 'false' }};
+  var apiCreate = '{{ url_for("scheduling.api_blocked_time_create") }}';
+  var apiPatchBase = '{{ url_for("scheduling.api_blocked_time_update", blocked_id="__ID__") }}'.replace('__ID__', '');
+  function getCsrf() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return ((meta && meta.getAttribute('content')) || window.CSRF_TOKEN || '').trim();
+  }
+  var filterProf = '{{ filter_professional_id or "" }}';
+  var clinicTz = '{{ scheduling_timezone }}';
+  var homePostUrl = {{ ((APP_BASE_URL.rstrip('/') + '/painel/agenda/') if APP_BASE_URL else url_for('scheduling.home')) | tojson }};
+  var calView = '{{ view }}';
+  var calDate = '{{ anchor }}';
+  var calStatus = '{{ filter_status }}';
+  var calProf = '{{ filter_professional_id or "" }}';
+
+  var apptsById = {};
+  try {
+    var rawAppts = JSON.parse(document.getElementById('cal-appts-json').textContent || '[]');
+    rawAppts.forEach(function (a) {
+      if (a && a.id != null) apptsById[String(a.id)] = a;
+    });
+  } catch (e) { apptsById = {}; }
+  var originsById = {};
+  try {
+    originsById = JSON.parse(document.getElementById('cal-origins-json').textContent || '{}');
+  } catch (e2) { originsById = {}; }
+
+  function calQueryUrl(extra) {
+    var q = new URLSearchParams({ view: calView, date: calDate, status: calStatus });
+    if (calProf) q.set('professional_id', calProf);
+    if (extra) Object.keys(extra).forEach(function (k) { if (extra[k]) q.set(k, extra[k]); });
+    return '{{ url_for("scheduling.calendario") }}?' + q.toString();
+  }
+
+  function calReturnFields() {
+    return '<input type="hidden" name="return_to" value="calendario">' +
+      '<input type="hidden" name="return_view" value="' + calView + '">' +
+      '<input type="hidden" name="return_date" value="' + calDate + '">' +
+      '<input type="hidden" name="return_professional_id" value="' + calProf + '">' +
+      '<input type="hidden" name="return_status" value="' + calStatus + '">';
+  }
+
+  function postFormWithFields(action, fields, confirmMsg) {
+    var f = document.createElement('form');
+    f.method = 'post';
+    f.action = homePostUrl;
+    f.className = 'inline-flex shrink-0';
+    if (confirmMsg) {
+      f.onsubmit = function () { return confirm(confirmMsg); };
+    }
+    var html = '<input type="hidden" name="csrf_token" value="' + getCsrf() + '">' +
+      '<input type="hidden" name="action" value="' + action + '">' + calReturnFields();
+    Object.keys(fields || {}).forEach(function (k) {
+      html += '<input type="hidden" name="' + k + '" value="' + String(fields[k]).replace(/"/g, '&quot;') + '">';
+    });
+    f.innerHTML = html;
+    return f;
+  }
+
+  function postForm(action, apptId, confirmMsg) {
+    return postFormWithFields(action, { appointment_id: apptId }, confirmMsg);
+  }
+
+  function actionBtn(label, className, formOrLink) {
+    var wrap = document.createElement('div');
+    wrap.className = 'inline-flex shrink-0';
+    if (formOrLink.tagName === 'FORM') {
+      var btn = document.createElement('button');
+      btn.type = 'submit';
+      btn.className = className;
+      btn.textContent = label;
+      formOrLink.appendChild(btn);
+      wrap.appendChild(formOrLink);
+    } else {
+      formOrLink.className = className;
+      formOrLink.textContent = label;
+      wrap.appendChild(formOrLink);
+    }
+    return wrap;
+  }
+
+  var apptModal = document.getElementById('appt-modal');
+  var apptActions = document.getElementById('appt-modal-actions');
+
+  function closeApptModal() {
+    if (!apptModal) return;
+    apptModal.classList.add('hidden');
+    apptModal.classList.remove('flex');
+  }
+
+  function openApptModal(apptId) {
+    var a = apptsById[String(apptId)];
+    if (!a || !apptModal) return;
+    var origin = originsById[String(apptId)] || 'zapaction_local';
+    var isAgenda = origin === 'agenda' || a.origin === 'agenda';
+    var status = String(a.status || '');
+    document.getElementById('appt-modal-time').textContent = a.starts_at_display || a.starts_time_display || '';
+    document.getElementById('appt-modal-name').textContent = a.contact_name_display || '—';
+    document.getElementById('appt-modal-phone').textContent = a.contact_phone_display || '—';
+    document.getElementById('appt-modal-service').textContent = a.service_name || '—';
+    var profText = a.prof_name || '—';
+    if (a.assignment_auto) profText += ' (auto)';
+    document.getElementById('appt-modal-prof').textContent = profText;
+    var statusEl = document.getElementById('appt-modal-status');
+    if (status === 'pending') {
+      statusEl.innerHTML = '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-100">Pendente</span>';
+    } else if (status === 'cancelled') {
+      statusEl.innerHTML = '<span class="text-xs text-slate-400">Cancelado</span>';
+    } else {
+      statusEl.innerHTML = '<span class="text-xs text-emerald-700 font-semibold">Confirmado</span>';
+    }
+    var seriesEl = document.getElementById('appt-modal-series');
+    if (seriesEl) {
+      if (a.is_recurring && a.recurrence_series_id) {
+        var stLabel = a.series_status === 'paused' ? ' (pausada)' : (a.series_status === 'ended' ? ' (encerrada)' : '');
+        seriesEl.innerHTML = '↻ Série recorrente' + stLabel + (a.series_summary ? ': ' + a.series_summary : '');
+        seriesEl.classList.remove('hidden');
+      } else {
+        seriesEl.classList.add('hidden');
+        seriesEl.innerHTML = '';
+      }
+    }
+    apptActions.innerHTML = '';
+    if (status === 'pending' && !isAgenda) {
+      apptActions.appendChild(actionBtn('Confirmar', 'px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 whitespace-nowrap', postForm('confirm_appointment', apptId)));
+      var proposeLink = document.createElement('a');
+      proposeLink.href = calQueryUrl({ propose: apptId });
+      apptActions.appendChild(actionBtn('Sugerir horário', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs font-semibold hover:bg-blue-100 whitespace-nowrap', proposeLink));
+      apptActions.appendChild(actionBtn('Recusar', 'px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 whitespace-nowrap', postForm('reject_appointment', apptId, 'Recusar este pedido?')));
+    }
+    if (status !== 'cancelled' && !isAgenda) {
+      var rescheduleLink = document.createElement('a');
+      rescheduleLink.href = calQueryUrl({ reschedule: apptId });
+      apptActions.appendChild(actionBtn('Remarcar', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-800 text-xs font-semibold hover:bg-teal-100 whitespace-nowrap', rescheduleLink));
+      var reassignLink = document.createElement('a');
+      reassignLink.href = calQueryUrl({ reassign: apptId });
+      apptActions.appendChild(actionBtn('Profissional', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-semibold hover:bg-indigo-100 whitespace-nowrap', reassignLink));
+    }
+    if (status !== 'cancelled' && !a.is_recurring) {
+      apptActions.appendChild(actionBtn('Cancelar', 'px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold hover:bg-amber-100 whitespace-nowrap', postForm('cancel_appointment', apptId, 'Cancelar este agendamento?')));
+    }
+    if (a.is_recurring && a.recurrence_series_id) {
+      if (status !== 'cancelled' && a.series_status === 'active') {
+        apptActions.appendChild(actionBtn('Pausar série', 'px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold whitespace-nowrap', postFormWithFields('pause_recurrence_series', { series_id: a.recurrence_series_id }, 'Pausar toda a série futura?')));
+      }
+      if (status !== 'cancelled' && a.series_status === 'paused') {
+        apptActions.appendChild(actionBtn('Reativar série', 'px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold whitespace-nowrap', postFormWithFields('resume_recurrence_series', { series_id: a.recurrence_series_id })));
+      }
+      if (status !== 'cancelled' && a.series_status !== 'ended') {
+        apptActions.appendChild(actionBtn('Encerrar série', 'px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold whitespace-nowrap', postFormWithFields('end_recurrence_series', { series_id: a.recurrence_series_id }, 'Encerrar a série recorrente?')));
+      }
+      var recWrap = document.createElement('div');
+      recWrap.className = 'w-full flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100';
+      recWrap.innerHTML = '<p class="text-[11px] font-semibold text-teal-800 uppercase tracking-wide w-full">Recorrência</p>';
+      apptActions.appendChild(recWrap);
+      if (status !== 'cancelled') {
+        var recRow1 = document.createElement('div');
+        recRow1.className = 'flex flex-wrap gap-2 w-full';
+        recWrap.appendChild(recRow1);
+        recRow1.appendChild(actionBtn('Cancelar só esta', 'px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold whitespace-nowrap', postFormWithFields('cancel_recurrence_scope', { series_id: a.recurrence_series_id, appointment_id: apptId, cancel_scope: 'this_only' }, 'Cancelar só esta ocorrência?')));
+        recRow1.appendChild(actionBtn('Cancelar esta e futuras', 'px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-100 text-amber-950 text-xs font-semibold whitespace-nowrap', postFormWithFields('cancel_recurrence_scope', { series_id: a.recurrence_series_id, appointment_id: apptId, cancel_scope: 'following' }, 'Cancelar esta e todas as futuras?')));
+        recRow1.appendChild(actionBtn('Cancelar toda a série', 'px-3 py-1.5 rounded-lg border border-amber-400 bg-amber-200 text-amber-950 text-xs font-semibold whitespace-nowrap', postFormWithFields('cancel_recurrence_scope', { series_id: a.recurrence_series_id, cancel_scope: 'all' }, 'Cancelar toda a série (futuras ocorrências)?')));
+      }
+      var recRow2 = document.createElement('div');
+      recRow2.className = 'flex flex-wrap gap-2 w-full';
+      recWrap.appendChild(recRow2);
+      if (status !== 'cancelled') {
+        recRow2.appendChild(actionBtn('Excluir só esta', 'px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold whitespace-nowrap', postFormWithFields('delete_recurrence_scope', { series_id: a.recurrence_series_id, appointment_id: apptId, delete_scope: 'this_only' }, 'Excluir só este registo?')));
+        recRow2.appendChild(actionBtn('Excluir esta e futuras', 'px-3 py-1.5 rounded-lg border border-red-300 bg-red-100 text-red-900 text-xs font-semibold whitespace-nowrap', postFormWithFields('delete_recurrence_scope', { series_id: a.recurrence_series_id, appointment_id: apptId, delete_scope: 'following' }, 'Excluir esta e futuras do painel?')));
+      }
+      recRow2.appendChild(actionBtn('Excluir toda a série', 'px-3 py-1.5 rounded-lg border border-red-400 bg-red-200 text-red-950 text-xs font-semibold whitespace-nowrap', postFormWithFields('delete_recurrence_scope', { series_id: a.recurrence_series_id, delete_scope: 'all' }, 'Excluir toda a série do painel (todas as ocorrências)?')));
+    }
+    if (!a.is_recurring || !a.recurrence_series_id) {
+    var delForm = postForm('delete_appointment', apptId, 'Excluir este registo do painel? Esta ação não pode ser desfeita.');
+    var delBtn = document.createElement('button');
+    delBtn.type = 'submit';
+    delBtn.className = 'inline-flex items-center px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 whitespace-nowrap';
+    delBtn.textContent = 'Excluir';
+    delForm.appendChild(delBtn);
+    apptActions.appendChild(delForm);
+    }
+    apptModal.classList.remove('hidden');
+    apptModal.classList.add('flex');
+  }
+
+  if (apptModal) {
+    document.getElementById('appt-modal-close').addEventListener('click', closeApptModal);
+    apptModal.addEventListener('click', function (e) { if (e.target === apptModal) closeApptModal(); });
+  }
+
+  var apptDragged = false;
+  var dragApptId = null;
+  document.querySelectorAll('.cal-event').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      if (apptDragged) { apptDragged = false; return; }
+      e.stopPropagation();
+      openApptModal(el.getAttribute('data-id'));
     });
   });
+  document.querySelectorAll('.cal-event[draggable="true"]').forEach(function (el) {
+    el.addEventListener('dragstart', function (e) {
+      apptDragged = true;
+      dragApptId = el.getAttribute('data-id');
+      e.dataTransfer.setData('text/plain', dragApptId);
+      e.stopPropagation();
+    });
+  });
+
+  document.querySelectorAll('.cal-event-clickable').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openApptModal(el.getAttribute('data-appt-id'));
+    });
+  });
+
+  var openAppt = new URLSearchParams(window.location.search).get('appt');
+  if (openAppt && apptsById[openAppt]) openApptModal(openAppt);
+
   window.calDrop = function (e) {
     e.preventDefault();
     var slot = e.currentTarget;
-    var id = dragId || e.dataTransfer.getData('text/plain');
+    var id = dragApptId || e.dataTransfer.getData('text/plain');
     if (!id || !slot) return;
     var date = slot.getAttribute('data-date');
     var hour = parseInt(slot.getAttribute('data-hour'), 10);
@@ -150,16 +520,359 @@
     var parts = date.split('-');
     var d = new Date(Date.UTC(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10), hour, 0, 0));
     var iso = d.toISOString();
+    var scope = 'this_only';
+    if (apptsById[id] && apptsById[id].is_recurring) {
+      var sc = prompt('Remarcar: 1=só esta ocorrência, 2=cancelar (use Remarcar no menu)', '1');
+      if (sc !== '1') return;
+      scope = 'this_only';
+    }
     if (!confirm('Remarcar para ' + date + ' às ' + String(hour).padStart(2,'0') + ':00?')) return;
     fetch('{{ url_for("scheduling.api_appointment_reschedule") }}', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' },
-      body: JSON.stringify({ appointment_id: id, starts_at: iso })
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+      body: JSON.stringify({ appointment_id: id, starts_at: iso, scope: scope })
     }).then(function (r) { return r.json(); }).then(function (data) {
-      if (data.ok) location.reload();
+      if (data.ok && data.awaiting_client) {
+        alert('Remarcação enviada ao cliente por WhatsApp. O horário fica pendente até confirmação.');
+        location.reload();
+      } else if (data.ok) location.reload();
       else alert(data.error || 'Não foi possível remarcar.');
     }).catch(function () { alert('Erro de rede.'); });
   };
+
+  if (!canCreate && !canBlock) return;
+
+  var slotChoiceModal = document.getElementById('slot-choice-modal');
+  var createApptModal = document.getElementById('create-appt-modal');
+  var pendingSlot = null;
+
+  function hideSlotChoice() {
+    if (slotChoiceModal) { slotChoiceModal.classList.add('hidden'); slotChoiceModal.classList.remove('flex'); }
+  }
+  function showSlotChoice() {
+    if (slotChoiceModal) { slotChoiceModal.classList.remove('hidden'); slotChoiceModal.classList.add('flex'); }
+  }
+  function hideCreateAppt() {
+    if (createApptModal) { createApptModal.classList.add('hidden'); createApptModal.classList.remove('flex'); }
+  }
+  function showCreateAppt() {
+    if (createApptModal) { createApptModal.classList.remove('hidden'); createApptModal.classList.add('flex'); }
+  }
+
+  function applyPendingSlotToCreateForm() {
+    if (!pendingSlot) return;
+    var form = document.getElementById('create-appointment-form');
+    if (!form) return;
+    var d = form.querySelector('[name="appointment_date"]');
+    var t = form.querySelector('[name="appointment_time"]');
+    var s = form.querySelector('[name="starts_on"]');
+    var tl = form.querySelector('[name="time_local"]');
+    var dateStr = pendingSlot.date;
+    var hourStr = String(pendingSlot.hour).padStart(2, '0') + ':00';
+    if (d) d.value = dateStr;
+    if (t) t.value = hourStr;
+    if (s) s.value = dateStr;
+    if (tl) tl.value = hourStr;
+  }
+
+  function openSlotAction() {
+    if (!pendingSlot) return;
+    if (canCreate && canBlock) {
+      showSlotChoice();
+      return;
+    }
+    if (canCreate) {
+      applyPendingSlotToCreateForm();
+      showCreateAppt();
+      return;
+    }
+    if (canBlock && openCreateFromSlotFn) {
+      openCreateFromSlotFn(pendingSlot.date, pendingSlot.hour, pendingSlot.endHour);
+    }
+  }
+
+  if (canCreate) {
+  var slotChoiceAppt = document.getElementById('slot-choice-appointment');
+  var slotChoiceBlock = document.getElementById('slot-choice-block');
+  var slotChoiceCancel = document.getElementById('slot-choice-cancel');
+  if (slotChoiceAppt) slotChoiceAppt.addEventListener('click', function () {
+    hideSlotChoice();
+    applyPendingSlotToCreateForm();
+    showCreateAppt();
+  });
+  if (slotChoiceBlock) slotChoiceBlock.addEventListener('click', function () {
+    hideSlotChoice();
+    if (pendingSlot && openCreateFromSlotFn) {
+      openCreateFromSlotFn(pendingSlot.date, pendingSlot.hour, pendingSlot.endHour);
+    }
+  });
+  if (slotChoiceCancel) slotChoiceCancel.addEventListener('click', hideSlotChoice);
+  if (slotChoiceModal) slotChoiceModal.addEventListener('click', function (e) { if (e.target === slotChoiceModal) hideSlotChoice(); });
+  if (createApptModal) createApptModal.addEventListener('click', function (e) { if (e.target === createApptModal) hideCreateAppt(); });
+
+  document.querySelectorAll('.create-appt-cancel').forEach(function (btn) {
+    btn.addEventListener('click', hideCreateAppt);
+  });
+
+  (function initCreateForm() {
+    var form = document.getElementById('create-appointment-form');
+    if (!form) return;
+    var actionInput = document.getElementById('create-form-action');
+    var singleFields = document.getElementById('single-fields');
+    var recFields = document.getElementById('recurrence-fields');
+    var recDaily = document.getElementById('rec-daily');
+    var recWeekly = document.getElementById('rec-weekly');
+    var recMonthly = document.getElementById('rec-monthly');
+    var recNoEnd = document.getElementById('rec-no-end');
+    var recEnds = document.getElementById('rec-ends-on');
+    function syncBookingType() {
+      var recurring = form.querySelector('input[name="booking_type"][value="recurring"]').checked;
+      if (actionInput) actionInput.value = recurring ? 'create_recurrence_series' : 'create_appointment';
+      if (singleFields) singleFields.classList.toggle('hidden', recurring);
+      if (recFields) recFields.classList.toggle('hidden', !recurring);
+    }
+    function syncFrequency() {
+      var freq = (form.querySelector('input[name="recurrence_frequency"]:checked') || {}).value || 'daily';
+      if (recDaily) recDaily.classList.toggle('hidden', freq !== 'daily');
+      if (recWeekly) recWeekly.classList.toggle('hidden', freq !== 'weekly');
+      if (recMonthly) recMonthly.classList.toggle('hidden', freq !== 'monthly');
+    }
+    form.querySelectorAll('.booking-type-radio').forEach(function (r) {
+      r.addEventListener('change', syncBookingType);
+    });
+    form.querySelectorAll('input[name="recurrence_frequency"]').forEach(function (r) {
+      r.addEventListener('change', syncFrequency);
+    });
+    if (recNoEnd && recEnds) {
+      recNoEnd.addEventListener('change', function () {
+        recEnds.disabled = recNoEnd.checked;
+      });
+      recEnds.disabled = recNoEnd.checked;
+    }
+    syncBookingType();
+    syncFrequency();
+  })();
+  }
+
+  var modal = document.getElementById('block-modal');
+  var form = document.getElementById('block-form');
+  var titleEl = document.getElementById('block-modal-title');
+  var errEl = document.getElementById('block-form-error');
+  var deleteBtn = document.getElementById('block-delete-btn');
+  var selecting = false;
+  var selectStart = null;
+  var selectEnd = null;
+  var openCreateFromSlotFn = null;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function localDatetimeValue(dateStr, hour, minute) {
+    return dateStr + 'T' + pad(hour) + ':' + pad(minute || 0);
+  }
+
+  if (canBlock && modal && form) {
+  function showModal(edit) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    deleteBtn.classList.toggle('hidden', !edit);
+    titleEl.textContent = edit ? 'Editar bloqueio' : 'Criar bloqueio';
+    errEl.classList.add('hidden');
+  }
+  function hideModal() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.getElementById('block-id').value = '';
+  }
+
+  function syncScopeUi() {
+    var clinic = document.querySelector('input[name="block_scope"]:checked').value === 'clinic';
+    document.getElementById('block-prof-wrap').classList.toggle('hidden', clinic);
+  }
+  document.querySelectorAll('input[name="block_scope"]').forEach(function (r) {
+    r.addEventListener('change', syncScopeUi);
+  });
+
+  function syncAllDayUi() {
+    var allDay = document.getElementById('block-all-day').checked;
+    document.getElementById('block-date-wrap').classList.toggle('hidden', !allDay);
+    document.getElementById('block-times-wrap').classList.toggle('hidden', allDay);
+  }
+  document.getElementById('block-all-day').addEventListener('change', syncAllDayUi);
+
+  document.getElementById('block-cancel-btn').addEventListener('click', hideModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) hideModal(); });
+
+  function openCreateFromSlot(date, hour, endHour) {
+    document.getElementById('block-id').value = '';
+    var scopeProf = filterProf ? 'professional' : 'professional';
+    document.querySelector('input[name="block_scope"][value="' + scopeProf + '"]').checked = true;
+    syncScopeUi();
+    if (filterProf) document.getElementById('block-professional-id').value = filterProf;
+  document.getElementById('block-all-day').checked = false;
+    syncAllDayUi();
+    document.getElementById('block-date').value = date;
+    var eh = (endHour != null && endHour > hour) ? endHour : hour + 1;
+    document.getElementById('block-starts').value = localDatetimeValue(date, hour, 0);
+    document.getElementById('block-ends').value = localDatetimeValue(date, eh, 0);
+    document.getElementById('block-reason').value = '';
+    showModal(false);
+  }
+  openCreateFromSlotFn = openCreateFromSlot;
+
+  function openEditFromBlock(el) {
+    document.getElementById('block-id').value = el.getAttribute('data-block-id');
+    var scope = el.getAttribute('data-scope') || 'professional';
+    document.querySelector('input[name="block_scope"][value="' + scope + '"]').checked = true;
+    syncScopeUi();
+    document.getElementById('block-professional-id').value = el.getAttribute('data-professional-id') || '';
+    document.getElementById('block-reason').value = el.getAttribute('data-reason') || '';
+    document.getElementById('block-all-day').checked = false;
+    syncAllDayUi();
+    var s = el.getAttribute('data-starts') || '';
+    var e = el.getAttribute('data-ends') || '';
+    if (s) {
+      var ds = new Date(s);
+      var de = e ? new Date(e) : new Date(ds.getTime() + 3600000);
+      var fmt = function (dt) {
+        return dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+      };
+      document.getElementById('block-starts').value = fmt(ds);
+      document.getElementById('block-ends').value = fmt(de);
+    }
+    showModal(true);
+  }
+
+  document.addEventListener('click', function (e) {
+    var blockEl = e.target.closest('.cal-block');
+    if (!blockEl || !canBlock || !modal) return;
+    e.stopPropagation();
+    openEditFromBlock(blockEl);
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errEl.classList.add('hidden');
+    var id = document.getElementById('block-id').value;
+    var clinic = document.querySelector('input[name="block_scope"]:checked').value === 'clinic';
+    var profId = document.getElementById('block-professional-id').value;
+    if (!clinic && !profId) {
+      errEl.textContent = 'Escolha um profissional ou marque Toda a clínica.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    var allDay = document.getElementById('block-all-day').checked;
+    var body = {
+      reason: document.getElementById('block-reason').value || null,
+      all_day: allDay,
+      scope: clinic ? 'clinic' : 'professional'
+    };
+    if (clinic) body.professional_id = null;
+    else body.professional_id = profId;
+    if (allDay) {
+      body.date = document.getElementById('block-date').value;
+    } else {
+      body.starts_at = document.getElementById('block-starts').value;
+      body.ends_at = document.getElementById('block-ends').value;
+    }
+    var url = id ? (apiPatchBase + id) : apiCreate;
+    var method = id ? 'PATCH' : 'POST';
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.ok) location.reload();
+      else {
+        errEl.textContent = data.error || 'Não foi possível guardar.';
+        errEl.classList.remove('hidden');
+      }
+    }).catch(function () {
+      errEl.textContent = 'Erro de rede.';
+      errEl.classList.remove('hidden');
+    });
+  });
+
+  if (deleteBtn) deleteBtn.addEventListener('click', function () {
+    var id = document.getElementById('block-id').value;
+    if (!id || !confirm('Excluir este bloqueio?')) return;
+    fetch(apiPatchBase + id, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCsrf() }
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.ok) location.reload();
+      else alert(data.error || 'Não foi possível excluir.');
+    });
+  });
+  }
+
+  if (canCreate || canBlock) {
+  document.querySelectorAll('.cal-slot').forEach(function (slot) {
+    slot.addEventListener('mousedown', function (e) {
+      if (e.target.closest('.cal-event, .cal-block')) return;
+      selecting = true;
+      selectStart = { date: slot.getAttribute('data-date'), hour: parseInt(slot.getAttribute('data-hour'), 10) };
+      selectEnd = selectStart;
+      document.querySelectorAll('.cal-slot.cal-selecting').forEach(function (s) { s.classList.remove('cal-selecting'); });
+      slot.classList.add('cal-selecting');
+      e.preventDefault();
+    });
+    slot.addEventListener('mouseenter', function () {
+      if (!selecting) return;
+      selectEnd = { date: slot.getAttribute('data-date'), hour: parseInt(slot.getAttribute('data-hour'), 10) };
+      document.querySelectorAll('.cal-slot').forEach(function (s) {
+        s.classList.remove('cal-selecting');
+        if (!selectStart || s.getAttribute('data-date') !== selectStart.date) return;
+        var h = parseInt(s.getAttribute('data-hour'), 10);
+        var h0 = Math.min(selectStart.hour, selectEnd.hour);
+        var h1 = Math.max(selectStart.hour, selectEnd.hour);
+        if (h >= h0 && h <= h1) s.classList.add('cal-selecting');
+      });
+    });
+  });
+  document.addEventListener('mouseup', function () {
+    if (!selecting || !selectStart) { selecting = false; return; }
+    selecting = false;
+    var h0 = Math.min(selectStart.hour, selectEnd.hour);
+    var h1 = Math.max(selectStart.hour, selectEnd.hour) + 1;
+    document.querySelectorAll('.cal-slot.cal-selecting').forEach(function (s) { s.classList.remove('cal-selecting'); });
+    if (selectStart.date) {
+      pendingSlot = { date: selectStart.date, hour: h0, endHour: h1 };
+      openSlotAction();
+    }
+    selectStart = null;
+  });
+  }
+
+  var monthRoot = document.getElementById('cal-month-root');
+  if (monthRoot && (canCreate || canBlock)) {
+    monthRoot.addEventListener('click', function (e) {
+      var cell = e.target.closest('.cal-day-cell');
+      if (!cell) return;
+      if (e.target.closest('.cal-event-month, .cal-block, .cal-day-num-link')) return;
+      var dateStr = cell.getAttribute('data-date');
+      if (!dateStr) return;
+      pendingSlot = { date: dateStr, hour: 9, endHour: 10 };
+      openSlotAction();
+    });
+  }
+
+  var newApptBtn = document.getElementById('cal-new-appt-btn');
+  if (newApptBtn && canCreate) {
+    newApptBtn.addEventListener('click', function () {
+      pendingSlot = { date: calDate, hour: 9, endHour: 10 };
+      applyPendingSlotToCreateForm();
+      showCreateAppt();
+    });
+  }
+  var newBlockBtn = document.getElementById('cal-new-block-btn');
+  if (newBlockBtn && canBlock && openCreateFromSlotFn) {
+    newBlockBtn.addEventListener('click', function () {
+      openCreateFromSlotFn(calDate, 9, 10);
+    });
+  }
 })();
 </script>
+<style>
+.cal-slot.cal-selecting { background: rgba(251, 191, 36, 0.25) !important; }
+.cal-event-recurring, .cal-event-month-recurring { border-style: dashed !important; border-width: 2px !important; }
+</style>
 {% endblock %}

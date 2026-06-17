@@ -503,7 +503,7 @@ function renderizarClientes(lista) {
         '<td class="px-3 sm:px-4 py-2 sm:py-3"><span class="px-2 py-0.5 rounded text-xs ' + billingBadge + '">' + esc(billingLabel(billing)) + '</span>' + (trialEnds ? '<div class="text-[10px] text-slate-400 mt-1">teste até: ' + esc(trialEnds) + '</div>' : '') + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 text-xs">' + schedulingEngineCellHtml(c) + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 text-slate-700 text-xs"><div>' + esc(periodo) + '</div><div class="text-[10px] text-slate-400 mt-1 font-mono">' + esc(stripeId) + '</div>' +
-          (mpLegacy ? '<div class="text-[10px] text-slate-300 font-mono">' + esc(mpLegacy) + '</div>' : '') + '</td>' +
+          (mpLegacy ? '<div class="text-[10px] text-slate-600 font-mono">' + esc(mpLegacy) + '</div>' : '') + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3">' + ferramentasEmUso(c) + '</td>' +
         '<td class="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-1">' + acessos + '</td>' +
       '</tr>' +
@@ -611,7 +611,7 @@ function clientesQueryString() {
 
 async function carregarClientes() {
   const tbody = document.getElementById('clientes-tbody');
-  tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-slate-500"><i class="fas fa-circle-notch fa-spin mr-2"></i>Carregando...</td></tr>';
   try {
     const r = await fetch('/admin/api/clientes' + clientesQueryString());
     const data = await r.json();

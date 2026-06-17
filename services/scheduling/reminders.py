@@ -36,15 +36,17 @@ def reminders_enabled() -> bool:
 
 
 def _appointment_phone(row: dict[str, Any]) -> str:
+    from services.scheduling.public_contact import normalize_scheduling_contact_phone
+
     meta = appointment_meta_dict(row.get("meta"))
     for cand in (
         row.get("contact_phone"),
         row.get("remote_id"),
         meta.get("contact_phone"),
     ):
-        s = "".join(c for c in str(cand or "") if c.isdigit())
-        if len(s) >= 10:
-            return s
+        norm = normalize_scheduling_contact_phone(str(cand or ""))
+        if norm:
+            return norm
     return ""
 
 

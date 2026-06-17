@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
+    <script>
+    (function(){try{var t=localStorage.getItem('za-theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
     <title>{% block title %}Painel{% endblock %} | ZapAction</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/zapaction-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ui-contrast.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -14,15 +19,9 @@
     <style>
         body { font-family: 'Inter', system-ui, sans-serif; }
         .sidebar-accent { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); }
-        .card-shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06); }
         .card-hover:hover { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06); }
-
-        /* Paywall modal (não depender de classes purgeadas do Tailwind) */
-        .paywall-card { border-radius: 26px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; }
-        .paywall-card--featured { border-color: rgba(51,65,85,.6); background: linear-gradient(180deg, #0b1220 0%, #101a2e 100%); color: #ffffff; box-shadow: 0 18px 40px rgba(2,6,23,.35); }
-        .paywall-muted { color: #64748b; }
         .paywall-muted-featured { color: rgba(226,232,240,.82); }
-        .paywall-chip { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; }
+        .paywall-chip { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
         .paywall-chip--featured { border-color: rgba(51,65,85,.8); background: rgba(15,23,42,.6); color: rgba(226,232,240,.95); }
         .paywall-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(37, 99, 235, .22); border: 1px solid rgba(96, 165, 250, .45); color: rgba(219, 234, 254, .95); }
     </style>
@@ -320,7 +319,7 @@
     {% include "components/sidebar.html" %}
 
     <div class="flex-1 flex flex-col min-w-0 h-full min-h-0">
-        <header class="h-14 border-b border-slate-200/80 bg-white/95 backdrop-blur flex items-center justify-between gap-3 px-4 sm:px-6 card-shadow flex-shrink-0">
+        <header class="za-shell-header h-14 border-b border-slate-200/80 bg-white/95 backdrop-blur flex items-center justify-between gap-3 px-4 sm:px-6 card-shadow flex-shrink-0">
             <div class="flex items-center gap-2 min-w-0">
                 <button type="button" id="sidebar-toggle" class="lg:hidden p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-100 transition shrink-0" aria-label="Abrir menu">
                     <i class="fas fa-bars text-lg"></i>
@@ -330,6 +329,9 @@
                 </h2>
             </div>
             <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                <button type="button" class="za-theme-toggle" data-za-theme-toggle aria-label="Alternar para modo escuro" title="Modo escuro">
+                    <i class="fas fa-moon text-sm" data-za-theme-icon aria-hidden="true"></i>
+                </button>
                 <span class="text-sm text-slate-500 hidden sm:inline">{{ current_user.email or '' }}</span>
                 <div class="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-white font-semibold text-sm shadow-inner">
                     {{ (current_user.email or '?')[0] | upper }}
@@ -337,15 +339,7 @@
             </div>
         </header>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="px-4 sm:px-6 py-2 space-y-1">
-            {% for category, msg in messages %}
-            <div class="p-3 rounded-lg {{ 'bg-emerald-50 text-emerald-800 border border-emerald-200' if category == 'success' else 'bg-amber-50 text-amber-800 border border-amber-200' }} text-sm">{{ msg }}</div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        {% endwith %}
+        {% include 'components/flash_messages.html' %}
 
         {% if global_channel_banner is defined and global_channel_banner %}
         <div class="px-4 sm:px-6 py-2 shrink-0" role="alert">
@@ -423,6 +417,16 @@
                 }
                 return _fetch(input, init);
             };
+            // Formulários HTML: alinhar hidden csrf_token com meta antes do POST
+            document.addEventListener("submit", function (ev) {
+                var form = ev.target;
+                if (!form || form.tagName !== "FORM" || String(form.method || "GET").toUpperCase() !== "POST") return;
+                var inp = form.querySelector('input[name="csrf_token"]');
+                if (!inp) return;
+                var metaEl = document.querySelector('meta[name="csrf-token"]');
+                var tok = ((metaEl && metaEl.getAttribute("content")) || window.CSRF_TOKEN || "").trim();
+                if (tok) inp.value = tok;
+            }, true);
         } catch (e) {}
     })();
 
@@ -598,5 +602,6 @@
     {% if embed_key %}
     <script src="{{ url_for('static', filename='embed/chat-widget.js') }}" data-key="{{ embed_key }}" data-api-base="{{ APP_BASE_URL }}"></script>
     {% endif %}
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </body>
 </html>
