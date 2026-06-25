@@ -84,9 +84,14 @@ def book_appointment(
             return None, "slot_ocupado"
     if initial_status == "pending":
         try:
-            from services.scheduling.confirmation_notify import notify_pending_booking
+            from services.scheduling.confirmation_notify import (
+                notify_client_booking_received,
+                notify_pending_booking,
+            )
 
             notify_pending_booking(cliente_id, row)
+            if row_id:
+                notify_client_booking_received(cliente_id, row_id)
         except Exception:
             pass
     elif initial_status == "confirmed" and row_id:
@@ -99,8 +104,27 @@ def book_appointment(
     return row, None
 
 
-def cancel_appointment(cliente_id: str, appointment_id: str) -> bool:
-    return repository.update_appointment_status(cliente_id, appointment_id, "cancelled")
+def cancel_appointment(
+    cliente_id: str,
+    appointment_id: str,
+    *,
+    notify_client: bool = False,
+) -> bool:
+    row = repository.get_appointment(cliente_id, appointment_id)
+    if not row:
+        return False
+    previous_status = str(row.get("status") or "").lower()
+    if previous_status == "cancelled":
+        return True
+    ok = repository.update_appointment_status(cliente_id, appointment_id, "cancelled")
+    if ok and notify_client and previous_status in ("pending", "confirmed"):
+        try:
+            from services.scheduling.confirmation_notify import notify_client_cancelled
+
+            notify_client_cancelled(cliente_id, appointment_id)
+        except Exception:
+            pass
+    return ok
 
 
 def check_reschedule_slot(

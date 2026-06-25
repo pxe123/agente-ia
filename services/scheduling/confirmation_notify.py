@@ -212,3 +212,36 @@ def notify_client_slot_submitted(cliente_id: str, appointment_id: str) -> bool:
     )
     ok, _ = _send_whatsapp(cliente_id, ctx["phone"], text)
     return ok
+
+
+def notify_client_booking_received(cliente_id: str, appointment_id: str) -> bool:
+    """Confirma ao cliente que o pedido de agendamento foi recebido (status pending)."""
+    ctx = _appointment_context(cliente_id, appointment_id)
+    text = (
+        f"Recebemos seu pedido de agendamento para {ctx['when']}.\n"
+        f"A clínica vai confirmar em breve. Obrigado!"
+    )
+    ok, _ = _send_whatsapp(cliente_id, ctx["phone"], text)
+    return ok
+
+
+def notify_client_cancelled(cliente_id: str, appointment_id: str) -> bool:
+    """Avisa o cliente que a clínica cancelou o horário."""
+    ctx = _appointment_context(cliente_id, appointment_id)
+    phone = _normalize_dest_phone(str(ctx.get("phone") or ""))
+    if not phone or len(phone) < 10:
+        logger.info(
+            "notify_client_cancelled skipped cliente=%s appointment=%s (sem telefone)",
+            str(cliente_id)[:8],
+            str(appointment_id)[:8],
+        )
+        return False
+    link = _clinic_whatsapp_link(cliente_id)
+    text = (
+        f"Seu horário foi cancelado pela clínica.\n"
+        f"{ctx['service_name']} — {ctx['when']}"
+    )
+    if link:
+        text += f"\nPara reagendar, fale conosco: {link}"
+    ok, _ = _send_whatsapp(cliente_id, phone, text)
+    return ok

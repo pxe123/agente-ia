@@ -140,46 +140,15 @@ def index():
         if use_split_public_app_routing() and host_is_public(request):
             return redirect(f"{app_base_url()}{url_for('customer.dashboard')}", code=302)
         return redirect(url_for("customer.dashboard"))
-    # Landing principal é Jinja (mantém layout base e header). A landing React fica opcional em /landing-preview.
+    # Landing pública em Jinja (inicio.html).
     plans = list_active_plans()
     return render_template('inicio.html', plans=plans)
 
 
 @customer_bp.route("/landing-preview", methods=["GET"])
-def landing_preview():
-    """Preview opcional da landing React (não substitui a home)."""
-    if current_user.is_authenticated:
-        from base.domain_redirects import app_base_url, host_is_public, use_split_public_app_routing
-
-        if use_split_public_app_routing() and host_is_public(request):
-            return redirect(f"{app_base_url()}{url_for('customer.dashboard')}", code=302)
-        return redirect(url_for("customer.dashboard"))
-    try:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        landing_dir = os.path.join(base_dir, "panel", "static", "landing")
-        index_path = os.path.join(landing_dir, "index.html")
-        if os.path.isfile(index_path):
-            from flask import send_from_directory
-            return send_from_directory(landing_dir, "index.html")
-    except Exception:
-        pass
-    return redirect(url_for("customer.index"))
-
-
-@customer_bp.route("/landing/<path:path>")
-def landing_assets(path):
-    """
-    Assets do build da landing premium (Vite base=/landing/).
-    Mantém tudo fora de login/CSRF.
-    """
-    try:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        landing_dir = os.path.join(base_dir, "panel", "static", "landing")
-        from flask import send_from_directory
-        return send_from_directory(landing_dir, path)
-    except Exception:
-        from flask import abort
-        return abort(404)
+def landing_preview_redirect():
+    """Redirect legado: landing React removida; home é inicio.html."""
+    return redirect(url_for("customer.index"), code=301)
 
 
 @customer_bp.route('/painel')

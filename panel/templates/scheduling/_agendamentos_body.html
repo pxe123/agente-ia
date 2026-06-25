@@ -99,6 +99,9 @@
         · {{ reassign_row.service_name or '—' }}
         · atual: {{ reassign_row.prof_name or '—' }}
       </p>
+      {% if auto_distribution_enabled %}
+      <p class="text-xs text-slate-500">Válido para marcações confirmadas ou pendentes. Se o profissional escolhido já tiver cliente neste horário, pode confirmar a troca entre os dois profissionais.</p>
+      {% endif %}
       {% if not reassign_eligible_professionals %}
       <p class="text-sm text-amber-800">Nenhum profissional elegível para este serviço.</p>
       {% else %}
@@ -335,7 +338,7 @@
           <tr id="{{ appt_panel_id }}" class="appt-accordion-panel hidden">
             <td colspan="7" class="px-4 py-3 bg-slate-50/90 border-t border-slate-100">
               <div class="flex flex-wrap items-center gap-2">
-                  {% if a.status == 'pending' and appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' %}
+                  {% if a.status == 'pending' %}
                   <form method="post" action="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none) }}" class="inline-flex shrink-0">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
                     <input type="hidden" name="action" value="confirm_appointment">
@@ -354,9 +357,11 @@
                     <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 whitespace-nowrap">Recusar</button>
                   </form>
                   {% endif %}
-                  {% if a.status != 'cancelled' and appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' %}
+                  {% if a.status != 'cancelled' and (appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' or auto_distribution_enabled) %}
+                  {% if appointment_origins.get(a.id|string, 'zapaction_local') != 'agenda' %}
                   <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, reschedule=a.id) }}"
                      class="inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-800 text-xs font-semibold hover:bg-teal-100 whitespace-nowrap">Remarcar</a>
+                  {% endif %}
                   <a href="{{ url_for('scheduling.home', tab='agendamentos', period=filter_period, date=filter_date or none, professional_id=filter_professional_id or none, status=filter_status or none, q=filter_q or none, reassign=a.id) }}"
                      class="inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-semibold hover:bg-indigo-100 whitespace-nowrap">Profissional</a>
                   {% endif %}

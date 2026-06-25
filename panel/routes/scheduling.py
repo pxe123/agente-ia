@@ -239,7 +239,10 @@ def _handle_post(cid: str) -> str:
             supabase.table(Tables.SCHEDULING_SETTINGS).update(payload).eq(
                 SchedulingSettingsModel.CLIENTE_ID, cid
             ).execute()
-            if scheduling_uses_internal_motor(cid):
+            from services.agendamento_ia_urls import agendamento_ia_configured
+
+            can_save_policies = scheduling_uses_internal_motor(cid) or agendamento_ia_configured()
+            if can_save_policies:
                 mode_raw = (
                     request.form.get("professional_assignment_mode") or "manual"
                 ).strip().lower()
@@ -552,10 +555,19 @@ def _handle_post(cid: str) -> str:
     if action == "delete_appointment":
         aid = (request.form.get("appointment_id") or "").strip()
         if aid:
-            from services.scheduling import repository as sched_repo
+            from services.scheduling.panel_purge import purge_appointment_from_panel
 
-            if sched_repo.delete_appointment_row(cid, aid):
-                flash("Agendamento excluído do painel.", "success")
+            ok, err = purge_appointment_from_panel(cid, aid)
+            if ok:
+                flash("Agendamento excluído do painel e cancelado no Agenda IA.", "success")
+            elif err == "nao_encontrado":
+                flash("Agendamento não encontrado.", "error")
+            elif err:
+                flash(
+                    f"Não foi possível excluir ({err}). "
+                    "O registo pode continuar ativo no Agenda IA — use «Cancelar» ou tente novamente.",
+                    "error",
+                )
             else:
                 flash("Não foi possível excluir o agendamento.", "error")
         return "agendamentos"
@@ -809,16 +821,25 @@ def _handle_post(cid: str) -> str:
         if not aid or not bid:
             flash("Troca inválida.", "error")
             return "agendamentos"
-        from services.agendamento_ia_appointment_webhook import appointment_origin_label
+        from services.agendamento_ia_appointment_webhook import (
+            appointment_origin_label,
+            panel_can_reassign_professional,
+        )
+        from services.agendamento_ia_provider import sync_panel_swap_to_agenda
         from services.scheduling import repository as sched_repo
+        from services.scheduling.assignment import uses_auto_distribution_for_panel
         from services.scheduling.swap import swap_appointments_between_professionals
 
-        for appt_id in (aid, bid):
-            row = sched_repo.get_appointment(cid, appt_id)
+        auto_dist = uses_auto_distribution_for_panel(cid)
+        row_a = sched_repo.get_appointment(cid, aid)
+        row_b = sched_repo.get_appointment(cid, bid)
+        for appt_id, row in ((aid, row_a), (bid, row_b)):
             if not row:
                 flash("Agendamento não encontrado.", "error")
                 return "agendamentos"
-            if appointment_origin_label(row) == "agenda":
+            if appointment_origin_label(row) == "agenda" and not panel_can_reassign_professional(
+                row, auto_distribution=auto_dist
+            ):
                 flash("Marcações do Agendamento IA não podem ser trocadas aqui.", "warning")
                 return "agendamentos"
         changed_by = str(getattr(current_user, "id", "") or "panel")
@@ -826,6 +847,20 @@ def _handle_post(cid: str) -> str:
             cid, aid, bid, changed_by, swap_mode=swap_mode
         )
         if ok:
+            ok_ag, err_ag = sync_panel_swap_to_agenda(
+                cliente_id=cid,
+                row_a=row_a or {},
+                row_b=row_b or {},
+            )
+            if not ok_ag:
+                swap_appointments_between_professionals(
+                    cid, aid, bid, changed_by, swap_mode=swap_mode
+                )
+                flash(
+                    f"Troca revertida: falhou sincronização com Agenda IA ({err_ag or 'erro'}).",
+                    "error",
+                )
+                return "agendamentos"
             current_app.logger.info(
                 "appointment_swap panel appointment_a=%s appointment_b=%s mode=%s user=%s",
                 aid,
@@ -846,8 +881,13 @@ def _handle_post(cid: str) -> str:
         if not aid or not new_pid:
             flash("Selecione o profissional para reatribuir.", "error")
             return "agendamentos"
-        from services.agendamento_ia_appointment_webhook import appointment_origin_label
+        from services.agendamento_ia_appointment_webhook import (
+            appointment_origin_label,
+            panel_can_reassign_professional,
+        )
+        from services.agendamento_ia_provider import sync_panel_reassign_to_agenda
         from services.scheduling import repository as sched_repo
+        from services.scheduling.assignment import uses_auto_distribution_for_panel
         from services.scheduling.bookings import reassign_appointment_professional
         from services.scheduling.eligible import eligible_professionals
 
@@ -858,7 +898,10 @@ def _handle_post(cid: str) -> str:
         if str(existing.get("status") or "") == "cancelled":
             flash("Não é possível alterar profissional de um agendamento cancelado.", "error")
             return "agendamentos"
-        if appointment_origin_label(existing) == "agenda":
+        auto_dist = uses_auto_distribution_for_panel(cid)
+        if appointment_origin_label(existing) == "agenda" and not panel_can_reassign_professional(
+            existing, auto_distribution=auto_dist
+        ):
             flash(
                 "Esta marcação veio do Agendamento IA. Altere pelo fluxo externo.",
                 "warning",
@@ -873,6 +916,7 @@ def _handle_post(cid: str) -> str:
         if new_pid not in eligible_ids:
             flash("Profissional não elegível para este serviço.", "error")
             return "agendamentos"
+        old_pid = str(existing.get("professional_id") or "")
         changed_by = str(getattr(current_user, "id", "") or "panel")
         ok, rerr, swap_offer = reassign_appointment_professional(
             cliente_id=cid,
@@ -881,7 +925,25 @@ def _handle_post(cid: str) -> str:
             changed_by=changed_by,
         )
         if ok:
-            flash("Profissional atualizado.", "success")
+            ok_ag, err_ag = sync_panel_reassign_to_agenda(
+                cliente_id=cid,
+                appointment_row=existing,
+                new_professional_id=new_pid,
+            )
+            if not ok_ag and old_pid:
+                sched_repo.update_appointment_professional(
+                    cid,
+                    aid,
+                    old_pid,
+                    meta_patch={"reassign_rollback": True},
+                )
+                flash(
+                    f"Não foi possível sincronizar com Agenda IA ({err_ag or 'erro'}). "
+                    "Alteração revertida.",
+                    "error",
+                )
+            else:
+                flash("Profissional atualizado.", "success")
         elif rerr == "swap_available" and swap_offer:
             _stash_redirect_extra(
                 {
@@ -898,59 +960,29 @@ def _handle_post(cid: str) -> str:
         return "agendamentos"
 
     if action == "cancel_appointment":
-        from services.agendamento_ia_appointment_webhook import appointment_origin_label
-
         aid = (request.form.get("appointment_id") or "").strip()
-        if aid:
-            row = (
-                supabase.table(Tables.SCHEDULING_APPOINTMENTS)
-                .select("*")
-                .eq(SchedulingAppointmentModel.ID, aid)
-                .eq(SchedulingAppointmentModel.CLIENTE_ID, cid)
-                .limit(1)
-                .execute()
-                .data
-            )
-            existing = row[0] if row else None
-            if existing and appointment_origin_label(existing) == "agenda":
-                ext_id = (
-                    existing.get(SchedulingAppointmentModel.EXTERNAL_AGENDA_APPOINTMENT_ID)
-                    or existing.get("external_agenda_appointment_id")
-                    or ""
-                )
-                ext_id = str(ext_id).strip()
-                if ext_id:
-                    from services.agendamento_ia_cancel import cancel_appointment_in_agendamento_ia
+        if not aid:
+            return "agendamentos"
+        from services.scheduling import repository as sched_repo
+        from services.scheduling.motor_adapters import get_motor_adapter
 
-                    ok_cancel, cerr = cancel_appointment_in_agendamento_ia(
-                        cliente_id=cid,
-                        external_appointment_id=ext_id,
-                        remote_id=str(existing.get(SchedulingAppointmentModel.REMOTE_ID) or ""),
-                    )
-                    if ok_cancel:
-                        flash("Agendamento cancelado no Agendamento IA.", "success")
-                    else:
-                        flash(
-                            "Não foi possível cancelar no Agendamento IA "
-                            f"({cerr or 'erro'}). Tente pelo WhatsApp ou link enviado ao cliente.",
-                            "warning",
-                        )
-                    return "agendamentos"
-                flash(
-                    "Este agendamento foi criado no Agendamento IA (sem ID externo). "
-                    "Cancele pelo WhatsApp ou pelo link de agendamento enviado ao cliente.",
-                    "warning",
-                )
-                return "agendamentos"
-            supabase.table(Tables.SCHEDULING_APPOINTMENTS).update(
-                {
-                    SchedulingAppointmentModel.STATUS: "cancelled",
-                    SchedulingAppointmentModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
-                }
-            ).eq(SchedulingAppointmentModel.ID, aid).eq(
-                SchedulingAppointmentModel.CLIENTE_ID, cid
-            ).execute()
-            flash("Agendamento cancelado.", "success")
+        existing = sched_repo.get_appointment(cid, aid)
+        if not existing:
+            flash("Agendamento não encontrado.", "error")
+            return "agendamentos"
+        if str(existing.get("status") or "").lower() == "cancelled":
+            flash("Este agendamento já está cancelado.", "info")
+            return "agendamentos"
+
+        adapter = get_motor_adapter(cid)
+        ok_cancel, cerr = adapter.cancel_appointment(cliente_id=cid, local_row=existing)
+        if ok_cancel:
+            flash("Agendamento cancelado. O cliente será avisado por WhatsApp se tiver telefone cadastrado.", "success")
+        else:
+            flash(
+                f"Não foi possível cancelar ({cerr or 'erro'}).",
+                "error",
+            )
         return "agendamentos"
 
     if action == "confirm_appointment":
@@ -963,7 +995,12 @@ def _handle_post(cid: str) -> str:
             if ok:
                 flash("Agendamento confirmado.", "success")
             else:
-                flash(f"Não foi possível confirmar ({err or 'erro'}).", "error")
+                from services.scheduling.google_sync_errors import format_agenda_operation_error
+
+                flash(
+                    f"Não foi possível confirmar ({format_agenda_operation_error(err)}).",
+                    "error",
+                )
         return "agendamentos"
 
     if action == "reject_appointment":
@@ -1650,7 +1687,10 @@ def home():
         if edit_block_id and str(b.get("id")) == edit_block_id:
             edit_block_row = enriched
 
-    from services.scheduling.assignment import assignment_mode_label, uses_auto_distribution
+    from services.scheduling.assignment import (
+        assignment_mode_label,
+        uses_auto_distribution_for_panel,
+    )
     from services.scheduling.confirmation_policy import (
         confirmation_policy_label,
         get_confirmation_policy,
@@ -1660,7 +1700,7 @@ def home():
     from services.scheduling.eligible import eligible_professionals as eligible_profs_for_service
 
     assignment_mode = sched_repo.get_assignment_mode(cid)
-    auto_distribution_enabled = uses_auto_distribution(cid)
+    auto_distribution_enabled = uses_auto_distribution_for_panel(cid)
     confirmation_policy = get_confirmation_policy(cid)
     confirmation_pending_ttl_hours = get_confirmation_pending_ttl_hours(cid)
     professional_confirmation_enabled = requires_professional_confirmation(cid)
@@ -2002,6 +2042,8 @@ def calendario():
 
     from services.scheduling.display import appointments_for_cal_js
 
+    from services.scheduling.assignment import uses_auto_distribution_for_panel
+
     try:
         return render_template(
             "scheduling/calendario.html",
@@ -2016,6 +2058,7 @@ def calendario():
             scheduling_timezone=tz_name,
             scheduling_uses_internal=scheduling_uses_internal_motor(cid),
             panel_booking_enabled=panel_booking_allowed(cid),
+            auto_distribution_enabled=uses_auto_distribution_for_panel(cid),
             settings=st,
             prev_date=prev_date,
             next_date=next_date,

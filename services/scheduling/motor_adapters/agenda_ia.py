@@ -1,6 +1,7 @@
 """Motor externo Agendamento IA."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +20,11 @@ from services.scheduling.motor_adapters.base import (
     check_slot_free_local,
     revalidate_overlap_after_insert,
 )
+
+logger = logging.getLogger(__name__)
+
+# Motor sem espelho (já cancelado / id desatualizado): painel cancela localmente.
+_REMOTE_CANCEL_LOCAL_FALLBACK_ERRORS = frozenset({"NO_APPOINTMENT"})
 
 
 class AgendaIAMotorAdapter:
@@ -162,11 +168,23 @@ class AgendaIAMotorAdapter:
             ok, err = cancel_appointment_in_agendamento_ia(
                 cliente_id=cliente_id,
                 external_appointment_id=str(ext),
-                remote_id=local_row.get("remote_id"),
+                remote_id=None,
             )
             if not ok:
-                return False, err
-        return repository.update_appointment_status(cliente_id, aid, "cancelled"), None
+                if err in _REMOTE_CANCEL_LOCAL_FALLBACK_ERRORS:
+                    logger.warning(
+                        "agenda_ia cancel fallback local cliente_id=%s appointment=%s ext=%s err=%s",
+                        str(cliente_id)[:8],
+                        aid[:8],
+                        str(ext)[:8],
+                        err,
+                    )
+                else:
+                    return False, err
+        from services.scheduling.bookings import cancel_appointment
+
+        ok = cancel_appointment(cliente_id, aid, notify_client=True)
+        return ok, None if ok else "cancel_falhou"
 
     def cancel_series_remote(
         self,

@@ -103,7 +103,9 @@ class InternalMotorAdapter:
         aid = str(local_row.get("id") or "")
         if not aid:
             return False, "appointment_id_em_falta"
-        ok = repository.update_appointment_status(cliente_id, aid, "cancelled")
+        from services.scheduling.bookings import cancel_appointment
+
+        ok = cancel_appointment(cliente_id, aid, notify_client=True)
         return ok, None if ok else "cancel_falhou"
 
     def cancel_series_remote(

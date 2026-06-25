@@ -18,6 +18,9 @@
     · {{ reassign_row.service_name or '—' }}
     · atual: {{ reassign_row.prof_name or '—' }}
   </p>
+  {% if auto_distribution_enabled %}
+  <p class="text-xs text-slate-500">Válido para marcações confirmadas ou pendentes. Se o profissional escolhido já tiver cliente neste horário, pode confirmar a troca entre os dois profissionais.</p>
+  {% endif %}
   {% if not reassign_eligible_professionals %}
   <p class="text-sm text-amber-800">Nenhum profissional elegível para este serviço.</p>
   {% else %}

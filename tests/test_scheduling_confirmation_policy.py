@@ -34,13 +34,22 @@ class TestConfirmationPolicy(unittest.TestCase):
         self.assertEqual(meta.get("confirmation_policy"), "professional")
         self.assertIn("confirmation_requested_at", meta)
 
+    @patch("services.agendamento_ia_urls.agendamento_ia_configured", return_value=False)
     @patch("services.scheduling.confirmation_policy.scheduling_uses_internal_motor")
     @patch("services.scheduling.confirmation_policy.scheduling_repository.get_settings")
-    def test_professional_external_fallback_auto(self, mock_settings, mock_internal):
+    def test_professional_external_fallback_auto(self, mock_settings, mock_internal, _configured):
         mock_settings.return_value = {"confirmation_policy": "professional"}
         mock_internal.return_value = False
         self.assertEqual(get_confirmation_policy("cid"), "auto")
         self.assertEqual(resolve_initial_appointment_status("cid"), "confirmed")
+
+    @patch("services.agendamento_ia_urls.agendamento_ia_configured", return_value=True)
+    @patch("services.scheduling.confirmation_policy.scheduling_uses_internal_motor", return_value=False)
+    @patch("services.scheduling.confirmation_policy.scheduling_repository.get_settings")
+    def test_professional_agenda_ia(self, mock_settings, _internal, _configured):
+        mock_settings.return_value = {"confirmation_policy": "professional"}
+        self.assertEqual(get_confirmation_policy("cid"), "professional")
+        self.assertEqual(resolve_initial_appointment_status("cid"), "pending")
 
     def test_labels(self):
         self.assertEqual(confirmation_policy_label("auto"), "Confirmação automática")

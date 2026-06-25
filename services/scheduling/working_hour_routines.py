@@ -243,15 +243,23 @@ def save_working_hour_config(cliente_id: str, config: dict[str, Any]) -> str | N
     if not supabase:
         return "sem_db"
     cfg = normalize_config(config)
+    # Intervalos expandidos são a fonte de verdade para agenda e página pública.
+    if not sync_clinic_working_hours(cliente_id, cfg):
+        return "sem_db"
     from datetime import datetime, timezone
 
     from database.models import SchedulingSettingsModel
 
-    supabase.table(Tables.SCHEDULING_SETTINGS).update(
-        {
-            SchedulingSettingsModel.WORKING_HOUR_CONFIG: cfg,
-            SchedulingSettingsModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
-        }
-    ).eq(SchedulingSettingsModel.CLIENTE_ID, str(cliente_id)).execute()
-    sync_clinic_working_hours(cliente_id, cfg)
+    payload = {
+        SchedulingSettingsModel.WORKING_HOUR_CONFIG: cfg,
+        SchedulingSettingsModel.UPDATED_AT: datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        supabase.table(Tables.SCHEDULING_SETTINGS).update(payload).eq(
+            SchedulingSettingsModel.CLIENTE_ID, str(cliente_id)
+        ).execute()
+    except Exception as exc:
+        # Migração 032 ainda não aplicada: horários já foram gravados em working_hours.
+        if "working_hour_config" not in str(exc).lower():
+            return str(exc)[:200]
     return None

@@ -25,7 +25,6 @@ PUBLIC_MARKETING_PATHS_EXACT = frozenset(
         "/termos",
         "/exclusao-de-dados",
         "/whatsapp-atendimento",
-        "/landing-preview",
         "/sitemap.xml",
         "/robots.txt",
         "/favicon.ico",
@@ -37,9 +36,9 @@ PUBLIC_MARKETING_PATHS_EXACT = frozenset(
 PATHS_CANONICAL_ON_PUBLIC_HOST = PUBLIC_MARKETING_PATHS_EXACT
 
 PUBLIC_MARKETING_PREFIXES = (
-    "/landing/",
     "/static/",
     "/agenda/",
+    "/confirmacao/",
 )
 
 # Ordem estável para sitemap.xml (subset indexável de PUBLIC_MARKETING_PATHS_EXACT).

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from services.agendamento_ia_appointment_webhook import (
     appointment_origin_label,
     normalize_webhook_event,
+    panel_can_reassign_professional,
 )
 from services.agendamento_ia_bridge import agendamento_use_internal_scheduling
 from services.agendamento_ia_urls import (
@@ -47,6 +48,21 @@ class TestAgendamentoIaUrls(unittest.TestCase):
             "agenda",
         )
         self.assertEqual(appointment_origin_label({"meta": {}}), "zapaction_local")
+
+    def test_panel_can_reassign_professional(self):
+        local = {"status": "confirmed", "meta": {}}
+        agenda = {"status": "confirmed", "external_agenda_appointment_id": "ext-1"}
+        self.assertTrue(panel_can_reassign_professional(local, auto_distribution=False))
+        self.assertFalse(panel_can_reassign_professional(agenda, auto_distribution=False))
+        self.assertTrue(panel_can_reassign_professional(agenda, auto_distribution=True))
+        confirmed_agenda = {**agenda, "status": "confirmed"}
+        self.assertTrue(panel_can_reassign_professional(confirmed_agenda, auto_distribution=True))
+        self.assertFalse(
+            panel_can_reassign_professional(
+                {**agenda, "status": "cancelled"},
+                auto_distribution=True,
+            )
+        )
 
     def test_build_public_book_page_url(self):
         with patch(

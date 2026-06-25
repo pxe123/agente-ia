@@ -70,6 +70,22 @@ def appointment_origin_label(row: dict[str, Any] | None) -> str:
     return "zapaction_local"
 
 
+def panel_can_reassign_professional(
+    row: dict[str, Any] | None,
+    *,
+    auto_distribution: bool,
+) -> bool:
+    """Painel pode trocar profissional (pendente ou confirmado; incl. Agenda IA em modo automático)."""
+    if not row:
+        return False
+    status = str(row.get("status") or "").lower()
+    if status == "cancelled":
+        return False
+    if appointment_origin_label(row) != "agenda":
+        return True
+    return auto_distribution
+
+
 def verify_zapaction_webhook_signature(
     *, secret: str, raw_body: bytes, timestamp_header: str, signature_header: str
 ) -> tuple[bool, str | None]:
@@ -103,6 +119,60 @@ def verify_zapaction_webhook_signature(
     if not hmac.compare_digest(expected, got):
         return False, "assinatura_invalida"
     return True, None
+
+
+def _normalize_webhook_phone(phone: str, remote_id: str) -> tuple[str, str]:
+    """Garante contact_phone/remote_id em E.164 dígitos (ex.: 5511999999999)."""
+    from services.scheduling.public_contact import normalize_scheduling_contact_phone
+
+    for raw in (phone, remote_id):
+        norm = normalize_scheduling_contact_phone(raw)
+        if norm:
+            return norm, norm
+    return phone, remote_id
+
+
+def _is_reconciliation_import(event_id: str | None) -> bool:
+    return str(event_id or "").strip().startswith("import-")
+
+
+def _dispatch_webhook_notifications(
+    *,
+    cliente_id: str,
+    agenda_appointment_id: str,
+    event: str,
+    status: str,
+    is_new: bool,
+) -> None:
+    """WhatsApp após agendamento vindo do motor Agenda IA (página pública)."""
+    if not is_new:
+        return
+    row = sched_repo.get_appointment_by_external_agenda_id(cliente_id, agenda_appointment_id)
+    if not row:
+        return
+    aid = str(row.get(SchedulingAppointmentModel.ID) or row.get("id") or "")
+    if not aid:
+        return
+    try:
+        if status == "pending":
+            from services.scheduling.confirmation_notify import (
+                notify_client_booking_received,
+                notify_pending_booking,
+            )
+
+            notify_pending_booking(cliente_id, row)
+            notify_client_booking_received(cliente_id, aid)
+        elif status == "confirmed" and event in (
+            "appointment.created",
+            "appointment.confirmed",
+        ):
+            from services.scheduling.client_calendar_invite import on_appointment_confirmed
+            from services.scheduling.confirmation_notify import notify_client_confirmed
+
+            notify_client_confirmed(cliente_id, aid)
+            on_appointment_confirmed(cliente_id, aid, kind="confirmed")
+    except Exception:
+        pass
 
 
 def _normalize_status(raw: str | None, event: str) -> str:
@@ -218,10 +288,11 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
     ends_at = (payload.get("ends_at") or "").strip()
 
     contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
-    phone = (contact.get("phone") or "").strip() if contact else ""
+    phone_raw = (contact.get("phone") or "").strip() if contact else ""
     name = (contact.get("name") or "").strip() if contact else ""
     email = (contact.get("email") or "").strip() if contact else ""
-    remote_id = (payload.get("remote_id") or "").strip()
+    remote_id_raw = (payload.get("remote_id") or "").strip()
+    phone, remote_id = _normalize_webhook_phone(phone_raw, remote_id_raw)
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
 
     if event in ("appointment.cancelled", "appointment.rejected") or status == "cancelled":
@@ -285,6 +356,12 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
 
     if existing:
         prev_meta = dict(existing.get(SchedulingAppointmentModel.META) or {})
+        prev_status = str(
+            existing.get(SchedulingAppointmentModel.STATUS) or existing.get("status") or ""
+        ).lower()
+        if prev_status == "cancelled" and status != "cancelled":
+            return True, None, 200
+
         merged = {**prev_meta, **meta_base}
         if "agenda_metadata" in prev_meta and metadata:
             merged["agenda_metadata"] = {**(prev_meta.get("agenda_metadata") or {}), **metadata}
@@ -312,6 +389,14 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
         supabase.table(Tables.SCHEDULING_APPOINTMENTS).update(update_row).eq(SchedulingAppointmentModel.ID, str(existing["id"])).eq(
             SchedulingAppointmentModel.CLIENTE_ID, str(cliente_id)
         ).execute()
+        if not _is_reconciliation_import(event_id) and prev_status != status:
+            _dispatch_webhook_notifications(
+                cliente_id=cliente_id,
+                agenda_appointment_id=appointment_id,
+                event=event,
+                status=status,
+                is_new=status == "pending" and prev_status != "pending",
+            )
         return True, None, 200
 
     row = {
@@ -335,6 +420,14 @@ def process_appointment_webhook_payload(payload: dict[str, Any]) -> tuple[bool, 
     if zapaction_appointment_id:
         row[SchedulingAppointmentModel.ID] = zapaction_appointment_id
     supabase.table(Tables.SCHEDULING_APPOINTMENTS).insert(row).execute()
+    if not _is_reconciliation_import(event_id):
+        _dispatch_webhook_notifications(
+            cliente_id=cliente_id,
+            agenda_appointment_id=appointment_id,
+            event=event,
+            status=status,
+            is_new=True,
+        )
     return True, None, 200
 
 

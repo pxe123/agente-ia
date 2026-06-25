@@ -53,12 +53,20 @@ class TestSplitHostRedirects(unittest.TestCase):
         loc = resp.headers.get("Location") or ""
         self.assertTrue(loc.startswith(dd.public_base_url()), loc)
 
-    def test_marketing_path_on_public_host_is_200(self):
+    def test_confirmacao_path_allowed_on_public_host(self):
+        self.assertTrue(dd.path_allowed_on_public_host("/confirmacao/test-token-abc"))
+
+    def test_confirmacao_on_public_host_not_500(self):
         pub = dd.public_hostname()
         self.assertTrue(pub)
         client = self.app.test_client()
-        resp = client.get("/precos", base_url=f"https://{pub}", headers={"Host": pub})
-        self.assertEqual(resp.status_code, 200, resp.status_code)
+        resp = client.get(
+            "/confirmacao/test-invalid-token",
+            base_url=f"https://{pub}",
+            headers={"Host": pub},
+        )
+        self.assertNotEqual(resp.status_code, 500, resp.data[:500] if resp.data else b"")
+        self.assertIn(resp.status_code, (200, 404))
 
     def test_no_redirect_chain_first_hop(self):
         if not dd.use_split_public_app_routing():

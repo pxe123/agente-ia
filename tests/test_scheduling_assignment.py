@@ -8,6 +8,7 @@ from services.scheduling.assignment import (
     order_candidates_for_assignment,
     pick_professional_round_robin,
     uses_auto_distribution,
+    uses_auto_distribution_for_panel,
 )
 
 
@@ -47,6 +48,19 @@ class TestSchedulingAssignment(unittest.TestCase):
                 return_value="manual",
             ):
                 self.assertFalse(uses_auto_distribution(cid))
+
+    def test_uses_auto_distribution_for_panel_ignores_motor(self):
+        cid = "11111111-2222-3333-4444-555555555555"
+        with patch(
+            "services.scheduling.assignment.scheduling_uses_internal_motor",
+            return_value=False,
+        ):
+            with patch(
+                "services.scheduling.assignment.scheduling_repository.get_assignment_mode",
+                return_value="auto_distribution",
+            ):
+                self.assertFalse(uses_auto_distribution(cid))
+                self.assertTrue(uses_auto_distribution_for_panel(cid))
 
     def test_round_robin_alternates(self):
         cid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

@@ -664,7 +664,7 @@ def request_context():
                     },
                 )
                 #endregion
-                from flask import flash, jsonify, redirect
+                from flask import flash, jsonify
 
                 # POST de formulário HTML no painel: não devolver JSON cru no browser
                 if (

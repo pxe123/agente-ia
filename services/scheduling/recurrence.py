@@ -675,11 +675,10 @@ def delete_recurrence_scope(
     local_today = datetime.now(timezone.utc).astimezone(_get_tz(tz)).date()
 
     def _delete_row(appt: dict[str, Any]) -> bool:
-        from services.scheduling.motor_adapters import get_motor_adapter
+        from services.scheduling.panel_purge import purge_appointment_row
 
-        adapter = get_motor_adapter(cliente_id)
-        adapter.cancel_appointment(cliente_id=cliente_id, local_row=appt)
-        return repository.delete_appointment_row(cliente_id, str(appt.get("id") or ""))
+        ok, _err = purge_appointment_row(cliente_id, appt)
+        return ok
 
     if scope == "this_only":
         if not appointment_id:

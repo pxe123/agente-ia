@@ -14,6 +14,30 @@ def _appointment_pending(row: dict[str, Any] | None) -> bool:
     return bool(row) and str(row.get("status") or "").lower() == "pending"
 
 
+def _sync_agenda_schedule(
+    cliente_id: str,
+    appointment_id: str,
+    *,
+    starts_at: datetime,
+    ends_at: datetime,
+    target_status: str = "confirmed",
+) -> tuple[bool, str | None]:
+    row = repository.get_appointment(cliente_id, appointment_id)
+    ext = str((row or {}).get("external_agenda_appointment_id") or "").strip()
+    if not ext:
+        return True, None
+    from services.agendamento_ia_confirmation import finalize_appointment_in_agendamento_ia
+
+    return finalize_appointment_in_agendamento_ia(
+        cliente_id=cliente_id,
+        external_appointment_id=ext,
+        remote_id=str((row or {}).get("remote_id") or ""),
+        starts_at=starts_at,
+        ends_at=ends_at,
+        target_status=target_status,
+    )
+
+
 def confirm_appointment(
     cliente_id: str,
     appointment_id: str,
@@ -25,6 +49,31 @@ def confirm_appointment(
         return False, "nao_encontrado"
     if not _appointment_pending(row):
         return False, "nao_pendente"
+
+    ext = str(row.get("external_agenda_appointment_id") or "").strip()
+    starts = parse_iso_datetime(row.get("starts_at"))
+    ends = parse_iso_datetime(row.get("ends_at"))
+    if ext and starts and ends:
+        ok_ext, err_ext = _sync_agenda_schedule(
+            cliente_id,
+            appointment_id,
+            starts_at=starts,
+            ends_at=ends,
+            target_status="confirmed",
+        )
+        if not ok_ext:
+            return False, err_ext or "agenda_confirm_falhou"
+    elif ext:
+        from services.agendamento_ia_confirmation import confirm_appointment_in_agendamento_ia
+
+        ok_ext, err_ext = confirm_appointment_in_agendamento_ia(
+            cliente_id=cliente_id,
+            external_appointment_id=ext,
+            remote_id=str(row.get("remote_id") or ""),
+        )
+        if not ok_ext:
+            return False, err_ext or "agenda_confirm_falhou"
+
     ok = repository.update_appointment_status(cliente_id, appointment_id, "confirmed")
     if not ok:
         return False, "update_falhou"
@@ -59,6 +108,19 @@ def reject_appointment(
         return False, "nao_encontrado"
     if not _appointment_pending(row):
         return False, "nao_pendente"
+
+    ext = str(row.get("external_agenda_appointment_id") or "").strip()
+    if ext:
+        from services.agendamento_ia_confirmation import reject_appointment_in_agendamento_ia
+
+        ok_ext, err_ext = reject_appointment_in_agendamento_ia(
+            cliente_id=cliente_id,
+            external_appointment_id=ext,
+            remote_id=str(row.get("remote_id") or ""),
+        )
+        if not ok_ext:
+            return False, err_ext or "agenda_reject_falhou"
+
     ok = repository.update_appointment_status(cliente_id, appointment_id, "cancelled")
     if not ok:
         return False, "update_falhou"
@@ -236,8 +298,26 @@ def _execute_accept_proposal(
     prof_id = str((appt or {}).get("professional_id") or "") or None
     svc = repository.get_service(cid, str((appt or {}).get("service_id") or ""))
     dur = int((svc or {}).get("duration_minutes") or 30)
-    from services.scheduling.bookings import reschedule_appointment
+    from services.scheduling.bookings import check_reschedule_slot, reschedule_appointment
 
+    ok, rerr, _swap = check_reschedule_slot(
+        cliente_id=cid,
+        appointment_id=aid,
+        new_starts_at=starts,
+        duration_minutes=dur,
+        professional_id=prof_id,
+    )
+    if not ok:
+        return False, rerr or "slot_ocupado", None
+    ok_sync, sync_err = _sync_agenda_schedule(
+        cid,
+        aid,
+        starts_at=starts,
+        ends_at=ends,
+        target_status="confirmed",
+    )
+    if not ok_sync:
+        return False, sync_err or "agenda_sync_falhou", None
     ok, rerr, _swap = reschedule_appointment(
         cliente_id=cid,
         appointment_id=aid,
@@ -328,6 +408,15 @@ def client_choose_alternative_slot(raw_token: str, slot_iso: str) -> tuple[bool,
     )
     if not ok:
         return False, rerr or "falha"
+    ok_sync, sync_err = _sync_agenda_schedule(
+        cid,
+        aid,
+        starts_at=starts,
+        ends_at=starts + timedelta(minutes=dur),
+        target_status="pending",
+    )
+    if not ok_sync:
+        return False, sync_err or "agenda_sync_falhou"
     repository.merge_appointment_meta(
         cid,
         aid,

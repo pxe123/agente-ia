@@ -80,7 +80,7 @@ def build_provider_services_links(
     links: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for s in services:
-        if not s.get("id") or not bool(s.get("active", True)):
+        if not s.get("id"):
             continue
         sid = str(s["id"])
         pid = s.get("professional_id")
@@ -189,6 +189,24 @@ def _normalize_time(v: Any) -> str:
     return s
 
 
+def _list_panel_services(cliente_id: str) -> list[dict[str, Any]]:
+    """Lista idêntica à aba Serviços do painel (sem filtrar active)."""
+    from database.models import SchedulingServiceModel, Tables
+    from database.supabase_sq import supabase
+
+    if supabase:
+        return (
+            supabase.table(Tables.SCHEDULING_SERVICES)
+            .select("*")
+            .eq(SchedulingServiceModel.CLIENTE_ID, str(cliente_id))
+            .order(SchedulingServiceModel.SORT_ORDER)
+            .execute()
+            .data
+            or []
+        )
+    return sched_repo.list_services(cliente_id, active_only=False)
+
+
 def build_tenant_snapshot_payload(cliente_id: str) -> dict[str, Any] | None:
     if not sched_repo.supabase_available():
         return None
@@ -215,8 +233,8 @@ def build_tenant_snapshot_payload(cliente_id: str) -> dict[str, Any] | None:
                     "end_time": _normalize_time(h.get("end_time")),
                 }
             )
-    professionals = sched_repo.list_professionals(cliente_id, active_only=False)
-    services = sched_repo.list_services(cliente_id, active_only=False)
+    professionals = sched_repo.list_professionals(cliente_id, active_only=True)
+    services = _list_panel_services(cliente_id)
     prof_out = [
         {
             "id": str(p.get("id")),
@@ -243,6 +261,9 @@ def build_tenant_snapshot_payload(cliente_id: str) -> dict[str, Any] | None:
     from services.scheduling.slug import normalize_public_slug
 
     slug_norm = normalize_public_slug(st.get("public_slug"))
+    assignment_mode = (st.get("professional_assignment_mode") or sched_repo.get_assignment_mode(cliente_id) or "manual").strip().lower()
+    if assignment_mode not in ("manual", "auto_distribution"):
+        assignment_mode = "manual"
     return {
         "event": "zapaction.scheduling.tenant_snapshot",
         "request_schema_version": SYNC_REQUEST_SCHEMA_VERSION,
@@ -253,6 +274,7 @@ def build_tenant_snapshot_payload(cliente_id: str) -> dict[str, Any] | None:
             "timezone": (st.get("timezone") or "America/Sao_Paulo") or "America/Sao_Paulo",
             "working_hours_clinic": clinic_wh,
             "working_hours_by_professional": prof_wh,
+            "professional_assignment_mode": assignment_mode,
             "confirmation_policy": st.get("confirmation_policy") or "auto",
             "confirmation_pending_ttl_hours": int(st.get("confirmation_pending_ttl_hours") or 48),
         },

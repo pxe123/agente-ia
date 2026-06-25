@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from services.scheduling.confirmation_actions import resolve_proposal_choice
-from services.scheduling.confirmation_notify import notify_pending_booking
+from services.scheduling.confirmation_notify import (
+    notify_client_cancelled,
+    notify_pending_booking,
+)
 from services.scheduling.confirmation_tokens import create_proposal_token
 
 
@@ -68,6 +71,53 @@ class TestNotifyPendingBooking(unittest.TestCase):
         mock_send.assert_called_once_with(
             "cid", "5511777777777", unittest.mock.ANY
         )
+
+
+class TestNotifyClientCancelled(unittest.TestCase):
+    @patch("services.scheduling.confirmation_notify._send_whatsapp")
+    @patch("services.scheduling.confirmation_notify._clinic_whatsapp_link")
+    @patch("services.scheduling.confirmation_notify._appointment_context")
+    def test_sends_cancel_message(self, mock_ctx, mock_link, mock_send):
+        mock_ctx.return_value = {
+            "service_name": "Consulta",
+            "when": "18/06 10:00",
+            "phone": "5514999999999",
+        }
+        mock_link.return_value = "https://wa.me/5511888888888"
+        mock_send.return_value = (True, None)
+
+        ok = notify_client_cancelled("cid", "appt-1")
+        self.assertTrue(ok)
+        mock_send.assert_called_once()
+        text = mock_send.call_args[0][2]
+        self.assertIn("cancelado", text.lower())
+        self.assertIn("Consulta", text)
+
+
+class TestCancelAppointmentNotify(unittest.TestCase):
+    @patch("services.scheduling.confirmation_notify.notify_client_cancelled")
+    @patch("services.scheduling.bookings.repository.update_appointment_status", return_value=True)
+    @patch("services.scheduling.bookings.repository.get_appointment")
+    def test_notify_when_clinic_cancels_confirmed(
+        self, mock_get, mock_update, mock_notify
+    ):
+        from services.scheduling.bookings import cancel_appointment
+
+        mock_get.return_value = {"status": "confirmed"}
+        ok = cancel_appointment("cid", "appt-1", notify_client=True)
+        self.assertTrue(ok)
+        mock_notify.assert_called_once_with("cid", "appt-1")
+
+    @patch("services.scheduling.confirmation_notify.notify_client_cancelled")
+    @patch("services.scheduling.bookings.repository.update_appointment_status", return_value=True)
+    @patch("services.scheduling.bookings.repository.get_appointment")
+    def test_no_notify_when_client_self_cancel(self, mock_get, mock_update, mock_notify):
+        from services.scheduling.bookings import cancel_appointment
+
+        mock_get.return_value = {"status": "confirmed"}
+        ok = cancel_appointment("cid", "appt-1")
+        self.assertTrue(ok)
+        mock_notify.assert_not_called()
 
 
 class TestCreateProposalToken(unittest.TestCase):

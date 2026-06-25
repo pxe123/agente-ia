@@ -19,7 +19,11 @@ def get_confirmation_policy(cliente_id: str) -> str:
         return "auto"
     if mode == "reception":
         return "auto"
-    if mode == "professional" and not scheduling_uses_internal_motor(cliente_id):
+    if mode == "professional":
+        from services.agendamento_ia_urls import agendamento_ia_configured
+
+        if scheduling_uses_internal_motor(cliente_id) or agendamento_ia_configured():
+            return "professional"
         return "auto"
     return mode
 
@@ -62,4 +66,6 @@ def build_booking_meta_patch(cliente_id: str) -> dict[str, Any]:
 
 
 def can_enable_professional_confirmation(cliente_id: str) -> bool:
-    return scheduling_uses_internal_motor(cliente_id)
+    from services.agendamento_ia_urls import agendamento_ia_configured
+
+    return scheduling_uses_internal_motor(cliente_id) or agendamento_ia_configured()

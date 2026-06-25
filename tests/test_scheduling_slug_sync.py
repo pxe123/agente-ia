@@ -49,6 +49,19 @@ class TestSchedulingSlugSync(unittest.TestCase):
         links = build_provider_services_links(profs, svcs)
         self.assertEqual(links, [])
 
+    def test_provider_services_inactive_service_still_linked(self):
+        profs = [{"id": "p1", "name": "A", "active": True}]
+        svcs = [
+            {
+                "id": "s1",
+                "name": "Anestesia",
+                "active": False,
+                "professional_id": None,
+            }
+        ]
+        links = build_provider_services_links(profs, svcs)
+        self.assertEqual(links, [{"provider_id": "p1", "service_id": "s1"}])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -68,6 +68,29 @@ def _calendar_hour_range(
     return grid_start, list(range(grid_start, grid_end))
 
 
+def _appointment_client_name(row: dict[str, Any]) -> str:
+    meta = row.get("meta_dict") if isinstance(row.get("meta_dict"), dict) else {}
+    name = (
+        (row.get("contact_name_display") or "").strip()
+        or (meta.get("contact_name") or "").strip()
+        or (row.get("contact_display") or "").strip()
+        or (row.get("contact_phone") or "").strip()
+        or (row.get("remote_id") or "").strip()
+        or "Cliente"
+    )
+    if name == "—":
+        return "Cliente"
+    return name
+
+
+def _appointment_display_label(row: dict[str, Any], service_name: str) -> str:
+    client = _appointment_client_name(row)
+    svc = (service_name or "").strip()
+    if svc:
+        return f"{client} - {svc}"
+    return client
+
+
 def _event_blocks(
     appointments: list[dict[str, Any]],
     *,
@@ -79,6 +102,12 @@ def _event_blocks(
     out: list[dict[str, Any]] = []
     for row in appointments or []:
         cancelled = str(row.get("status") or "").lower() == "cancelled"
+        status_l = str(row.get("status") or "").lower()
+        status_tone = (
+            "cancelled"
+            if cancelled
+            else ("pending" if status_l == "pending" else "local")
+        )
         starts = parse_iso_datetime(row.get("starts_at"))
         ends = parse_iso_datetime(row.get("ends_at"))
         if not starts:
@@ -88,31 +117,25 @@ def _event_blocks(
         duration_min = max(15, int((local_end - local_start).total_seconds() // 60))
         pid = str(row.get("professional_id") or "")
         sid = str(row.get("service_id") or "")
-        meta = row.get("meta_dict") if isinstance(row.get("meta_dict"), dict) else {}
-        title = (
-            (meta.get("contact_name") or "").strip()
-            or (row.get("contact_display") or "").strip()
-            or (row.get("contact_phone") or "").strip()
-            or (row.get("remote_id") or "").strip()
-            or "Cliente"
-        )
         svc = service_names.get(sid, "")
         prof = prof_names.get(pid, "")
-        label = title
-        if svc:
-            label = f"{title} — {svc}"
+        label = _appointment_display_label(row, svc)
         out.append(
             {
                 "id": str(row.get("id") or ""),
                 "title": label,
+                "display_label": label,
+                "client_name": _appointment_client_name(row),
                 "prof_name": prof,
                 "service_name": svc,
                 "status": str(row.get("status") or ""),
+                "status_tone": status_tone,
                 "cancelled": cancelled,
                 "day": local_start.date().isoformat(),
                 "start_hour": local_start.hour + local_start.minute / 60.0,
                 "duration_hours": duration_min / 60.0,
                 "starts_at": starts.astimezone(timezone.utc).isoformat(),
+                "time_short": local_start.strftime("%H:%M"),
                 "starts_display": row.get("starts_at_display")
                 or format_datetime_br(starts, tz_name),
                 "origin": row.get("origin") or "local",

@@ -14,9 +14,9 @@
   <div class="flex flex-wrap items-center gap-4 text-xs text-slate-600">
     <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-local border border-teal-700"></span> Confirmado</span>
     <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-pending border border-amber-600"></span> Pendente</span>
-    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-external border border-slate-400"></span> Agendamento IA</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-cancelled border border-slate-300"></span> Cancelado</span>
     <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-200 border border-amber-400"></span> Bloqueio</span>
-    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-recurring border border-teal-800 border-dashed"></span> Recorrente</span>
+    <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded cal-event-recurring cal-event-local border border-teal-800 border-dashed"></span> Recorrente</span>
   </div>
 
   {% include 'scheduling/_calendario_appt_modal.html' %}
@@ -106,14 +106,14 @@
   {% endif %}
 
   {% if view == 'month' and calendar.month_grid %}
-  <div id="cal-month-root" class="bg-white rounded-xl border border-slate-200 p-4 card-shadow overflow-x-auto">
-    <div class="grid grid-cols-7 gap-1 min-w-[640px] text-center text-xs font-medium text-slate-500 mb-2">
+  <div id="cal-month-root" class="bg-white rounded-xl border border-slate-200 p-2 sm:p-4 card-shadow overflow-x-auto">
+    <div class="grid grid-cols-7 gap-0.5 sm:gap-1 cal-month-grid w-full text-center text-[10px] sm:text-xs font-medium text-slate-500 mb-2">
       <div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div>
     </div>
     {% for week in calendar.month_grid %}
-    <div class="grid grid-cols-7 gap-1 min-w-[640px] mb-1">
+    <div class="grid grid-cols-7 gap-0.5 sm:gap-1 cal-month-grid w-full mb-1">
       {% for d in week %}
-      <div class="min-h-[88px] border border-slate-100 rounded-lg p-1 text-left {% if not d %}bg-slate-50{% else %}cal-day-cell{% endif %}"
+      <div class="min-h-[72px] sm:min-h-[88px] border border-slate-100 rounded-lg p-0.5 sm:p-1 text-left {% if not d %}bg-slate-50{% else %}cal-day-cell{% endif %}"
            {% if d %}data-date="{{ d.isoformat() }}"{% endif %}>
         {% if d %}
         <a href="{{ url_for('scheduling.calendario', view='day', date=d.isoformat(), professional_id=filter_professional_id, status=filter_status) }}" class="cal-day-num-link text-xs font-semibold text-slate-700 hover:text-teal-700">{{ d.day }}</a>
@@ -126,11 +126,11 @@
              data-scope="{{ ev.scope }}"
              data-professional-id="{{ ev.professional_id or '' }}"
              data-reason="{{ ev.reason or '' }}"
-             title="{{ ev.title }} — clique para editar">{{ ev.starts_display }}</div>
+             title="{{ ev.title }} — clique para editar"><span class="cal-event-month-time">{{ ev.time_short }}</span> {{ ev.title }}</div>
         {% else %}
-        <div class="cal-event-month cal-event-clickable cursor-pointer {% if ev.is_recurring %}cal-event-month-recurring{% elif ev.origin == 'agenda' %}cal-event-month-external{% elif ev.status == 'pending' %}cal-event-month-pending{% else %}cal-event-month-local{% endif %}"
+        <div class="cal-event-month cal-event-clickable cursor-pointer cal-event-month-{{ ev.status_tone }}{% if ev.is_recurring %} cal-event-month-recurring{% endif %}"
              data-appt-id="{{ ev.id }}"
-             title="{{ ev.title }} — clique para opções">{{ ev.starts_display }}</div>
+             title="{{ ev.display_label }} — {{ ev.starts_display }} — clique para opções"><span class="cal-event-month-time">{{ ev.time_short }}</span> {{ ev.display_label }}</div>
         {% endif %}
         {% endfor %}
         {% if calendar.events_by_day.get(d.isoformat(), [])|length > 4 %}
@@ -145,7 +145,7 @@
   </div>
   {% else %}
   <div class="bg-white rounded-xl border border-slate-200 card-shadow overflow-x-auto" id="cal-week-root">
-    <div class="grid min-w-[800px]" style="grid-template-columns: 56px repeat({{ calendar.days|length }}, 1fr);">
+    <div class="grid cal-week-grid w-full min-w-0 lg:min-w-[800px]" style="grid-template-columns: var(--cal-time-col, 40px) repeat({{ calendar.days|length }}, minmax(0, 1fr));">
       <div class="border-b border-slate-100 p-2"></div>
       {% for d in calendar.days %}
       <div class="border-b border-l border-slate-100 p-2 text-center text-xs font-semibold text-slate-700">
@@ -162,7 +162,7 @@
       </div>
       {% for d in calendar.days %}
       <div class="cal-day-col border-l border-slate-50 relative select-none"
-           style="height: {{ calendar.grid_height_px }}px; min-width: 80px;"
+           style="height: {{ calendar.grid_height_px }}px; min-width: 0;"
            data-date="{{ d.date }}">
         {% for hour in calendar.hours %}
         <div class="cal-slot absolute left-0 right-0 border-b border-slate-50/80 hover:bg-teal-50/30 z-0"
@@ -187,14 +187,13 @@
           <span class="line-clamp-2">{{ ev.title }}</span>
         </div>
         {% else %}
-        <div class="cal-event absolute left-0.5 right-0.5 z-20 cursor-pointer
-                    {% if ev.cancelled %}cal-event-cancelled{% elif ev.is_recurring %}cal-event-recurring{% elif ev.origin == 'agenda' %}cal-event-external{% elif ev.status == 'pending' %}cal-event-pending{% else %}cal-event-local{% endif %}"
+        <div class="cal-event absolute left-0.5 right-0.5 z-20 cursor-pointer cal-event-{{ ev.status_tone }}{% if ev.is_recurring %} cal-event-recurring{% endif %}"
              draggable="{% if not ev.cancelled and ev.origin != 'agenda' %}true{% else %}false{% endif %}"
              data-id="{{ ev.id }}"
              data-starts="{{ ev.starts_at }}"
              style="top: {{ top_px }}px; height: {{ h_px }}px; min-height: 20px;"
              title="{{ ev.title }} — {{ ev.starts_display }}{% if ev.cancelled %} (cancelado){% endif %}{% if ev.status == 'pending' %} (pendente){% endif %} — clique para opções">
-          <span class="line-clamp-2">{{ ev.title }}</span>
+          <span class="cal-event-label">{{ ev.display_label }}</span>
         </div>
         {% endif %}
         {% endfor %}
@@ -202,7 +201,7 @@
       {% endfor %}
     </div>
   </div>
-  <p class="text-xs text-slate-500">Pendentes aparecem em âmbar. Marcações do Agendamento IA (cinza) não podem ser arrastadas. Cancelados aparecem riscados. Bloqueios (âmbar) não cancelam marcações existentes.</p>
+  <p class="text-xs text-slate-500">As cores refletem o estado da marcação (confirmado, pendente ou cancelado), incluindo agendamentos do Agenda IA. Marcações do Agenda IA não podem ser arrastadas. Bloqueios (âmbar) não cancelam marcações existentes.</p>
   {% endif %}
 </div>
 
@@ -291,6 +290,7 @@
 (function () {
   var canBlock = {{ 'true' if scheduling_uses_internal else 'false' }};
   var canCreate = {{ 'true' if panel_booking_enabled else 'false' }};
+  var autoDistribution = {{ 'true' if auto_distribution_enabled else 'false' }};
   var apiCreate = '{{ url_for("scheduling.api_blocked_time_create") }}';
   var apiPatchBase = '{{ url_for("scheduling.api_blocked_time_update", blocked_id="__ID__") }}'.replace('__ID__', '');
   function getCsrf() {
@@ -413,17 +413,19 @@
       }
     }
     apptActions.innerHTML = '';
-    if (status === 'pending' && !isAgenda) {
+    if (status === 'pending') {
       apptActions.appendChild(actionBtn('Confirmar', 'px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 whitespace-nowrap', postForm('confirm_appointment', apptId)));
       var proposeLink = document.createElement('a');
       proposeLink.href = calQueryUrl({ propose: apptId });
       apptActions.appendChild(actionBtn('Sugerir horário', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs font-semibold hover:bg-blue-100 whitespace-nowrap', proposeLink));
       apptActions.appendChild(actionBtn('Recusar', 'px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 whitespace-nowrap', postForm('reject_appointment', apptId, 'Recusar este pedido?')));
     }
-    if (status !== 'cancelled' && !isAgenda) {
+    if (status !== 'cancelled' && (!isAgenda || autoDistribution)) {
+      if (!isAgenda) {
       var rescheduleLink = document.createElement('a');
       rescheduleLink.href = calQueryUrl({ reschedule: apptId });
       apptActions.appendChild(actionBtn('Remarcar', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-800 text-xs font-semibold hover:bg-teal-100 whitespace-nowrap', rescheduleLink));
+      }
       var reassignLink = document.createElement('a');
       reassignLink.href = calQueryUrl({ reassign: apptId });
       apptActions.appendChild(actionBtn('Profissional', 'inline-flex shrink-0 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-semibold hover:bg-indigo-100 whitespace-nowrap', reassignLink));

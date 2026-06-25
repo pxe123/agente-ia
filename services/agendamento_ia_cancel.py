@@ -46,7 +46,7 @@ def cancel_appointment_in_agendamento_ia(
         "user_message": "",
         "context": {
             "cliente_id": cid,
-            "remote_id": (remote_id or "").strip() or None,
+            "remote_id": (remote_id or "").strip(),
         },
         "booking": {"appointment_id": aid},
         "zapaction_turn_id": f"panel-cancel-{int(time.time())}",
